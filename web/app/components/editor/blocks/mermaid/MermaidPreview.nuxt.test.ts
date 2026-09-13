@@ -8,13 +8,15 @@ import { t, WAIT_FOR_OPTIONS } from "~/components/test-helpers"
 const DEBOUNCE_MS = 400
 
 // the real composable dynamically imports mermaid and drives a browser
-// renderer; the suite drives its three outputs directly instead
+// renderer; the suite drives its three outputs directly instead and keeps
+// the dark flag the preview hands it
 const mermaid = vi.hoisted(() => {
 	return {
 		render:
 			vi.fn<(id: string, source: string) => Promise<Record<string, string>>>(),
 		isLoading: null as unknown as Ref<boolean>,
 		loadError: null as unknown as Ref<string | null>,
+		dark: null as unknown as Ref<boolean>,
 	}
 })
 
@@ -25,11 +27,15 @@ vi.mock("./useMermaid", async () => {
 	mermaid.loadError = ref<string | null>(null)
 
 	return {
-		useMermaid: () => ({
-			render: mermaid.render,
-			isLoading: mermaid.isLoading,
-			loadError: mermaid.loadError,
-		}),
+		useMermaid: (dark: Ref<boolean>) => {
+			mermaid.dark = dark
+
+			return {
+				render: mermaid.render,
+				isLoading: mermaid.isLoading,
+				loadError: mermaid.loadError,
+			}
+		},
 	}
 })
 
@@ -39,47 +45,14 @@ function mountPreview(source: string) {
 	})
 }
 
-// puts the colour mode back on "follow the system" and hands back a
-// switch that flips the system preference to dark, the way a reader
-// changing their OS theme would
-function followSystemTheme(): () => void {
-	const listeners: ((event: { matches: boolean }) => void)[] = []
-	const query = {
-		matches: false,
-		media: "(prefers-color-scheme: dark)",
-		onchange: null,
-		addEventListener: (
-			_event: string,
-			listener: (e: { matches: boolean }) => void,
-		) => {
-			listeners.push(listener)
-		},
-		removeEventListener: () => undefined,
-		dispatchEvent: () => true,
-	}
-
-	vi.stubGlobal(
-		"matchMedia",
-		vi.fn(() => query),
-	)
-	useAppearance().changeColorTheme("auto")
-
-	return () => {
-		query.matches = true
-		listeners.forEach((listener) => {
-			listener({ matches: true })
-		})
-	}
-}
-
 function previewHtml(wrapper: VueWrapper): string {
 	return wrapper.get(".mermaid-preview").html()
 }
 
-// the mocked composable's refs and the colour mode are shared by the
-// whole file, so these tests cannot interleave
+// the mocked composable's refs and the document's theme class are shared
+// by the whole file, so these tests cannot interleave
 describe("<MermaidPreview>", { concurrent: false }, () => {
-	// each preview keeps watching the colour mode for as long as it is
+	// each preview keeps watching the theme class for as long as it is
 	// mounted, so a leftover one would redraw during the next test
 	enableAutoUnmount(afterEach)
 
@@ -90,7 +63,7 @@ describe("<MermaidPreview>", { concurrent: false }, () => {
 		mermaid.render.mockResolvedValue({ svg: "<svg><g></g></svg>" })
 		mermaid.isLoading.value = false
 		mermaid.loadError.value = null
-		useAppearance().changeColorTheme("light")
+		document.documentElement.classList.remove("dark")
 	})
 
 	it("reports that the diagram engine is still loading", async ({ expect }) => {
@@ -259,24 +232,35 @@ describe("<MermaidPreview>", { concurrent: false }, () => {
 		expect(previewHtml(wrapper)).not.toContain("first")
 	})
 
-	it("redraws the diagram in the reader's new colour theme", async ({
+	it("redraws the diagram in dark colours once the document turns dark", async ({
 		expect,
 	}) => {
-		// the colour mode is read out of a cookie the composable re-reads
-		// per instance, so a change made from the test would never reach a
-		// mounted component. Following the system theme instead gives a
-		// switch the mounted preview does see.
-		const switchToDark = followSystemTheme()
 		const wrapper = await mountPreview("graph TD; A-->B;")
 		await vi.waitFor(() => {
 			expect(mermaid.render).toHaveBeenCalledTimes(1)
 		}, WAIT_FOR_OPTIONS)
+		expect(mermaid.dark.value).toBe(false)
 
-		switchToDark()
+		document.documentElement.classList.add("dark")
 
 		await vi.waitFor(() => {
 			expect(mermaid.render).toHaveBeenCalledTimes(2)
 		}, WAIT_FOR_OPTIONS)
+		expect(mermaid.dark.value).toBe(true)
+		expect(wrapper.exists()).toBe(true)
+	})
+
+	it("starts in dark colours when the document is already dark", async ({
+		expect,
+	}) => {
+		document.documentElement.classList.add("dark")
+
+		const wrapper = await mountPreview("graph TD; A-->B;")
+
+		await vi.waitFor(() => {
+			expect(mermaid.render).toHaveBeenCalledTimes(1)
+		}, WAIT_FOR_OPTIONS)
+		expect(mermaid.dark.value).toBe(true)
 		expect(wrapper.exists()).toBe(true)
 	})
 })

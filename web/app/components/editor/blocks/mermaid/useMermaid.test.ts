@@ -14,7 +14,25 @@ const themeColors = {
 	primaryForeground: "#000009",
 	destructive: "#00000a",
 	destructiveForeground: "#00000b",
-	chart: Array.from({ length: 12 }, (_, i) => `#c0000${i.toString(16)}`),
+	// a fixed tuple, so an index in an assertion is a string, not undefined
+	selectable: [
+		"#c00001",
+		"#c00002",
+		"#c00003",
+		"#c00004",
+		"#c00005",
+		"#c00006",
+		"#c00007",
+		"#c00008",
+		"#c00009",
+		"#c0000a",
+		"#c0000b",
+		"#c0000c",
+		"#c0000d",
+		"#c0000e",
+		"#c0000f",
+		"#c00010",
+	] as const,
 	fontFamily: "Test Sans",
 }
 
@@ -22,12 +40,22 @@ interface ThemeVariables {
 	[key: string]: unknown
 	xyChart?: { plotColorPalette?: string }
 	radar?: { graticuleColor?: string }
+	railroad?: { ruleNameColor?: string }
+	treeView?: { highlightStroke?: string }
 }
 
 interface MermaidStub {
 	initialize: Mock
 	render: Mock
 }
+
+const c4 = vi.hoisted(() => ({
+	themeC4Labels: vi.fn((svg: string) => `${svg}<!-- themed -->`),
+}))
+
+// the C4 label rewrite needs a DOM; the composable only has to hand it the
+// rendered svg and the theme's text colours
+vi.mock("./c4-labels", () => ({ themeC4Labels: c4.themeC4Labels }))
 
 // the composable keeps the loaded module, the in-flight load promise and
 // the last applied theme in module scope, so every case re-imports it
@@ -66,6 +94,7 @@ function initializedConfig(stub: MermaidStub, call = 0): MermaidConfig {
 describe("useMermaid", { concurrent: false }, () => {
 	beforeEach(() => {
 		vi.stubGlobal("useI18n", () => ({ t: (key: string) => key }))
+		c4.themeC4Labels.mockClear()
 	})
 
 	it("renders the source through the loaded mermaid module", async ({
@@ -76,10 +105,25 @@ describe("useMermaid", { concurrent: false }, () => {
 		const { render } = useMermaid(ref(false))
 		const result = await render("id-1", "graph LR")
 
-		expect(result).toEqual({ svg: "<svg />" })
+		expect(result).toEqual({ svg: "<svg /><!-- themed -->" })
 		expect(stub.render).toHaveBeenCalledTimes(1)
 		expect(stub.render).toHaveBeenCalledWith("id-1", "graph LR")
 		expect(stub.initialize).toHaveBeenCalledTimes(1)
+	})
+
+	it("recolours C4 labels on the rendered svg with the theme's text colours", async ({
+		expect,
+	}) => {
+		const { useMermaid } = await loadComposable()
+
+		const { render } = useMermaid(ref(false))
+		await render("id-1", "C4Context")
+
+		expect(c4.themeC4Labels).toHaveBeenCalledTimes(1)
+		expect(c4.themeC4Labels).toHaveBeenCalledWith("<svg />", {
+			internal: themeColors.primaryForeground,
+			external: themeColors.foreground,
+		})
 	})
 
 	it("clears the loading flag and the load error after a successful load", async ({
@@ -105,15 +149,17 @@ describe("useMermaid", { concurrent: false }, () => {
 		expect(config.startOnLoad).toBe(false)
 		expect(config.securityLevel).toBe("strict")
 		expect(config.suppressErrorRendering).toBe(true)
-		expect(config.theme).toBe("null")
+		expect(config.theme).toBe("base")
 		expect(config.darkMode).toBe(true)
 		expect(config.fontFamily).toBe(themeColors.fontFamily)
 	})
 
-	it("maps the chart palette onto every indexed theme variable", async ({
+	it("spreads the selectable palette over every indexed theme variable", async ({
 		expect,
 	}) => {
 		const { useMermaid, stub } = await loadComposable()
+		// every fifth palette entry from the middle: indexes 7, 12, 1, 6, ...
+		const sel = themeColors.selectable
 
 		const { render } = useMermaid(ref(false))
 		await render("id-1", "graph LR")
@@ -121,14 +167,108 @@ describe("useMermaid", { concurrent: false }, () => {
 		const vars = (initializedConfig(stub).themeVariables ??
 			{}) as ThemeVariables
 
-		expect(vars.pie1).toBe(themeColors.chart[0])
-		expect(vars.pie12).toBe(themeColors.chart[11])
-		expect(vars.cScale11).toBe(themeColors.chart[11])
-		expect(vars.venn8).toBe(themeColors.chart[7])
-		expect(vars.git7).toBe(themeColors.chart[7])
-		expect(vars.fillType7).toBe(themeColors.chart[7])
-		expect(vars.xyChart?.plotColorPalette).toBe(themeColors.chart.join(","))
+		expect(vars.cScale0).toBe(sel[7])
+		expect(vars.cScale1).toBe(sel[12])
+		expect(vars.cScale2).toBe(sel[1])
+		expect(vars.cScale11).toBe(sel[14])
+		expect(vars.cScaleLabel0).toBe(themeColors.primaryForeground)
+		expect(vars.pie1).toBe(sel[7])
+		expect(vars.pie12).toBe(sel[14])
+		expect(vars.venn8).toBe(sel[10])
+		expect(vars.git7).toBe(sel[10])
+		expect(vars.actor5).toBe(sel[0])
+		expect(vars.xyChart?.plotColorPalette).toMatch(
+			new RegExp(`^${sel[7]},${sel[12]},${sel[1]},`),
+		)
 		expect(vars.radar?.graticuleColor).toBe(themeColors.border)
+	})
+
+	it("keeps single-accent roles on the primary colour and text accents plain", async ({
+		expect,
+	}) => {
+		const { useMermaid, stub } = await loadComposable()
+
+		const { render } = useMermaid(ref(false))
+		await render("id-1", "gantt")
+
+		const vars = (initializedConfig(stub).themeVariables ??
+			{}) as ThemeVariables
+
+		expect(vars.taskBkgColor).toBe(themeColors.primary)
+		expect(vars.taskTextColor).toBe(themeColors.primaryForeground)
+		expect(vars.activeTaskBkgColor).toBe(themeColors.accent)
+		expect(vars.activeTaskBorderColor).toBe(themeColors.primary)
+		expect(vars.doneTaskBkgColor).toBe(themeColors.muted)
+		expect(vars.taskTextDarkColor).toBe(themeColors.foreground)
+		expect(vars.critBkgColor).toBe(themeColors.destructive)
+		expect(vars.quadrantPointFill).toBe(themeColors.primary)
+		expect(vars.railroad?.ruleNameColor).toBe(themeColors.foreground)
+		expect(vars.treeView?.highlightStroke).toBe(themeColors.primary)
+	})
+
+	it("colours C4 elements and sankey links through diagram config", async ({
+		expect,
+	}) => {
+		const { useMermaid, stub } = await loadComposable()
+
+		const { render } = useMermaid(ref(false))
+		await render("id-1", "C4Context")
+
+		const config = initializedConfig(stub)
+
+		expect(config.c4?.person_bg_color).toBe(themeColors.selectable[7])
+		expect(config.c4?.container_db_border_color).toBe(themeColors.selectable[1])
+		expect(config.c4?.external_system_bg_color).toBe(themeColors.muted)
+		expect(config.c4?.external_system_border_color).toBe(themeColors.border)
+		expect(config.sankey?.linkColor).toBe(themeColors.mutedForeground)
+	})
+
+	it("overrides the colours mermaid hardcodes through themeCSS", async ({
+		expect,
+	}) => {
+		const { useMermaid, stub } = await loadComposable()
+
+		const { render } = useMermaid(ref(false))
+		await render("id-1", "journey")
+
+		const css = initializedConfig(stub).themeCSS ?? ""
+
+		expect(css).toContain(`.face { stroke: ${themeColors.border}; }`)
+		expect(css).toContain(
+			`.node-icon-text > div { color: ${themeColors.foreground}; }`,
+		)
+		expect(css).toContain(
+			`.architecture-service [style*="#087ebf"], .architecture-groups [style*="#087ebf"] { fill: ${themeColors.primary} !important; rx: 8px; ry: 8px; }`,
+		)
+		expect(css).toContain(
+			`.node[id^="node-"]:nth-child(16n+1) > rect:only-child { fill: ${themeColors.selectable[7]}; }`,
+		)
+		expect(css).toContain(
+			`.node[id^="node-"]:nth-child(16n+16) > rect:only-child { fill: ${themeColors.selectable[2]}; }`,
+		)
+		expect(css).toContain(
+			`.architecture-service text { fill: ${themeColors.foreground}; paint-order: stroke; stroke: ${themeColors.background};`,
+		)
+		expect(css).toContain(
+			`.architecture-groups rect.node-bkg { rx: 8px; ry: 8px; }`,
+		)
+	})
+
+	it("alternates the journey section fills between the card and accent surfaces", async ({
+		expect,
+	}) => {
+		const { useMermaid, stub } = await loadComposable()
+
+		const { render } = useMermaid(ref(false))
+		await render("id-1", "journey")
+
+		const vars = (initializedConfig(stub).themeVariables ??
+			{}) as ThemeVariables
+
+		expect(vars.fillType0).toBe(themeColors.card)
+		expect(vars.fillType1).toBe(themeColors.accent)
+		expect(vars.fillType6).toBe(themeColors.card)
+		expect(vars.fillType7).toBe(themeColors.accent)
 	})
 
 	it("reinitializes mermaid when the dark flag flips between renders", async ({
@@ -183,7 +323,7 @@ describe("useMermaid", { concurrent: false }, () => {
 		const { render } = useMermaid(ref(false))
 		const result = await render("id-1", "graph LR")
 
-		expect(result).toEqual({ svg: "<svg />" })
+		expect(result).toEqual({ svg: "<svg /><!-- themed -->" })
 		expect(stub.initialize).toHaveBeenCalledTimes(1)
 	})
 
@@ -230,7 +370,7 @@ describe("useMermaid", { concurrent: false }, () => {
 		vi.doMock("mermaid", () => ({ default: stub }))
 		const result = await render("id-2", "graph LR")
 
-		expect(result).toEqual({ svg: "<svg />" })
+		expect(result).toEqual({ svg: "<svg /><!-- themed -->" })
 		expect(stub.initialize).toHaveBeenCalledTimes(1)
 	})
 

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import DOMPurify from "dompurify"
 import { TAB_SIZE } from "./index"
+import { sanitizeMermaidSvg } from "./sanitize-svg"
 import { useMermaid } from "./useMermaid"
 
 const sourceDebounceMs = 400
@@ -11,7 +11,22 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n({ useScope: "global" })
-const { isDark } = useAppearance()
+
+// the palette lives in CSS variables that switch with the html "dark"
+// class, which unhead applies in a setTimeout after vue's flush. Following
+// the class rather than the colour mode means the variables are already
+// in place when the theme is read.
+const root = document.documentElement
+const isDark = ref(root.classList.contains("dark"))
+
+useMutationObserver(
+	root,
+	() => {
+		isDark.value = root.classList.contains("dark")
+	},
+	{ attributes: true, attributeFilter: ["class"] },
+)
+
 const { render, isLoading, loadError } = useMermaid(isDark)
 
 const renderedSvg = ref("")
@@ -25,17 +40,7 @@ const debouncedSource = refDebounced(
 	sourceDebounceMs,
 )
 
-watchImmediate([debouncedSource, isDark], async ([source], oldValues) => {
-	// when the theme changes, wait for the browser to apply the
-	// new CSS variables before reading them.
-	// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- oldValues is undefined on the immediate first run despite the declared type
-	if (oldValues && oldValues[1] !== isDark.value) {
-		// nextTick isn't sufficient, the CSS update happens after the next
-		// paint. Wait for the next animation frame to ensure styles are up
-		// to date.
-		await new Promise((r) => requestAnimationFrame(r))
-	}
-
+watchImmediate([debouncedSource, isDark], async ([source]) => {
 	if (!source.trim()) {
 		renderedSvg.value = ""
 		renderError.value = ""
@@ -56,11 +61,7 @@ watchImmediate([debouncedSource, isDark], async ([source], oldValues) => {
 	}
 
 	if ("svg" in result) {
-		renderedSvg.value = DOMPurify.sanitize(result.svg, {
-			USE_PROFILES: { svg: true, svgFilters: true },
-			ADD_TAGS: ["foreignObject"],
-			ADD_ATTR: ["dominant-baseline"],
-		})
+		renderedSvg.value = sanitizeMermaidSvg(result.svg)
 		renderError.value = ""
 	} else {
 		renderedSvg.value = ""

@@ -1,6 +1,7 @@
 import { shallowRef, ref, readonly, type Ref } from "vue"
 import type { MermaidConfig } from "mermaid"
 import { mermaidThemeColors } from "~/assets/css"
+import { themeC4Labels, type C4LabelColors } from "./c4-labels"
 
 type RenderMermaid = (
 	id: string,
@@ -12,227 +13,389 @@ const isLoading = ref(false)
 const loadError = ref<string | null>(null)
 let loadPromise: Promise<void> | null = null
 let lastInitializedDark: boolean | null = null
+let c4Labels: C4LabelColors = { internal: "", external: "" }
 
-function buildMermaidConfig(dark: boolean): MermaidConfig {
+// numbered theme variables such as cScale0..cScale11 or pie1..pie12
+function numbered(prefix: string, colors: string[], from = 0) {
+	return Object.fromEntries(
+		colors.map((color, index) => [`${prefix}${from + index}`, color]),
+	)
+}
+
+function repeat(color: string, count: number) {
+	return Array.from({ length: count }, () => color)
+}
+
+function buildMermaidTheme(dark: boolean) {
 	const c = mermaidThemeColors()
+	// the selectable palette runs through the hues in order, so a series
+	// takes every fifth entry, starting mid-list, to keep consecutive
+	// colours apart
+	const series = [7, 12, 1, 6, 11, 0, 5, 10, 15, 4, 9, 14, 3, 8, 13, 2].flatMap(
+		(index) => c.selectable[index] ?? [],
+	)
+	const scale = series.slice(0, 12)
+	// text drawn on a series colour or on the primary colour
+	const onSeries = c.primaryForeground
+	const line = c.mutedForeground
+	const text = c.foreground
 
-	return {
+	// C4 element colours are diagram config, not theme variables, and their
+	// labels are recoloured on the rendered svg (see themeC4Labels). External
+	// elements stay neutral so the internal ones stand out.
+	const [person, system, container, component] = series
+	const c4Types: [string, string | undefined][] = [
+		["person", person],
+		["system", system],
+		["system_db", system],
+		["system_queue", system],
+		["container", container],
+		["container_db", container],
+		["container_queue", container],
+		["component", component],
+		["component_db", component],
+		["component_queue", component],
+	]
+	const c4 = Object.fromEntries(
+		c4Types.flatMap(([type, color]) => [
+			[`${type}_bg_color`, color],
+			[`${type}_border_color`, color],
+			[`external_${type}_bg_color`, c.muted],
+			[`external_${type}_border_color`, c.border],
+		]),
+	)
+
+	const config = {
 		startOnLoad: false,
 		securityLevel: "strict",
 		suppressErrorRendering: true,
 		darkMode: dark,
-		theme: "null",
+		theme: "base",
 		fontFamily: c.fontFamily,
 		themeVariables: {
 			background: c.background,
 			fontFamily: c.fontFamily,
 			primaryColor: c.card,
-			primaryTextColor: c.foreground,
-			secondaryColor: c.muted,
-			secondaryTextColor: c.foreground,
-			tertiaryColor: c.accent,
-			tertiaryTextColor: c.foreground,
+			primaryTextColor: text,
 			primaryBorderColor: c.border,
+			secondaryColor: c.muted,
+			secondaryTextColor: text,
 			secondaryBorderColor: c.border,
+			tertiaryColor: c.accent,
+			tertiaryTextColor: text,
 			tertiaryBorderColor: c.border,
 			noteBkgColor: c.accent,
-			noteTextColor: c.foreground,
+			noteTextColor: text,
 			noteBorderColor: c.border,
-			lineColor: c.mutedForeground,
-			arrowheadColor: c.mutedForeground,
-			textColor: c.foreground,
+			lineColor: line,
+			arrowheadColor: line,
+			textColor: text,
+			titleColor: text,
+			labelColor: text,
+			labelBackground: c.background,
 			border2: c.border,
 			nodeBkg: c.card,
 			mainBkg: c.card,
+			secondBkg: c.muted,
 			nodeBorder: c.border,
 			clusterBkg: c.muted,
 			clusterBorder: c.border,
-			defaultLinkColor: c.mutedForeground,
-			titleColor: c.foreground,
+			defaultLinkColor: line,
 			edgeLabelBackground: c.background,
-			nodeTextColor: c.foreground,
+			nodeTextColor: text,
+			rectBkgColor: c.accent,
+			classText: text,
+			errorBkgColor: c.destructive,
+			errorTextColor: onSeries,
 			// Sequence diagram
 			actorBorder: c.border,
 			actorBkg: c.card,
-			actorTextColor: c.foreground,
-			actorLineColor: c.mutedForeground,
+			actorTextColor: text,
+			actorLineColor: line,
 			labelBoxBkgColor: c.card,
-			signalColor: c.foreground,
-			signalTextColor: c.foreground,
 			labelBoxBorderColor: c.border,
-			labelTextColor: c.foreground,
-			loopTextColor: c.foreground,
+			labelTextColor: text,
+			loopTextColor: text,
+			signalColor: line,
+			signalTextColor: text,
 			activationBorderColor: c.border,
 			activationBkgColor: c.muted,
-			sequenceNumberColor: c.primaryForeground,
+			sequenceNumberColor: c.background,
 			// Gantt
 			sectionBkgColor: c.muted,
 			altSectionBkgColor: c.background,
 			sectionBkgColor2: c.card,
 			excludeBkgColor: c.accent,
-			taskBorderColor: c.border,
-			taskBkgColor: c.card,
+			// active and done bars share their text colour with the labels
+			// outside bars, so they sit on light surfaces
+			taskBorderColor: c.primary,
+			taskBkgColor: c.primary,
 			activeTaskBorderColor: c.primary,
-			activeTaskBkgColor: c.primary,
-			gridColor: c.border,
+			activeTaskBkgColor: c.accent,
 			doneTaskBkgColor: c.muted,
 			doneTaskBorderColor: c.border,
 			critBorderColor: c.destructive,
 			critBkgColor: c.destructive,
-			todayLineColor: c.primary,
-			vertLineColor: c.border,
-			taskTextColor: c.foreground,
-			taskTextOutsideColor: c.foreground,
-			taskTextLightColor: c.primaryForeground,
-			taskTextDarkColor: c.foreground,
-			taskTextClickableColor: c.primary,
-			// Person / C4
+			todayLineColor: c.destructive,
+			vertLineColor: line,
+			gridColor: c.border,
+			taskTextColor: onSeries,
+			taskTextLightColor: onSeries,
+			taskTextDarkColor: text,
+			taskTextOutsideColor: text,
+			taskTextClickableColor: onSeries,
+			// C4
 			personBorder: c.border,
 			personBkg: c.card,
 			// Tables
 			rowOdd: c.card,
 			rowEven: c.muted,
+			attributeBackgroundColorOdd: c.card,
+			attributeBackgroundColorEven: c.muted,
 			// State diagram
-			transitionColor: c.mutedForeground,
-			transitionLabelColor: c.foreground,
-			stateLabelColor: c.foreground,
+			transitionColor: line,
+			transitionLabelColor: text,
+			stateLabelColor: text,
 			stateBkg: c.card,
+			stateBorder: c.border,
 			labelBackgroundColor: c.background,
 			compositeBackground: c.background,
 			altBackground: c.muted,
 			compositeTitleBackground: c.card,
 			compositeBorder: c.border,
-			innerEndBackground: c.border,
-			// Error
-			errorBkgColor: c.destructive,
-			errorTextColor: c.destructiveForeground,
-			specialStateColor: c.primary,
-			classText: c.foreground,
+			innerEndBackground: line,
+			specialStateColor: text,
+			// Colour scales: mindmap, timeline, treemap and radar sections
+			...numbered("cScale", scale),
+			...numbered("cScalePeer", scale),
+			...numbered("cScaleInv", repeat(onSeries, scale.length)),
+			...numbered("cScaleLabel", repeat(onSeries, scale.length)),
 			// Pie chart
-			pie1: c.chart[0],
-			pie2: c.chart[1],
-			pie3: c.chart[2],
-			pie4: c.chart[3],
-			pie5: c.chart[4],
-			pie6: c.chart[5],
-			pie7: c.chart[6],
-			pie8: c.chart[7],
-			pie9: c.chart[8],
-			pie10: c.chart[9],
-			pie11: c.chart[10],
-			pie12: c.chart[11],
-			pieTitleTextColor: c.foreground,
-			pieSectionTextColor: c.foreground,
-			pieLegendTextColor: c.foreground,
-			pieStrokeColor: c.border,
-			pieOuterStrokeColor: c.border,
+			...numbered("pie", scale, 1),
+			pieTitleTextColor: text,
+			pieSectionTextColor: onSeries,
+			pieLegendTextColor: text,
+			pieStrokeColor: c.background,
+			pieOuterStrokeColor: c.background,
 			// Venn
-			venn1: c.chart[0],
-			venn2: c.chart[1],
-			venn3: c.chart[2],
-			venn4: c.chart[3],
-			venn5: c.chart[4],
-			venn6: c.chart[5],
-			venn7: c.chart[6],
-			venn8: c.chart[7],
-			vennTitleTextColor: c.foreground,
-			vennSetTextColor: c.foreground,
-			// Color scales
-			cScale0: c.chart[0],
-			cScale1: c.chart[1],
-			cScale2: c.chart[2],
-			cScale3: c.chart[3],
-			cScale4: c.chart[4],
-			cScale5: c.chart[5],
-			cScale6: c.chart[6],
-			cScale7: c.chart[7],
-			cScale8: c.chart[8],
-			cScale9: c.chart[9],
-			cScale10: c.chart[10],
-			cScale11: c.chart[11],
+			...numbered("venn", series.slice(0, 8), 1),
+			vennTitleTextColor: text,
+			vennSetTextColor: text,
 			// Requirement diagram
 			requirementBackground: c.card,
 			requirementBorderColor: c.border,
-			requirementTextColor: c.foreground,
-			relationColor: c.mutedForeground,
+			requirementTextColor: text,
+			relationColor: line,
 			relationLabelBackground: c.background,
-			relationLabelColor: c.foreground,
+			relationLabelColor: text,
 			// Git graph
-			git0: c.chart[0],
-			git1: c.chart[1],
-			git2: c.chart[2],
-			git3: c.chart[3],
-			git4: c.chart[4],
-			git5: c.chart[5],
-			git6: c.chart[6],
-			git7: c.chart[7],
-			gitBranchLabel0: c.foreground,
-			gitBranchLabel1: c.foreground,
-			gitBranchLabel2: c.foreground,
-			gitBranchLabel3: c.foreground,
-			gitBranchLabel4: c.foreground,
-			gitBranchLabel5: c.foreground,
-			gitBranchLabel6: c.foreground,
-			gitBranchLabel7: c.foreground,
-			branchLabelColor: c.foreground,
-			tagLabelColor: c.foreground,
+			...numbered("git", series.slice(0, 8)),
+			...numbered("gitInv", repeat(text, 8)),
+			...numbered("gitBranchLabel", repeat(onSeries, 8)),
+			branchLabelColor: onSeries,
+			commitLineColor: line,
+			commitLabelColor: text,
+			commitLabelBackground: c.background,
+			tagLabelColor: text,
 			tagLabelBackground: c.muted,
 			tagLabelBorder: c.border,
-			commitLabelColor: c.foreground,
-			commitLabelBackground: c.background,
-			// Entity relationship
-			attributeBackgroundColorOdd: c.card,
-			attributeBackgroundColorEven: c.muted,
-			// XY chart
-			xyChart: {
-				backgroundColor: c.background,
-				titleColor: c.foreground,
-				xAxisTitleColor: c.foreground,
-				xAxisLabelColor: c.foreground,
-				xAxisTickColor: c.foreground,
-				xAxisLineColor: c.border,
-				yAxisTitleColor: c.foreground,
-				yAxisLabelColor: c.foreground,
-				yAxisTickColor: c.foreground,
-				yAxisLineColor: c.border,
-				plotColorPalette: c.chart.join(","),
-			},
+			// User journey: sections alternate between two surfaces
+			...numbered(
+				"fillType",
+				repeat(c.card, 4).flatMap((card) => [card, c.accent]),
+			),
+			...numbered("actor", series.slice(0, 6)),
+			faceColor: c.accent,
 			// Quadrant chart
 			quadrant1Fill: c.card,
 			quadrant2Fill: c.muted,
 			quadrant3Fill: c.accent,
 			quadrant4Fill: c.card,
-			quadrant1TextFill: c.foreground,
-			quadrant2TextFill: c.foreground,
-			quadrant3TextFill: c.foreground,
-			quadrant4TextFill: c.foreground,
+			quadrant1TextFill: text,
+			quadrant2TextFill: text,
+			quadrant3TextFill: text,
+			quadrant4TextFill: text,
 			quadrantPointFill: c.primary,
-			quadrantPointTextFill: c.primaryForeground,
-			quadrantXAxisTextFill: c.foreground,
-			quadrantYAxisTextFill: c.foreground,
+			quadrantPointTextFill: text,
+			quadrantXAxisTextFill: text,
+			quadrantYAxisTextFill: text,
 			quadrantInternalBorderStrokeFill: c.border,
 			quadrantExternalBorderStrokeFill: c.border,
-			quadrantTitleFill: c.foreground,
+			quadrantTitleFill: text,
+			// XY chart
+			xyChart: {
+				backgroundColor: c.background,
+				titleColor: text,
+				dataLabelColor: text,
+				legendTextColor: text,
+				xAxisTitleColor: text,
+				xAxisLabelColor: text,
+				xAxisTickColor: text,
+				xAxisLineColor: c.border,
+				yAxisTitleColor: text,
+				yAxisLabelColor: text,
+				yAxisTickColor: text,
+				yAxisLineColor: c.border,
+				plotColorPalette: series.join(","),
+			},
 			// Architecture
-			archEdgeColor: c.mutedForeground,
-			archEdgeArrowColor: c.mutedForeground,
+			archEdgeColor: line,
+			archEdgeArrowColor: line,
 			archGroupBorderColor: c.border,
 			// Radar
 			radar: {
-				axisColor: c.mutedForeground,
+				axisColor: line,
 				graticuleColor: c.border,
 			},
-			// User journey
-			fillType0: c.chart[0],
-			fillType1: c.chart[1],
-			fillType2: c.chart[2],
-			fillType3: c.chart[3],
-			fillType4: c.chart[4],
-			fillType5: c.chart[5],
-			fillType6: c.chart[6],
-			fillType7: c.chart[7],
+			// Packet
+			packet: {
+				startByteColor: line,
+				endByteColor: line,
+				labelColor: text,
+				titleColor: text,
+				blockStrokeColor: c.border,
+				blockFillColor: c.card,
+			},
+			// Treemap
+			treemap: {
+				sectionStrokeColor: c.border,
+				sectionFillColor: c.muted,
+				leafStrokeColor: c.border,
+				leafFillColor: c.card,
+				titleColor: text,
+				labelColor: text,
+				valueColor: text,
+			},
+			// Tree view
+			treeView: {
+				labelColor: text,
+				lineColor: line,
+				iconColor: line,
+				descriptionColor: line,
+				highlightBg: c.accent,
+				highlightStroke: c.primary,
+			},
+			// Railroad (ABNF, EBNF, PEG)
+			railroad: {
+				terminalFill: c.accent,
+				terminalStroke: c.border,
+				terminalTextColor: text,
+				nonTerminalFill: c.card,
+				nonTerminalStroke: c.border,
+				nonTerminalTextColor: text,
+				lineColor: line,
+				markerFill: line,
+				commentFill: c.muted,
+				commentStroke: c.border,
+				commentTextColor: line,
+				specialFill: c.card,
+				specialStroke: line,
+				ruleNameColor: text,
+			},
+			// Cynefin: the domain fills are drawn translucent
+			cynefin: {
+				boundaryColor: line,
+				cliffColor: c.destructive,
+				arrowColor: line,
+				complexBg: series[0],
+				complicatedBg: series[1],
+				chaoticBg: series[2],
+				clearBg: series[3],
+				confusionBg: series[4],
+				textColor: text,
+				labelColor: text,
+			},
+			// Wardley map
+			wardleyEvolutionColor: c.destructive,
+			wardley: {
+				backgroundColor: c.background,
+				axisColor: line,
+				axisTextColor: text,
+				gridColor: c.border,
+				componentFill: c.card,
+				componentStroke: text,
+				componentLabelColor: text,
+				linkStroke: line,
+				evolutionStroke: c.destructive,
+				annotationStroke: line,
+				annotationTextColor: text,
+				annotationFill: c.card,
+			},
+			// Event modelling: its html labels take the page text colour, so
+			// the category colour goes on the stroke rather than the fill
+			emUiFill: c.card,
+			emUiStroke: c.border,
+			emProcessorFill: c.card,
+			emProcessorStroke: series[0],
+			emReadModelFill: c.card,
+			emReadModelStroke: series[1],
+			emCommandFill: c.card,
+			emCommandStroke: series[2],
+			emEventFill: c.card,
+			emEventStroke: series[3],
+			emSwimlaneBackgroundOdd: c.muted,
+			emSwimlaneBackgroundStroke: c.border,
+			emArrowhead: line,
+			emRelationStroke: line,
 		},
+		c4,
+		sankey: {
+			linkColor: line,
+		},
+		// colours mermaid writes straight into attributes or hardcodes in a
+		// diagram's stylesheet, out of reach of any theme variable. This
+		// sheet is appended after mermaid's own rules, so equal specificity
+		// wins; only inline style attributes need !important. Attribute
+		// selectors name mermaid's literal defaults, so user-styled elements
+		// are left alone. The one selector naming our own border colour is
+		// the state diagram's end marker, whose inner dot mermaid fills with
+		// the border colour and draws without any class.
+		themeCSS: `
+			.face { stroke: ${c.border}; }
+			.mouth, [stroke="#666"] { stroke: ${line}; }
+			[fill="#666"] { fill: ${line}; }
+			circle[stroke="#000"] { stroke: ${c.background}; }
+			line[stroke="black"], .lineWrapper line { stroke: ${line}; }
+			marker[id$="-arrowhead"] path, marker[id$="-arrowend"] path, marker[id$="-filled-head"] path { fill: ${line}; stroke: ${line}; }
+			marker[id$="-crosshead"] path { stroke: ${line}; }
+			.disabled, .disabled circle, .disabled text { fill: ${line}; }
+			.node .katex path { fill: ${text}; stroke: ${text}; }
+			.stateGroup .alt-composit { fill: ${c.muted}; }
+			.commit-id, .commit-msg, .branch-label { fill: ${text}; color: ${text}; }
+			circle.commit-cherry-pick[fill] { fill: ${c.background}; }
+			line.commit-cherry-pick { stroke: ${c.background}; }
+			rect[stroke="rgb(0,0,0, 0.5)"] { stroke: ${c.border}; }
+			path[fill="${c.border}"] { fill: ${text}; }
+			[stroke="#444444"], [stroke="#000000"] { stroke: ${line}; }
+			path[fill="black"] { fill: ${line}; }
+			text[fill="#444444"], text[fill="black"], .architecture-service text { fill: ${text}; paint-order: stroke; stroke: ${c.background}; stroke-width: 4px; stroke-linejoin: round; }
+			.node-icon-text > div { color: ${text}; }
+			.architecture-service [style*="#087ebf"], .architecture-groups [style*="#087ebf"] { fill: ${c.primary} !important; rx: 8px; ry: 8px; }
+			.architecture-service [style*="stroke: #fff"], .architecture-groups [style*="stroke: #fff"] { stroke: ${onSeries} !important; }
+			.architecture-groups rect.node-bkg { rx: 8px; ry: 8px; }
+			${series
+				.map(
+					(color, index) =>
+						`.node[id^="node-"]:nth-child(${series.length}n+${index + 1}) > rect:only-child { fill: ${color}; }`,
+				)
+				.join("\n")}
+			[fill="white"] { fill: ${c.card}; }
+			.wardley-stages line { stroke: ${line}; }
+		`,
 	} satisfies MermaidConfig
+
+	return {
+		config,
+		c4Labels: { internal: onSeries, external: text } satisfies C4LabelColors,
+	}
+}
+
+function applyTheme(mod: typeof import("mermaid"), dark: boolean) {
+	const theme = buildMermaidTheme(dark)
+
+	mod.default.initialize(theme.config)
+	c4Labels = theme.c4Labels
+	lastInitializedDark = dark
 }
 
 async function loadMermaid(dark: boolean) {
@@ -247,8 +410,7 @@ async function loadMermaid(dark: boolean) {
 
 	loadPromise = import("mermaid")
 		.then((mod) => {
-			mod.default.initialize(buildMermaidConfig(dark))
-			lastInitializedDark = dark
+			applyTheme(mod, dark)
 			mermaidModule.value = mod
 		})
 		.catch((err: unknown) => {
@@ -278,13 +440,12 @@ export function useMermaid(dark: Ref<boolean>) {
 
 		try {
 			if (lastInitializedDark !== dark.value) {
-				mermaidModule.value.default.initialize(buildMermaidConfig(dark.value))
-				lastInitializedDark = dark.value
+				applyTheme(mermaidModule.value, dark.value)
 			}
 
 			const { svg } = await mermaidModule.value.default.render(id, source)
 
-			return { svg }
+			return { svg: themeC4Labels(svg, c4Labels) }
 		} catch (err: unknown) {
 			return {
 				error:

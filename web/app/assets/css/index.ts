@@ -118,20 +118,9 @@ export function mermaidThemeColors() {
 		primaryForeground: cssColorHex("--primary-foreground"),
 		destructive: cssColorHex("--destructive"),
 		destructiveForeground: cssColorHex("--destructive-foreground"),
-		chart: [
-			cssColorHex("--chart-data-1"),
-			cssColorHex("--chart-data-2"),
-			cssColorHex("--chart-data-3"),
-			cssColorHex("--chart-data-4"),
-			cssColorHex("--chart-data-5"),
-			cssColorHex("--chart-data-6"),
-			cssColorHex("--chart-data-7"),
-			cssColorHex("--chart-data-8"),
-			cssColorHex("--chart-data-9"),
-			cssColorHex("--chart-data-10"),
-			cssColorHex("--chart-data-11"),
-			cssColorHex("--chart-data-12"),
-		],
+		selectable: Array.from({ length: 16 }, (_, index) =>
+			cssColorHex(`--selectable-color-${index + 1}`),
+		),
 		fontFamily: cssVar("--font-inter"),
 	}
 }
