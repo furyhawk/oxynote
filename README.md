@@ -1,3 +1,5 @@
+<div align="center">
+
 # Oxynote
 
 **Your system, with subtitles.**
@@ -10,6 +12,8 @@ go through a draft, a diff and an approval. From the authors of
 [![License](https://img.shields.io/github/license/oxynote/oxynote)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/oxynote/oxynote)](https://github.com/oxynote/oxynote/releases)
 [![CI](https://img.shields.io/github/check-runs/oxynote/oxynote/main?label=CI)](https://github.com/oxynote/oxynote/actions)
+
+</div>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.png">
