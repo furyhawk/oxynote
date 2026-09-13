@@ -10,6 +10,7 @@ import { showToastMessage } from "~/components/toast"
 import { refreshGapDecorationsInBackground } from "./drag-handle/gap-decorations"
 import { editorCaretColors } from "~/assets/css"
 import { DOCUMENT_HOOK_QUERY_KEYS } from "~/composables/api/useDocumentHookAPI"
+import { asyncRenderBlockUids } from "./blocks/async-render"
 
 interface BranchProviderEntry {
 	provider: HocuspocusProvider
@@ -25,7 +26,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
 	(e: "updated-live-icon" | "updated-live-name", val: string): void
-	(e: "initial-load-complete"): void
+	(e: "initial-load-complete" | "fade-in-complete"): void
 	(e: "branch-merged", deleted: boolean): void
 	(e: "open-settings", target: "github"): void
 	(e: "editor-ready" | "name-editor-ready", val: Editor): void
@@ -117,17 +118,23 @@ const targetBranchProvider = computed<BranchProviderEntry | null>(() => {
 const nameEditor = ref<Editor | null>(null)
 const contentEditor = ref<Editor | null>(null)
 
+// the asynchronously rendered blocks the first editor holds; once every
+// one of them has rendered the page height is settled and the fade-in
+// cannot shift the content
+const initialAsyncBlockUids = ref<string[] | null>(null)
+const initialAsyncBlocksRendered = computed(
+	() =>
+		initialAsyncBlockUids.value?.every((uid) =>
+			editorStore.settledBlockRenders.has(uid),
+		) ?? false,
+)
+const readyToReveal = computed(
+	() => props.allInitialSectionsLoaded && initialAsyncBlocksRendered.value,
+)
+
 import.meta.hot?.accept(() => {
 	refreshGapDecorationsInBackground(contentEditor as Ref<Editor | null>)
 })
-
-function destroyBranchProviders(): void {
-	for (const [, entry] of branchProviders) {
-		entry.provider.destroy()
-	}
-
-	branchProviders.clear()
-}
 
 onBeforeUnmount(destroyBranchProviders)
 
@@ -219,6 +226,10 @@ watch(contentEditor, (v) => {
 	}
 })
 
+watchOnce(initialAsyncBlocksRendered, () => {
+	emit("initial-load-complete")
+})
+
 watch(nameEditor, (v) => {
 	if (v) {
 		emit("name-editor-ready", v as Editor)
@@ -240,6 +251,14 @@ watchImmediate([isEditable, nameEditor, contentEditor], () => {
 		contentEditor.value.setEditable(isEditable.value)
 	}
 })
+
+function destroyBranchProviders(): void {
+	for (const [, entry] of branchProviders) {
+		entry.provider.destroy()
+	}
+
+	branchProviders.clear()
+}
 
 function createBranchProvider(
 	streamName: string,
@@ -277,7 +296,6 @@ function createBranchProvider(
 		onSynced: () => {
 			synced.value = true
 			if (isInitial) {
-				emit("initial-load-complete")
 				refreshGapDecorationsInBackground(contentEditor as Ref<Editor | null>)
 			}
 		},
@@ -288,6 +306,8 @@ function createBranchProvider(
 
 function updateEditor(editor: Editor) {
 	contentEditor.value = editor
+
+	initialAsyncBlockUids.value ??= asyncRenderBlockUids(editor.state.doc)
 
 	// force placeholder decorations to recompute
 	contentEditor.value.chain().run()
@@ -303,65 +323,64 @@ function showSettings(target: "github") {
 }
 </script>
 <template>
-	<Transition v-bind="defaultTransitionProps">
+	<div
+		v-if="editorStore.activeBranchId && activeBranchProvider?.synced.value"
+		class="flex h-full"
+	>
+		<!--
+		the editors remount when the active branch changes, to avoid issues
+		with them not properly updating when the Y.Doc/data provider changes.
+		They mount hidden but in layout, so asynchronously rendered blocks
+		settle the page height before the fade-in; opacity rather than
+		v-show, because gap decorations and charts measure themselves while
+		hidden. Pointer events are off until then, or the invisible content
+		would answer the pointer with carets and drag handles.
+		-->
 		<div
-			v-if="
-				editorStore.activeBranchId &&
-				props.allInitialSectionsLoaded &&
-				activeBranchProvider?.synced.value
-			"
-			class="flex h-full"
+			:key="editorStore.activeBranchId"
+			:class="[
+				SCROLL_HIGHLIGHT_EDITOR_CLASS,
+				'relative flex h-full w-full flex-col items-center transition-opacity duration-300',
+				readyToReveal ? 'opacity-100' : 'pointer-events-none opacity-0',
+			]"
+			@transitionend.self="emit('fade-in-complete')"
 		>
-			<!--
-			a wrapper is needed to prevent transitions on :key change;
-			also, we want to remount editors when the active branch changes,
-			to avoid issues with the editors not properly updating when
-			the Y.Doc/data provider changes
-			-->
-			<div
-				:key="editorStore.activeBranchId"
-				:class="[
-					SCROLL_HIGHLIGHT_EDITOR_CLASS,
-					'relative flex h-full w-full flex-col items-center',
-				]"
-			>
-				<NameEditor
-					:document-hooks="fetchDocumentHooks.state.value.data || []"
-					:timestamps="props.timestamps"
-					:active-branch-ydoc="activeBranchProvider.ydoc"
-					:active-branch-provider="activeBranchProvider.provider"
-					:target-branch-provider="targetBranchProvider?.provider"
-					:content-editor="contentEditor as Editor"
-					:user-caret-details="userCaretDetails"
-					@updated-live-icon="(v) => emit('updated-live-icon', v)"
-					@updated-live-name="(v) => emit('updated-live-name', v)"
-					@editor-ready="(v) => (nameEditor = v)"
-					@branch-merged="(deleted) => emit('branch-merged', deleted)"
-					@open-settings="(target: 'github') => showSettings(target)"
-				/>
-				<ContentEditor
-					v-show="!editorStore.reviewableDiffActive"
-					:active-branch-provider="activeBranchProvider.provider"
-					:active-branch-ydoc="activeBranchProvider.ydoc"
-					:document-hooks="fetchDocumentHooks.state.value.data || []"
-					:name-editor="nameEditor as Editor"
-					:user-caret-details="userCaretDetails"
-					@editor-ready="(v) => updateEditor(v)"
-					@open-settings="(target: 'github') => showSettings(target)"
-				/>
-				<DiffEditor
-					v-if="
-						editorStore.reviewableDiffActive &&
-						targetBranchProvider &&
-						activeBranchProvider !== targetBranchProvider &&
-						contentEditor
-					"
-					:target-branch-ydoc="targetBranchProvider.ydoc"
-					:active-branch-ydoc="activeBranchProvider.ydoc"
-					:content-editor="contentEditor as Editor"
-					@diff-mode-changed="handleDiffModeChange"
-				/>
-			</div>
+			<NameEditor
+				:document-hooks="fetchDocumentHooks.state.value.data || []"
+				:timestamps="props.timestamps"
+				:active-branch-ydoc="activeBranchProvider.ydoc"
+				:active-branch-provider="activeBranchProvider.provider"
+				:target-branch-provider="targetBranchProvider?.provider"
+				:content-editor="contentEditor as Editor"
+				:user-caret-details="userCaretDetails"
+				@updated-live-icon="(v) => emit('updated-live-icon', v)"
+				@updated-live-name="(v) => emit('updated-live-name', v)"
+				@editor-ready="(v) => (nameEditor = v)"
+				@branch-merged="(deleted) => emit('branch-merged', deleted)"
+				@open-settings="(target: 'github') => showSettings(target)"
+			/>
+			<ContentEditor
+				v-show="!editorStore.reviewableDiffActive"
+				:active-branch-provider="activeBranchProvider.provider"
+				:active-branch-ydoc="activeBranchProvider.ydoc"
+				:document-hooks="fetchDocumentHooks.state.value.data || []"
+				:name-editor="nameEditor as Editor"
+				:user-caret-details="userCaretDetails"
+				@editor-ready="(v) => updateEditor(v)"
+				@open-settings="(target: 'github') => showSettings(target)"
+			/>
+			<DiffEditor
+				v-if="
+					editorStore.reviewableDiffActive &&
+					targetBranchProvider &&
+					activeBranchProvider !== targetBranchProvider &&
+					contentEditor
+				"
+				:target-branch-ydoc="targetBranchProvider.ydoc"
+				:active-branch-ydoc="activeBranchProvider.ydoc"
+				:content-editor="contentEditor as Editor"
+				@diff-mode-changed="handleDiffModeChange"
+			/>
 		</div>
-	</Transition>
+	</div>
 </template>

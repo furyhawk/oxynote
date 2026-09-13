@@ -159,6 +159,7 @@ const notificationSidebarOpen = ref(false)
 const contentEditorRef = shallowRef<Editor | null>(null)
 const nameEditorRef = shallowRef<Editor | null>(null)
 const editorStore = useEditorStore()
+const pageReady = usePageReady()
 const activeDocMetadata = computed(() => {
 	const docInfo = extractDocInfoFromSlug(
 		pageRoute.params.documentSlug as string,
@@ -228,6 +229,7 @@ watchImmediate(
 	() => activeDocMetadata.value?.id,
 	(newV) => {
 		editorStore.updateActiveDocumentId(newV ?? null)
+		pageReady.value = false
 	},
 )
 
@@ -671,6 +673,7 @@ function clearLinkHighlightNodeOnce() {
 									@updated-live-icon="applyIconChange"
 									@branch-merged="handleBranchMerge"
 									@initial-load-complete="loadedSections.documentEditor = true"
+									@fade-in-complete="pageReady = true"
 									@open-settings="
 										(target: 'github') => (settingModalOpen = target)
 									"

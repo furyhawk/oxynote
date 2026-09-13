@@ -11,6 +11,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n({ useScope: "global" })
+const editorStore = useEditorStore()
 
 // the palette lives in CSS variables that switch with the html "dark"
 // class, which unhead applies in a setTimeout after vue's flush. Following
@@ -39,6 +40,24 @@ const debouncedSource = refDebounced(
 	toRef(() => props.source),
 	sourceDebounceMs,
 )
+
+// the page's fade-in waits for every block's first result; a block taken
+// down before it has one must not hold the page up. On a document switch
+// the previous document's blocks unmount after the store has moved on,
+// and must not vouch for same-uid blocks of the next document.
+const documentId = editorStore.activeDocumentId
+
+onBeforeUnmount(() => {
+	if (editorStore.activeDocumentId === documentId) {
+		editorStore.markBlockRenderSettled(props.uid)
+	}
+})
+
+watchImmediate(isInitialRender, (initialComplete) => {
+	if (!initialComplete) {
+		editorStore.markBlockRenderSettled(props.uid)
+	}
+})
 
 watchImmediate([debouncedSource, isDark], async ([source]) => {
 	if (!source.trim()) {

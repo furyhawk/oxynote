@@ -34,6 +34,10 @@ export const useEditorStore = defineStore("editor", () => {
 	// tracks which mermaid blocks have their code visible, synced
 	// across branches and diff editors.
 	const mermaidBlockShowCode = ref<Record<BlockId, boolean>>({})
+	// asynchronously rendered blocks whose first render has
+	// settled: drawn, failed, empty or gone. The document container holds
+	// its fade-in until every such block of the document is in here.
+	const settledBlockRenders = ref(new Set<BlockId>())
 
 	function updateLock(v: boolean) {
 		locked.value = v
@@ -279,6 +283,10 @@ export const useEditorStore = defineStore("editor", () => {
 		mermaidBlockShowCode.value[id] = show
 	}
 
+	function markBlockRenderSettled(id: string) {
+		settledBlockRenders.value.add(id)
+	}
+
 	function clearMetricBlockData() {
 		if (!activeDocumentId.value) {
 			return
@@ -290,6 +298,7 @@ export const useEditorStore = defineStore("editor", () => {
 		delete metricBlockDiffStatuses.value[activeDocumentId.value]
 		delete metricBlockOldConfigs.value[activeDocumentId.value]
 		mermaidBlockShowCode.value = {}
+		settledBlockRenders.value = new Set()
 	}
 
 	function clearMetricBlockDiffData() {
@@ -339,5 +348,7 @@ export const useEditorStore = defineStore("editor", () => {
 		toggleAiAssistantOpen,
 		mermaidBlockShowCode,
 		setMermaidBlockShowCode,
+		settledBlockRenders,
+		markBlockRenderSettled,
 	}
 })

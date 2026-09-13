@@ -94,6 +94,14 @@ origin is unreachable).
   [app/middleware/01.redirect.global.ts](app/middleware/01.redirect.global.ts)
   handles auth gating, onboarding and the root redirect.
   `definePageMeta({ skipAuth: true })` marks signed-out pages.
+- **Page load**: the content container mounts its editors hidden as soon
+  as the branch syncs and reports `initial-load-complete` only once every
+  asynchronously rendered block has settled (`settledBlockRenders` in the
+  editor store; the block types are listed in
+  [blocks/async-render.ts](app/components/editor/blocks/async-render.ts)),
+  so the fade-in shows final layout. Its `fade-in-complete` sets
+  `usePageReady()`, which `router.options.ts` awaits before scrolling to a
+  hash.
 
 ## i18n
 

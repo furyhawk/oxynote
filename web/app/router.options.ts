@@ -10,6 +10,7 @@ export default {
 		}
 
 		if (to.name === "document-editor" && to.hash) {
+			const pageReady = usePageReady()
 			let rawHash = to.hash.replace(/^#/, "")
 			if (!rawHash) {
 				return { left: 0, top: 0 }
@@ -20,6 +21,10 @@ export default {
 			} catch {
 				// Use the raw hash when decoding fails.
 			}
+
+			// the block's position keeps moving until the page has faded in,
+			// and an element found earlier may have been remounted by then
+			await until(pageReady).toBe(true, { timeout: SCROLL_MAX_WAIT_MS })
 
 			const targetEl = await waitForHtmlElementById(rawHash, SCROLL_MAX_WAIT_MS)
 			if (targetEl) {

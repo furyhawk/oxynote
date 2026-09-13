@@ -17,6 +17,7 @@ import {
 	WAIT_FOR_OPTIONS,
 } from "~/components/test-helpers"
 import { stubThemeColorContext } from "./test-helpers/theme"
+import { MERMAID_BLOCK_NAME } from "./blocks/node-names"
 import type WsState from "~/utils/websocket"
 import { makeWsHooksChangeTopic } from "~/utils"
 
@@ -120,6 +121,45 @@ async function sync(branchId: string) {
 
 function bodyShown(wrapper: VueWrapper): boolean {
 	return wrapper.findComponent({ name: "NameEditor" }).exists()
+}
+
+// the wrapper the container fades in; it stays in layout at opacity 0
+// until the content is ready and the other sections have loaded
+function bodyVisible(wrapper: VueWrapper): boolean {
+	return wrapper
+		.find(".editor-scroll-highlight-container")
+		.classes("opacity-100")
+}
+
+function bodyInteractive(wrapper: VueWrapper): boolean {
+	return !wrapper
+		.find(".editor-scroll-highlight-container")
+		.classes("pointer-events-none")
+}
+
+// what ContentEditor hands over: the container reads the asynchronously
+// rendered blocks of the document it holds, the rest is the chain it kicks
+// after diffs
+function fakeEditor(mermaidUids: string[] = []) {
+	return {
+		chain: () => ({ run: () => true }),
+		commands: { refreshGapDecorations: vi.fn() },
+		setEditable: vi.fn(),
+		state: {
+			doc: {
+				descendants: (visit: (node: object) => void) => {
+					mermaidUids.forEach((uid) => {
+						visit({ type: { name: MERMAID_BLOCK_NAME }, attrs: { uid } })
+					})
+				},
+			},
+		},
+	}
+}
+
+async function readyEditor(wrapper: VueWrapper, mermaidUids: string[] = []) {
+	emitFrom(wrapper, "ContentEditor", "editor-ready", fakeEditor(mermaidUids))
+	await nextTick()
 }
 
 // the test environment builds a PageTransitionEvent without honouring the
@@ -300,20 +340,69 @@ describe("<DocumentContainer>", { concurrent: false }, () => {
 		expect(wrapper.findComponent({ name: "ContentEditor" }).exists()).toBe(true)
 	})
 
-	it("stays empty until the sidebar has finished loading", async ({
+	it("keeps the editors hidden until the sidebar has finished loading", async ({
 		expect,
 	}) => {
 		const wrapper = await mountContainer({ allInitialSectionsLoaded: false })
 
 		await sync(BRANCH_ID)
+		await readyEditor(wrapper)
 
-		expect(bodyShown(wrapper)).toBe(false)
+		expect(bodyShown(wrapper)).toBe(true)
+		expect(bodyVisible(wrapper)).toBe(false)
 	})
 
-	it("reports the first sync as the initial load", async ({ expect }) => {
+	it("keeps the editors hidden until the content editor is ready", async ({
+		expect,
+	}) => {
 		const wrapper = await mountContainer()
 
 		await sync(BRANCH_ID)
+
+		expect(bodyShown(wrapper)).toBe(true)
+		expect(bodyVisible(wrapper)).toBe(false)
+		expect(bodyInteractive(wrapper)).toBe(false)
+		expect(wrapper.emitted("initial-load-complete")).toBeUndefined()
+	})
+
+	it("reports the initial load once the first editor is ready", async ({
+		expect,
+	}) => {
+		const wrapper = await mountContainer()
+		await sync(BRANCH_ID)
+
+		await readyEditor(wrapper)
+
+		expect(wrapper.emitted("initial-load-complete")).toHaveLength(1)
+		expect(bodyVisible(wrapper)).toBe(true)
+		expect(bodyInteractive(wrapper)).toBe(true)
+	})
+
+	it("holds the initial load until every asynchronous block has rendered", async ({
+		expect,
+	}) => {
+		const wrapper = await mountContainer()
+		await sync(BRANCH_ID)
+		await readyEditor(wrapper, ["diagram-a", "diagram-b"])
+		useEditorStore().markBlockRenderSettled("diagram-a")
+		await nextTick()
+		expect(wrapper.emitted("initial-load-complete")).toBeUndefined()
+
+		useEditorStore().markBlockRenderSettled("diagram-b")
+		await nextTick()
+
+		expect(wrapper.emitted("initial-load-complete")).toHaveLength(1)
+		expect(bodyVisible(wrapper)).toBe(true)
+	})
+
+	it("reports the initial load once even when a later editor arrives", async ({
+		expect,
+	}) => {
+		const wrapper = await mountContainer()
+		await sync(BRANCH_ID)
+		await readyEditor(wrapper)
+
+		await readyEditor(wrapper, ["diagram-late"])
 
 		expect(wrapper.emitted("initial-load-complete")).toHaveLength(1)
 	})
@@ -326,7 +415,20 @@ describe("<DocumentContainer>", { concurrent: false }, () => {
 
 		await sync(TARGET_BRANCH_ID)
 
+		expect(bodyShown(wrapper)).toBe(false)
 		expect(wrapper.emitted("initial-load-complete")).toBeUndefined()
+	})
+
+	it("reports the fade-in once its transition ends", async ({ expect }) => {
+		const wrapper = await mountContainer()
+		await sync(BRANCH_ID)
+		await readyEditor(wrapper)
+
+		await wrapper
+			.find(".editor-scroll-highlight-container")
+			.trigger("transitionend")
+
+		expect(wrapper.emitted("fade-in-complete")).toHaveLength(1)
 	})
 
 	it("sends the reader to the login page when the sync is rejected", async ({
@@ -419,11 +521,7 @@ describe("<DocumentContainer>", { concurrent: false }, () => {
 	it("passes the content editor on once it is ready", async ({ expect }) => {
 		const wrapper = await mountContainer()
 		await sync(BRANCH_ID)
-		const editor = {
-			chain: () => ({ run: () => true }),
-			commands: { refreshGapDecorations: vi.fn() },
-			setEditable: vi.fn(),
-		}
+		const editor = fakeEditor()
 
 		emitFrom(wrapper, "ContentEditor", "editor-ready", editor)
 		await nextTick()
@@ -464,11 +562,7 @@ describe("<DocumentContainer>", { concurrent: false }, () => {
 		await sync(BRANCH_ID)
 		// the diff renders against the content editor, so it only appears
 		// once ContentEditor has handed one over
-		emitFrom(wrapper, "ContentEditor", "editor-ready", {
-			chain: () => ({ run: () => true }),
-			commands: { refreshGapDecorations: vi.fn() },
-			setEditable: vi.fn(),
-		})
+		emitFrom(wrapper, "ContentEditor", "editor-ready", fakeEditor())
 
 		useEditorStore().setReviewableDiffActive(true)
 		await nextTick()

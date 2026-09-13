@@ -88,12 +88,14 @@ describe("useEditorStore", () => {
 			store.setMetricBlockConfig("block1", metricConfig("cfg"))
 			store.activateMetricBlockConfig("block1")
 			store.setMermaidBlockShowCode("block1", true)
+			store.markBlockRenderSettled("block1")
 
 			store.updateActiveDocumentId("doc2")
 
 			expect(store.metricBlockConfigs).toEqual({})
 			expect(store.activeMetricBlockConfig).toBeNull()
 			expect(store.mermaidBlockShowCode).toEqual({})
+			expect(store.settledBlockRenders.size).toBe(0)
 		})
 
 		it("deactivates the reviewable diff when the document changes", ({
@@ -118,6 +120,18 @@ describe("useEditorStore", () => {
 				doc1: { branch1: { block1: metricConfig("cfg") } },
 			})
 			expect(store.reviewableDiffActive).toBe(true)
+		})
+	})
+
+	describe("markBlockRenderSettled", () => {
+		it("remembers every settled block once", ({ expect }) => {
+			const store = makeActiveStore()
+
+			store.markBlockRenderSettled("block1")
+			store.markBlockRenderSettled("block1")
+			store.markBlockRenderSettled("block2")
+
+			expect([...store.settledBlockRenders]).toEqual(["block1", "block2"])
 		})
 	})
 

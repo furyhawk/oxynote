@@ -39,10 +39,14 @@ vi.mock("./useMermaid", async () => {
 	}
 })
 
-function mountPreview(source: string) {
+function mountPreview(source: string, uid = "mermaid-1") {
 	return mountSuspended(MermaidPreview, {
-		props: { source: source, uid: "mermaid-1" },
+		props: { source: source, uid: uid },
 	})
+}
+
+function settled(uid: string): boolean {
+	return useEditorStore().settledBlockRenders.has(uid)
 }
 
 function previewHtml(wrapper: VueWrapper): string {
@@ -230,6 +234,71 @@ describe("<MermaidPreview>", { concurrent: false }, () => {
 
 		expect(previewHtml(wrapper)).toContain("second")
 		expect(previewHtml(wrapper)).not.toContain("first")
+	})
+
+	it("reports the block settled once its first diagram is drawn", async ({
+		expect,
+	}) => {
+		let resolveRender: (value: Record<string, string>) => void = () => undefined
+		mermaid.render.mockReturnValue(
+			new Promise((resolve) => {
+				resolveRender = resolve
+			}),
+		)
+		const wrapper = await mountPreview("graph TD; A-->B;", "settle-drawn")
+		expect(settled("settle-drawn")).toBe(false)
+
+		resolveRender({ svg: "<svg><g></g></svg>" })
+
+		await vi.waitFor(() => {
+			expect(settled("settle-drawn")).toBe(true)
+		}, WAIT_FOR_OPTIONS)
+		expect(wrapper.exists()).toBe(true)
+	})
+
+	it("reports an empty block settled right away", async ({ expect }) => {
+		const wrapper = await mountPreview("", "settle-empty")
+
+		expect(settled("settle-empty")).toBe(true)
+		expect(wrapper.exists()).toBe(true)
+	})
+
+	it("reports the block settled when the engine cannot draw it", async ({
+		expect,
+	}) => {
+		mermaid.render.mockResolvedValue({ error: "syntax error in graph" })
+
+		const wrapper = await mountPreview("graph TD; A-->", "settle-error")
+
+		await vi.waitFor(() => {
+			expect(settled("settle-error")).toBe(true)
+		}, WAIT_FOR_OPTIONS)
+		expect(wrapper.exists()).toBe(true)
+	})
+
+	it("reports the block settled when it is taken down before drawing", async ({
+		expect,
+	}) => {
+		mermaid.render.mockReturnValue(new Promise(() => undefined))
+		const wrapper = await mountPreview("graph TD; A-->B;", "settle-gone")
+		expect(settled("settle-gone")).toBe(false)
+
+		wrapper.unmount()
+
+		expect(settled("settle-gone")).toBe(true)
+	})
+
+	it("leaves the next document alone when taken down after a switch", async ({
+		expect,
+	}) => {
+		mermaid.render.mockReturnValue(new Promise(() => undefined))
+		useEditorStore().updateActiveDocumentId("doc-before")
+		const wrapper = await mountPreview("graph TD; A-->B;", "settle-switched")
+		useEditorStore().updateActiveDocumentId("doc-after")
+
+		wrapper.unmount()
+
+		expect(settled("settle-switched")).toBe(false)
 	})
 
 	it("redraws the diagram in dark colours once the document turns dark", async ({
