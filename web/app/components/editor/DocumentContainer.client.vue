@@ -230,6 +230,34 @@ watchOnce(initialAsyncBlocksRendered, () => {
 	emit("initial-load-complete")
 })
 
+if (import.meta.dev) {
+	watchImmediate(
+		() =>
+			initialAsyncBlockUids.value?.filter((uid) =>
+				editorStore.settledBlockRenders.has(uid),
+			).length,
+		(rendered) => {
+			const total = initialAsyncBlockUids.value?.length ?? 0
+
+			if (rendered === undefined || total === 0) {
+				return
+			}
+
+			logAsyncBlockProgress(rendered, total)
+		},
+	)
+
+	watchOnce(initialAsyncBlocksRendered, () => {
+		if (initialAsyncBlockUids.value?.length) {
+			logSectionReady("async blocks")
+		}
+	})
+
+	watchOnce(readyToReveal, () => {
+		logSectionReady("all sections")
+	})
+}
+
 watch(nameEditor, (v) => {
 	if (v) {
 		emit("name-editor-ready", v as Editor)
@@ -296,6 +324,10 @@ function createBranchProvider(
 		onSynced: () => {
 			synced.value = true
 			if (isInitial) {
+				if (import.meta.dev) {
+					logSectionReady("document data")
+				}
+
 				refreshGapDecorationsInBackground(contentEditor as Ref<Editor | null>)
 			}
 		},

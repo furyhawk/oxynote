@@ -230,8 +230,28 @@ watchImmediate(
 	(newV) => {
 		editorStore.updateActiveDocumentId(newV ?? null)
 		pageReady.value = false
+
+		if (import.meta.dev) {
+			startLoadProgress()
+		}
 	},
 )
+
+if (import.meta.dev) {
+	watchOnce(
+		() => loadedSections.value.sidebar,
+		() => {
+			logSectionReady("sidebar")
+		},
+	)
+
+	watchOnce(
+		() => loadedSections.value.documentMetadata,
+		() => {
+			logSectionReady("header")
+		},
+	)
+}
 
 // a ?branch=<id> query opens that branch of the document. It keys on the
 // route rather than the store so a later switch through the header is not
