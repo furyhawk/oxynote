@@ -96,7 +96,7 @@ const isTitledCodeBlock = computed(() => {
 		:data-node-comment-id="props.node.attrs.nodeCommentId"
 		:data-diff-status="props.node.attrs.diffStatus"
 	>
-		<div class="relative overflow-x-scroll">
+		<div class="relative [scrollbar-width:none] overflow-x-auto">
 			<div
 				v-if="placeholderText"
 				class="pointer-events-none absolute top-3 left-0 pl-4 text-muted-foreground/60"
