@@ -30,7 +30,6 @@ name: oxynote-e2e-prod
 services:
   oxynote:
     image: ghcr.io/oxynote/oxynote:e2e-prod
-    platform: linux/amd64
     ports:
       - "19080:8080"
     environment:

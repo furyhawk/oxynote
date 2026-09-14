@@ -65,7 +65,6 @@ services:
   core:
     container_name: core
     image: ghcr.io/oxynote/core:dev
-    platform: linux/amd64
     env_file:
       - ./env/core.local.env
     depends_on:
@@ -94,7 +93,6 @@ services:
   datagen:
     container_name: datagen
     image: ghcr.io/oxynote/datagen:dev
-    platform: linux/amd64
     environment:
       - DATAGEN_POSTGRES_DSN=postgresql://demouser:demopass@postgres/demodb?sslmode=disable
       - DATAGEN_MARIADB_DSN=demouser:demopass@tcp(mariadb:3306)/demodb?parseTime=true

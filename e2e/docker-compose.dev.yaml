@@ -103,7 +103,6 @@ services:
 
   core:
     image: ghcr.io/oxynote/core:e2e-dev
-    platform: linux/amd64
     environment:
       - OXYNOTE_CORE_DB_DSN=postgresql://devuser:devpass@postgres/devdb?sslmode=disable
       - OXYNOTE_CORE_MEILISEARCH_URL=http://meilisearch:7700

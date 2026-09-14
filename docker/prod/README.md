@@ -130,4 +130,5 @@ checksum-verified during the image build, and both licenses ship under
 `/oxynote/licenses/`. Node.js comes from the pinned Alpine base (the v24 line, with full
 ICU locale data).
 
-Currently the image is built for `linux/amd64`.
+The image is published for `linux/amd64` and `linux/arm64`; a pull fetches
+the variant for the machine's architecture.

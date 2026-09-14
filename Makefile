@@ -19,6 +19,11 @@ PROD_COMPOSE := docker compose -f docker/prod/docker-compose.example.yaml \
 CORE_IMAGE_TAG ?= dev
 PROD_IMAGE_TAG ?= prod
 
+# the architecture of the Docker engine that runs the containers: on macOS
+# and Windows that is its Linux VM's, not the host's. Images built here
+# target it so the stacks run natively instead of under emulation.
+DOCKER_ARCH ?= $(shell docker version --format '{{.Server.Arch}}' 2>/dev/null)
+
 # the version a published image is tagged with, without a leading v. Set
 # only by the release workflow; prod-publish refuses to run without it.
 RELEASE_VERSION ?=
@@ -147,29 +152,30 @@ build-go:
 	cd server/core && make build IMAGE_TAG=$(CORE_IMAGE_TAG)
 	cd datagen && make build
 
-# the all-in-one image. Core must come from goreleaser, so the binary is
-# built first and staged where the Dockerfile's COPY expects it — a bare
-# `docker build` is not supported.
+# the all-in-one image, for the Docker engine's own architecture. Core must
+# come from goreleaser, so the binary is built first and staged where the
+# Dockerfile's COPY expects it — a bare `docker build` is not supported.
 .PHONY: prod-build
 prod-build:
-	@$(QUIET) "building the core binary" sh -c 'cd server/core && make build-binary-snapshot'
-	mkdir -p docker/prod/.build
-	cp server/core/bin/oxynote-core docker/prod/.build/oxynote-core
-	docker build --platform linux/amd64 $(PROD_BUILD_EXTRA) -f docker/prod/Dockerfile -t ghcr.io/oxynote/oxynote:$(PROD_IMAGE_TAG) .
+	mkdir -p docker/prod/.build/$(DOCKER_ARCH)
+	@$(QUIET) "building the core binary" sh -c 'cd server/core && make build-binary-snapshot DOCKER_ARCH=$(DOCKER_ARCH) OUTPUT=$(CURDIR)/docker/prod/.build/$(DOCKER_ARCH)/oxynote-core'
+	docker build --platform linux/$(DOCKER_ARCH) $(PROD_BUILD_EXTRA) -f docker/prod/Dockerfile -t ghcr.io/oxynote/oxynote:$(PROD_IMAGE_TAG) .
 
 # the published image: the same Dockerfile as prod-build, but core's binary
 # is built from the tag instead of as a snapshot — a snapshot would report
-# itself as version dev in a dev environment — and the result is pushed as
-# latest and the version rather than loaded locally. These are the only two
-# tags the registry gets. The version and commit also become OCI labels,
-# which is what links the package to this repository on ghcr.
+# itself as version dev in a dev environment — and the result is pushed for
+# linux/amd64 and linux/arm64 as latest and the version rather than loaded
+# locally. These are the only two tags the registry gets, and a pull of
+# either resolves to the puller's own architecture. The version and commit
+# also become OCI labels, which is what links the package to this
+# repository on ghcr.
 .PHONY: prod-publish
 prod-publish:
 	@test -n "$(RELEASE_VERSION)" || { echo "RELEASE_VERSION is required, e.g. 1.2.3"; exit 1; }
-	@$(QUIET) "building the core binary" sh -c 'cd server/core && make build-binary'
-	mkdir -p docker/prod/.build
-	cp server/core/bin/oxynote-core docker/prod/.build/oxynote-core
-	docker buildx build --platform linux/amd64 $(PROD_BUILD_EXTRA) \
+	mkdir -p docker/prod/.build/amd64 docker/prod/.build/arm64
+	@$(QUIET) "building the amd64 core binary" sh -c 'cd server/core && make build-binary DOCKER_ARCH=amd64 OUTPUT=$(CURDIR)/docker/prod/.build/amd64/oxynote-core'
+	@$(QUIET) "building the arm64 core binary" sh -c 'cd server/core && make build-binary DOCKER_ARCH=arm64 OUTPUT=$(CURDIR)/docker/prod/.build/arm64/oxynote-core'
+	docker buildx build --platform linux/amd64,linux/arm64 $(PROD_BUILD_EXTRA) \
 		-f docker/prod/Dockerfile \
 		--build-arg IMAGE_VERSION=$(RELEASE_VERSION) \
 		--build-arg IMAGE_REVISION=$$(git rev-parse HEAD) \

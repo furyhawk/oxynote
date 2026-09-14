@@ -12,9 +12,16 @@
 # self-contained output — so the runtime libc (musl) cannot clash with
 # anything; the web builder still guards against a native addon ever
 # sneaking into the output.
+#
+# the image is published for linux/amd64 and linux/arm64. Every stage but
+# the last runs on the build machine's own architecture ($BUILDPLATFORM)
+# whatever the target: their output is JavaScript, or binaries downloaded
+# for the target, so a multi-arch build produces it once instead of again
+# under emulation. That holds only while nothing a builder executes lands
+# in its output.
 
 # mirrors web/Dockerfile.dev (the dev/e2e image); change them together.
-FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS web-builder
+FROM --platform=$BUILDPLATFORM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS web-builder
 
 RUN npm install -g pnpm@11.1.3
 
@@ -41,7 +48,7 @@ RUN pnpm install --frozen-lockfile \
 # the runtime ships the package's own single-file esbuild bundle (see
 # build:bundle and src/bundle.ts — the same artifact Dockerfile.dev and
 # the e2e stack run) instead of the ~83MB production node_modules tree.
-FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS auth-realtime-builder
+FROM --platform=$BUILDPLATFORM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS auth-realtime-builder
 
 RUN npm install -g pnpm@11.1.3
 
@@ -57,7 +64,7 @@ COPY server/auth-realtime/src ./src
 RUN pnpm install --frozen-lockfile && pnpm run check-types && pnpm run build:bundle \
 	&& node -e "import('/server/dist/bundle.mjs').then(() => { console.error('bundle skipped env validation'); process.exit(1) }, (err) => { if (!String(err).includes('invalid environment')) { console.error(err); process.exit(1) } })"
 
-FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS launcher-builder
+FROM --platform=$BUILDPLATFORM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS launcher-builder
 
 RUN npm install -g pnpm@11.1.3
 
@@ -84,29 +91,38 @@ RUN pnpm run check-types && pnpm run build:bundle
 # licenses ship in the final image: caddy's Apache-2.0 rides in its release
 # tarball, tini's MIT is fetched from the same tag as its binary. The name
 # "Caddy" is trademarked; the binary is bundled unmodified and unrebranded.
-FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS fetch
+# Each architecture pins its own checksums; a version bump updates them all.
+FROM --platform=$BUILDPLATFORM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS fetch
 
 ARG CADDY_VERSION=2.11.4
-ARG CADDY_SHA512=8220d1f013b6f27510247b2360c9e0ca9f018feebd82515f07635318b34ff9777ccc8fd0b6e6f2486ce3a33fe389fbb7db12d05baa474f4587509fb4f5ebf1c9
+ARG CADDY_SHA512_AMD64=8220d1f013b6f27510247b2360c9e0ca9f018feebd82515f07635318b34ff9777ccc8fd0b6e6f2486ce3a33fe389fbb7db12d05baa474f4587509fb4f5ebf1c9
+ARG CADDY_SHA512_ARM64=d5a7c423853c24a799765e0e8210d5c7c22a8f56ed37a3cae2fb9f58be138853c02b4efd6b59d576e6d8c7c0d30b9c1592deeaa6a536ff69bcca23b8c1ea709c
 ARG TINI_VERSION=0.19.0
-ARG TINI_SHA256=c5b0666b4cb676901f90dfcb37106783c5fe2077b04590973b885950611b30ee
+ARG TINI_SHA256_AMD64=c5b0666b4cb676901f90dfcb37106783c5fe2077b04590973b885950611b30ee
+ARG TINI_SHA256_ARM64=eae1d3aa50c48fb23b8cbdf4e369d0910dfc538566bfd09df89a774aa84a48b9
+ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /fetch
 
-RUN curl -fsSLo caddy.tar.gz "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz" \
-	&& echo "${CADDY_SHA512}  caddy.tar.gz" | sha512sum -c - \
+RUN case "${TARGETARCH}" in \
+		amd64) caddy_sha512="${CADDY_SHA512_AMD64}" tini_sha256="${TINI_SHA256_AMD64}" ;; \
+		arm64) caddy_sha512="${CADDY_SHA512_ARM64}" tini_sha256="${TINI_SHA256_ARM64}" ;; \
+		*) echo "no pinned checksums for ${TARGETARCH}" >&2; exit 1 ;; \
+	esac \
+	&& curl -fsSLo caddy.tar.gz "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_${TARGETARCH}.tar.gz" \
+	&& echo "${caddy_sha512}  caddy.tar.gz" | sha512sum -c - \
 	&& tar -xzf caddy.tar.gz caddy LICENSE \
 	&& mv LICENSE caddy-LICENSE \
-	&& curl -fsSLo tini "https://github.com/krallin/tini/releases/download/v${TINI_VERSION}/tini-static-amd64" \
-	&& echo "${TINI_SHA256}  tini" | sha256sum -c - \
+	&& curl -fsSLo tini "https://github.com/krallin/tini/releases/download/v${TINI_VERSION}/tini-static-${TARGETARCH}" \
+	&& echo "${tini_sha256}  tini" | sha256sum -c - \
 	&& curl -fsSLo tini-LICENSE "https://raw.githubusercontent.com/krallin/tini/v${TINI_VERSION}/LICENSE" \
 	&& chmod 0755 caddy tini
 
 # the runtime node is alpine's own build — v24 linked against shared
 # system libraries, roughly half the size of the official node binary.
-# The base is digest-pinned; nodejs then tracks alpine 3.23's package
+# The base is digest-pinned; nodejs then tracks alpine 3.24's package
 # repo, which only ships security bumps within the branch.
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
@@ -133,8 +149,10 @@ COPY --from=fetch /fetch/caddy /usr/local/bin/caddy
 COPY --from=fetch /fetch/caddy-LICENSE /oxynote/licenses/caddy/LICENSE
 COPY --from=fetch /fetch/tini-LICENSE /oxynote/licenses/tini/LICENSE
 
-# staged by `make prod-build` from goreleaser's output.
-COPY docker/prod/.build/oxynote-core /oxynote/core/server
+# staged per architecture by `make prod-build` and `make prod-publish` from
+# goreleaser's output.
+ARG TARGETARCH
+COPY docker/prod/.build/${TARGETARCH}/oxynote-core /oxynote/core/server
 
 COPY --from=web-builder /app/.output /oxynote/web
 COPY --from=auth-realtime-builder /server/dist/bundle.mjs /oxynote/auth-realtime/index.mjs

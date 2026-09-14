@@ -27,7 +27,10 @@ mailpit, since signup needs a verified address.
   `goreleaser build` (not `release`, which would also publish
   `ghcr.io/oxynote/core`), so core reports the tag as its version and
   `production` as its environment, and pushes exactly two tags: `latest`
-  and the bare semver (`v1.2.3` → `:1.2.3`).
+  and the bare semver (`v1.2.3` → `:1.2.3`), each for `linux/amd64` and
+  `linux/arm64`. Local builds (`prod-build`, `e2e-prod`) target only the
+  Docker engine's own architecture, so CI's release gate tests amd64
+  alone.
 
 ## Invariants
 

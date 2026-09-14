@@ -7,13 +7,17 @@ COVERAGE_MIN = 93.1
 # the dev stack is using.
 IMAGE_TAG ?= dev
 
+# the architecture of the Docker engine the image and binary are built for:
+# on macOS and Windows that is its Linux VM's, not the host's.
+DOCKER_ARCH ?= $(shell docker version --format '{{.Server.Arch}}' 2>/dev/null)
+
 # Build the Docker image
 # dockers_v2 snapshot builds load into the local daemon with an arch suffix;
 # retag so the compose stacks can reference a stable tag.
 .PHONY: build
 build:
-	CORE_SNAPSHOT_TAG=$(IMAGE_TAG) goreleaser release --snapshot --clean
-	docker tag ghcr.io/oxynote/core:$(IMAGE_TAG)-amd64 ghcr.io/oxynote/core:$(IMAGE_TAG)
+	CORE_SNAPSHOT_TAG=$(IMAGE_TAG) DOCKER_ARCH=$(DOCKER_ARCH) goreleaser release --snapshot --clean
+	docker tag ghcr.io/oxynote/core:$(IMAGE_TAG)-$(DOCKER_ARCH) ghcr.io/oxynote/core:$(IMAGE_TAG)
 
 # The binary on its own, for the all-in-one image: its Dockerfile stages the
 # binary and builds everything else itself, so core's own docker image is
@@ -24,13 +28,16 @@ build:
 # The snapshot variant is for local and e2e builds, where there may be no
 # tag and the version does not matter. A published image must use the other
 # one: a snapshot stamps the binary as version dev in a dev environment.
+#
+# Both build DOCKER_ARCH alone and copy the binary to OUTPUT, so a caller
+# never depends on goreleaser's dist layout.
 .PHONY: build-binary
 build-binary:
-	goreleaser build --clean
+	GOOS=linux GOARCH=$(DOCKER_ARCH) goreleaser build --clean --single-target -o $(OUTPUT)
 
 .PHONY: build-binary-snapshot
 build-binary-snapshot:
-	goreleaser build --snapshot --clean
+	GOOS=linux GOARCH=$(DOCKER_ARCH) goreleaser build --snapshot --clean --single-target -o $(OUTPUT)
 
 # Run all tests with the race detector.
 .PHONY: test

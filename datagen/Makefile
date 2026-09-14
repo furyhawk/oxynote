@@ -2,13 +2,17 @@
 # ratcheted up as suites grow — never lowered.
 COVERAGE_MIN = 92.9
 
+# the architecture of the Docker engine the image is built for: on macOS
+# and Windows that is its Linux VM's, not the host's.
+DOCKER_ARCH ?= $(shell docker version --format '{{.Server.Arch}}' 2>/dev/null)
+
 # Build the Docker image
 # dockers_v2 snapshot builds load into the local daemon with an arch suffix;
 # retag so the dev compose stack can reference a stable :dev tag.
 .PHONY: build
 build:
-	goreleaser release --snapshot --clean
-	docker tag ghcr.io/oxynote/datagen:dev-amd64 ghcr.io/oxynote/datagen:dev
+	DOCKER_ARCH=$(DOCKER_ARCH) goreleaser release --snapshot --clean
+	docker tag ghcr.io/oxynote/datagen:dev-$(DOCKER_ARCH) ghcr.io/oxynote/datagen:dev
 
 # Run all tests with the race detector.
 .PHONY: test

@@ -89,6 +89,15 @@ jobs:
         with:
           install-only: true
 
+      # the arm64 variant's last stage runs alpine's package manager, which on
+      # this amd64 runner needs emulation. Nothing else does: goreleaser
+      # cross-compiles core, and every other stage runs on the runner's own
+      # architecture.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+
       - name: Set up Docker buildx
         uses: docker/setup-buildx-action@v4
 

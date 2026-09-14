@@ -11,13 +11,15 @@ builds:
     main: ./cmd/core
     binary: "{{ .ProjectName }}-core"
     mod_timestamp: "{{ .CommitTimestamp }}"
-    no_unique_dist_dir: true
     env:
       - CGO_ENABLED=0
     goos:
       - linux
+    # goarch takes no template, so every architecture a Docker engine may
+    # run is compiled and dockers_v2 below builds the image for one of them.
     goarch:
       - amd64
+      - arm64
     tags:
       - "{{if not .IsSnapshot}} prod {{end}}"
     flags:
@@ -39,8 +41,11 @@ dockers_v2:
     tags:
       - "{{ .Version }}"
       - latest
+    # a snapshot loads one image per platform into the local daemon, so only
+    # the engine's own architecture is built. Set through core's Makefile
+    # DOCKER_ARCH.
     platforms:
-      - linux/amd64
+      - 'linux/{{ envOrDefault "DOCKER_ARCH" "amd64" }}'
     build_args:
       BINARY: oxynote-core
     sbom: false
