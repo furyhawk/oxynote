@@ -25,9 +25,6 @@ type Capabilities struct {
 	// ChangeDetection reports whether the changedetection.io integration
 	// is configured.
 	ChangeDetection bool `json:"changeDetection"`
-
-	// Search reports whether document search is configured.
-	Search bool `json:"search"`
 }
 
 // AssistantCapability describes the AI assistant's availability,

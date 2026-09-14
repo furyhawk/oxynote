@@ -28,7 +28,6 @@ import (
 	"github.com/oxynote/oxynote/server/core/internal/assistant/persist"
 	"github.com/oxynote/oxynote/server/core/internal/assistant/protocol"
 	"github.com/oxynote/oxynote/server/core/internal/assistant/tools"
-	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/memkit"
 	"github.com/oxynote/oxynote/server/core/pkg/metricutil"
@@ -46,17 +45,17 @@ const _sessionExpiration = time.Hour * 24 * 7
 
 // Manager holds dependencies shared across assistant sessions.
 type Manager struct {
-	log     *slog.Logger
-	db      tools.DB
-	search  tools.Searcher
-	jobs    *search.Jobs
-	runners tools.DataSourceRunners
-	model   model.ToolCallingChatModel
-	summary model.ToolCallingChatModel
-	applier tools.EditApplier
-	tree    tools.TreeNotifier
-	tags    tools.TagNotifier
-	hooks   tools.HookNotifier
+	log           *slog.Logger
+	db            tools.DB
+	search        tools.Searcher
+	searchTrigger tools.SearchTrigger
+	runners       tools.DataSourceRunners
+	model         model.ToolCallingChatModel
+	summary       model.ToolCallingChatModel
+	applier       tools.EditApplier
+	tree          tools.TreeNotifier
+	tags          tools.TagNotifier
+	hooks         tools.HookNotifier
 
 	githubMan       *github.Manager
 	webchangeClient *webchange.Client
@@ -88,8 +87,8 @@ type Manager struct {
 // the provider package from the operator's configuration; summaryModel
 // backs context summarisation and may be the same model. The editClient
 // is the edit pipe to the Node hocuspocus service; the search client
-// backs the search_documents tool and searchJobs is the queue document
-// writes announce themselves to; providerName labels token metrics so
+// backs the search_documents tool and searchTrigger runs the search-job
+// worker once a document write has committed; providerName labels token metrics so
 // usage stays readable across a provider change; githubMan and
 // webchangeClient are the integrations the hook tools create watchers
 // through; the tree notifier broadcasts sidebar refresh events after
@@ -105,7 +104,7 @@ func NewManager(
 	fc metricutil.Factory,
 	editClient tools.EditApplier,
 	searcher tools.Searcher,
-	searchJobs *search.Jobs,
+	searchTrigger tools.SearchTrigger,
 	runners tools.DataSourceRunners,
 	githubMan *github.Manager,
 	webchangeClient *webchange.Client,
@@ -137,14 +136,14 @@ func NewManager(
 	}
 
 	m := &Manager{
-		log:     log,
-		db:      db,
-		search:  searcher,
-		jobs:    searchJobs,
-		runners: runners,
-		model:   chatModel,
-		summary: summaryModel,
-		applier: editClient,
+		log:           log,
+		db:            db,
+		search:        searcher,
+		searchTrigger: searchTrigger,
+		runners:       runners,
+		model:         chatModel,
+		summary:       summaryModel,
+		applier:       editClient,
 
 		githubMan:       githubMan,
 		webchangeClient: webchangeClient,
@@ -217,7 +216,7 @@ func (m *Manager) ToolSet(orgID, userID string) *tools.Set {
 		m.log,
 		m.db,
 		m.search,
-		m.jobs,
+		m.searchTrigger,
 		m.runners,
 		m.githubMan,
 		m.webchangeClient,

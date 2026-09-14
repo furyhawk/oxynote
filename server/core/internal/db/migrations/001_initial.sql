@@ -420,9 +420,18 @@ CREATE TABLE document_files (
 CREATE INDEX document_files_fk_document_id_idx ON document_files (fk_document_id);
 CREATE INDEX document_files_fk_organization_id_idx ON document_files (fk_organization_id);
 
-CREATE TABLE document_search_jobs (
-	id SERIAL PRIMARY KEY,
-	block_diff JSONB NOT NULL
+-- Search-index resync jobs. A job names a scope (an organization, one of
+-- its documents, or one branch) whose entries the worker rebuilds from the
+-- rows; there are no foreign keys, since a job must outlive the rows it
+-- removes from the index. Queuing a pending scope again bumps its version
+-- instead of adding a row.
+CREATE TABLE search_jobs (
+	id BIGSERIAL PRIMARY KEY,
+	version BIGINT NOT NULL DEFAULT 1,
+	organization_id TEXT NOT NULL,
+	document_id TEXT,
+	branch_id TEXT,
+	UNIQUE NULLS NOT DISTINCT (organization_id, document_id, branch_id)
 );
 
 -- Slack / GitHub integrations and the per-org notification queue.
@@ -477,7 +486,7 @@ DROP TABLE slack_messages;
 DROP TABLE github_installations;
 DROP TABLE slack_user_links;
 DROP TABLE slack_apps;
-DROP TABLE document_search_jobs;
+DROP TABLE search_jobs;
 DROP TABLE document_files;
 DROP TABLE branch_reviewers;
 DROP TABLE user_tag_settings;

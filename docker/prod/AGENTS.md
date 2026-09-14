@@ -8,9 +8,10 @@ principles and TS/JS style live in the root [AGENTS.md](../../AGENTS.md).
 One public image (`ghcr.io/oxynote/oxynote`) running Caddy, web (Nuxt SSR),
 core and auth-realtime under `launcher/` (`@oxynote/launcher`, pnpm), a
 TypeScript supervisor run by node under tini. Postgres is the only required
-external service; valkey, an S3-compatible store, meilisearch, SMTP and
+external service; valkey, an S3-compatible store, SMTP and
 changedetection.io are optional (without a store, objects live on the data
-volume). `docker-compose.example.yaml` is the canonical deployment and
+volume, as does the search index, which core rebuilds from Postgres when
+missing). `docker-compose.example.yaml` is the canonical deployment and
 `README.md` the operator reference. `docker-compose.local.yaml` is the
 override `make prod-run` layers on it to build the image locally and add a
 mailpit, since signup needs a verified address.

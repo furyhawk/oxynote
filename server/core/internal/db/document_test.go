@@ -1025,7 +1025,7 @@ func Test_agent_DeleteDocument(t *testing.T) {
 
 			// the delete itself queues nothing: the caller owns the
 			// search-index removal.
-			jobs, err := db.FetchDocumentSearchJobs(context.Background(), 0, 10)
+			jobs, err := db.FetchSearchJobs(context.Background(), 0, 10)
 			require.NoError(t, err)
 			assert.Empty(t, jobs)
 

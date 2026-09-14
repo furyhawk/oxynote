@@ -70,15 +70,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      meilisearch:
-        condition: service_healthy
     volumes:
       # optional GitHub App private key: drop oxynote.private-key.pem into
       # docker/github/ and set OXYNOTE_CORE_GITHUB_APP_ID to enable the
       # GitHub App integration.
       - ./github:/etc/oxynote/core/github:ro
       # uploaded files, which core keeps under OXYNOTE_CORE_OBJECT_STORAGE_LOCAL_PATH
-      # when no object store is configured. The mount is the home directory
+      # when no object store is configured, and the search index under
+      # OXYNOTE_CORE_SEARCH_INDEX_PATH. The mount is the home directory
       # rather than the storage path itself: core runs as a non-root uid
       # that owns only /home/nonroot in its image, and an empty volume
       # takes the ownership of the directory it is mounted over.
@@ -147,32 +146,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    logging:
-      driver: local
-      options:
-        mode: non-blocking
-        max-size: 10m
-        max-file: "3"
-  meilisearch:
-    container_name: meilisearch
-    image: getmeili/meilisearch:v1.53.2
-    volumes:
-      - meilisearch_data:/meili_data
-    environment:
-      - MEILI_MASTER_KEY=devmasterkey
-      - MEILI_ENV=development
-      - MEILI_LOG_LEVEL=WARN
-      - MEILI_NO_ANALYTICS=true
-      # the data volume outlives image bumps, and meilisearch refuses to
-      # open a database written by an older engine unless told to upgrade
-      # it in place
-      - MEILI_UPGRADE_DB=true
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:7700/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-    restart: unless-stopped
     logging:
       driver: local
       options:
@@ -260,7 +233,6 @@ volumes:
   core_storage:
   mariadb_data:
   postgres_data:
-  meilisearch_data:
   valkey_data:
   caddy_data:
   caddy_config:

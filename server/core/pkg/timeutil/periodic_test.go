@@ -22,6 +22,44 @@ func Test_NewPeriodicExec(t *testing.T) {
 	assert.NotNil(t, pe.fn)
 	assert.NotNil(t, pe.recovery)
 	assert.True(t, pe.immediate)
+	assert.Equal(t, 1, cap(pe.trigger))
+}
+
+func Test_PeriodicExec_Trigger(t *testing.T) {
+	t.Parallel()
+
+	// repeated triggers never block and collapse into one pending run.
+	pe := NewPeriodicExec(time.Hour, 0, func(context.Context) {}, nil, false)
+	pe.Trigger()
+	pe.Trigger()
+	assert.Len(t, pe.trigger, 1)
+
+	// a trigger runs the function without waiting for the interval, and
+	// the interval keeps its schedule.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var runs int
+
+	stopCh := make(chan struct{})
+
+	pe = NewPeriodicExec(time.Hour, 0, func(context.Context) {
+		runs++
+
+		cancel()
+	}, nil, false)
+
+	go func() {
+		defer close(stopCh)
+
+		pe.Start(ctx)
+	}()
+
+	pe.Trigger()
+
+	<-stopCh
+
+	assert.Equal(t, 1, runs)
 }
 
 func Test_PeriodicExec_Start(t *testing.T) {

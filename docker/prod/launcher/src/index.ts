@@ -131,8 +131,7 @@ function logEnabledFeatures(config: Config): void {
 	const state = (enabled: boolean) => (enabled ? "on" : "off")
 
 	log.info(
-		`search ${state(config.meilisearch !== undefined)}, ` +
-			`email ${state(config.smtp !== undefined)}, ` +
+		`email ${state(config.smtp !== undefined)}, ` +
 			`github app ${state(config.githubApp !== undefined)}, ` +
 			`slack app ${state(config.slackApp !== undefined)}, ` +
 			`ai assistant ${state((config.aiAssistant.PROVIDER ?? "") !== "")}, ` +

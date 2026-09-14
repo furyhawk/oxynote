@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/guregu/null/v5"
-	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/oxynote/oxynote/server/core/pkg/httpserver"
 	"github.com/rs/xid"
 	"github.com/stretchr/testify/assert"
@@ -284,36 +283,6 @@ func Test_Document_HistoryEntry(t *testing.T) {
 	other.BranchID = xid.New()
 
 	assert.NotEqual(t, entry.ID, other.HistoryEntry().ID)
-}
-
-func Test_Document_Search(t *testing.T) {
-	t.Parallel()
-
-	doc := stubDocument()
-
-	res := doc.Search()
-
-	// the content block plus the synthetic document-name block.
-	require.Len(t, res, 2)
-
-	nameBlock, ok := res[doc.ID.String()]
-	require.True(t, ok)
-	assert.Equal(t, search.Block{
-		ID:             doc.BranchID.String() + "-docname",
-		OrganizationID: "org-1",
-		DocumentID:     doc.ID,
-		BranchID:       doc.BranchID,
-		BranchName:     DefaultBranch,
-		BranchDefault:  true,
-		Type:           "document",
-		Text:           "Runbook",
-	}, nameBlock)
-
-	contentBlock, ok := res["p1"]
-	require.True(t, ok)
-	assert.Equal(t, doc.BranchID.String()+"-p1", contentBlock.ID)
-	assert.Equal(t, doc.BranchID, contentBlock.BranchID)
-	assert.Equal(t, "hello", contentBlock.Text)
 }
 
 func Test_Document_Duplicate(t *testing.T) {

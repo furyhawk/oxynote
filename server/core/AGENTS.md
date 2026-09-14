@@ -188,8 +188,8 @@ pagination through `sqlutil.Select`; empty results are a non-nil empty
 slice; always a deterministic tiebreaker after the user sort. IDs are
 generated in the domain layer, no `RETURNING`. Soft deletes set
 `deleted_at`; hard deletes happen in `Cleanup*` sweeps. A sqlhooks error
-hook maps `sql.ErrNoRows` → `errutil.ErrNotFound` and constraint violations
-→ user errors, so callers only `errors.Is`. Migrations are
+hook maps constraint violations → user errors; an empty result is a bare
+`sql.ErrNoRows`, so callers use `errutil.IsNotFound`. Migrations are
 `migrations/NNN_snake_case.sql`, embedded with `//go:embed`.
 
 ## HTTP & WebSocket

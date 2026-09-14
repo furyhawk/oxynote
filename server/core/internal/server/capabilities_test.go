@@ -15,8 +15,7 @@ func Test_Server_fetchCapabilities(t *testing.T) {
 	s := Server{
 		log: discardLog(),
 		capabilities: Capabilities{
-			Slack:  true,
-			Search: true,
+			Slack: true,
 			AIAssistant: AssistantCapability{
 				Status: provider.StatusActiveButWeak,
 				Model:  "claude-sonnet-5",
@@ -36,8 +35,7 @@ func Test_Server_fetchCapabilities(t *testing.T) {
 			"github": false,
 			"slack": true,
 			"aiAssistant": {"status": "active-but-weak", "model": "claude-sonnet-5"},
-			"changeDetection": false,
-			"search": true
+			"changeDetection": false
 		}`,
 		rec.Body.String(),
 	)

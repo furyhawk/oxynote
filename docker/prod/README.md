@@ -3,8 +3,10 @@
 One container running the whole product: Caddy (front door), the web app
 (Nuxt SSR), the core API server, and the auth/realtime service, supervised by
 a small launcher. PostgreSQL runs outside the image and is the only thing
-it requires; Valkey, an S3-compatible object store, Meilisearch, an SMTP
-relay and changedetection.io are optional and also external.
+it requires; Valkey, an S3-compatible object store, an SMTP relay and
+changedetection.io are optional and also external. Full-text search is
+built in: core keeps its index on the data volume and rebuilds it from
+PostgreSQL when it is missing, so the image runs as a single instance.
 
 ## Quick start
 
@@ -53,7 +55,6 @@ cleanly. An incomplete group fails the boot with the missing name.
 | --- | --- |
 | Valkey/Redis | `OXYNOTE_VALKEY_DSN` (`redis[s]://[user:pass@]host:port[/db]`, credentials supported). Without it the assistant keeps its conversations in the core process and sessions are not cached outside Postgres. |
 | Object storage | `OXYNOTE_OBJECT_STORAGE_DSN` — an S3-compatible store as one URL: `http(s)://ACCESS_KEY:SECRET_KEY@host:port/bucket[?region=...]` (the bucket defaults to `oxynote` and is created if missing). Without it uploaded images are kept on the data volume, which is the right choice for a single-node deployment. |
-| Search | `OXYNOTE_MEILISEARCH_URL`, `OXYNOTE_MEILISEARCH_MASTER_KEY` |
 | Email | `OXYNOTE_SMTP_DSN` (`smtp[s]://[user:pass@]host:port[?tls=none\|starttls\|tls]`), `OXYNOTE_EMAIL_FROM_ADDRESS`. Without email, verification mails are logged instead of sent. |
 | GitHub App | `OXYNOTE_GITHUB_APP_ID`, `OXYNOTE_GITHUB_APP_SLUG`, `OXYNOTE_GITHUB_APP_SIGNATURE_SECRET`; mount the app's private key at `/oxynote/github/private-key.pem` |
 | Slack app | `OXYNOTE_SLACK_APP_CLIENT_ID`, `OXYNOTE_SLACK_APP_CLIENT_SECRET`, `OXYNOTE_SLACK_APP_SIGNATURE_SECRET` |

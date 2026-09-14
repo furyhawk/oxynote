@@ -18,7 +18,6 @@ import (
 	persistMock "github.com/oxynote/oxynote/server/core/internal/assistant/persist/_mock"
 	protocolMock "github.com/oxynote/oxynote/server/core/internal/assistant/protocol/_mock"
 	toolsMock "github.com/oxynote/oxynote/server/core/internal/assistant/tools/_mock"
-	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/memkit"
 	"github.com/oxynote/oxynote/server/core/pkg/metricutil"
@@ -31,13 +30,18 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m, testutil.IgnoreBleveWorkers())
 }
 
 // discardLog returns a logger that writes nowhere.
 func discardLog() *slog.Logger {
 	return slog.New(slog.DiscardHandler)
 }
+
+// stubSearchTrigger satisfies the tools' SearchTrigger with a no-op.
+type stubSearchTrigger struct{}
+
+func (*stubSearchTrigger) Trigger() {}
 
 // stubChatModel builds a chat model that answers with the given
 // messages in order. The last one repeats once the script runs out, so
@@ -186,20 +190,18 @@ func testManagerStores() (*Manager, *stores) {
 	log := discardLog()
 
 	m := &Manager{
-		log: log,
-		db:  &toolsMock.DB{},
-		search: &toolsMock.Searcher{
-			ConfiguredFunc: func() bool { return true },
-		},
-		jobs:        search.NewJobs(true),
-		applier:     &toolsMock.EditApplier{},
-		history:     persist.NewHistory(log, st.history),
-		checkpoints: persist.NewCheckpoints(log, st.blobs),
-		pendings:    persist.NewPendings(log, st.pendings),
-		offload:     persist.NewOffload(st.blobs),
-		metrics:     newMetrics(metricutil.NewFactory("test", prometheus.NewRegistry()), "claude"),
-		model:       stubChatModel(),
-		summary:     stubChatModel(),
+		log:           log,
+		db:            &toolsMock.DB{},
+		search:        &toolsMock.Searcher{},
+		searchTrigger: &stubSearchTrigger{},
+		applier:       &toolsMock.EditApplier{},
+		history:       persist.NewHistory(log, st.history),
+		checkpoints:   persist.NewCheckpoints(log, st.blobs),
+		pendings:      persist.NewPendings(log, st.pendings),
+		offload:       persist.NewOffload(st.blobs),
+		metrics:       newMetrics(metricutil.NewFactory("test", prometheus.NewRegistry()), "claude"),
+		model:         stubChatModel(),
+		summary:       stubChatModel(),
 	}
 
 	m.turns.m = make(map[string]struct{})
@@ -238,7 +240,7 @@ func Test_NewManager(t *testing.T) {
 			fc := metricutil.NewFactory("test", prometheus.NewRegistry())
 			gh := &github.Manager{}
 			wc := &webchange.Client{}
-			m := NewManager(discardLog(), nil, c.Pool, nil, nil, fc, nil, nil, search.NewJobs(false), nil, gh, wc, "claude")
+			m := NewManager(discardLog(), nil, c.Pool, nil, nil, fc, nil, nil, &stubSearchTrigger{}, nil, gh, wc, "claude")
 
 			require.NotNil(t, m)
 			assert.NotNil(t, m.log)

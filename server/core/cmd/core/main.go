@@ -19,7 +19,6 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/gomodule/redigo/redis"
 	"github.com/jellydator/xync"
-	"github.com/meilisearch/meilisearch-go"
 	"github.com/oxynote/oxynote/server/core/internal/apps/github"
 	"github.com/oxynote/oxynote/server/core/internal/apps/slack"
 	"github.com/oxynote/oxynote/server/core/internal/apps/webchange"
@@ -205,25 +204,18 @@ func main() { //nolint:maintidx // main performs linear wiring of all components
 	termCtx, termCancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer termCancel()
 
-	// an empty MEILISEARCH_URL means search is disabled: nothing is
-	// indexed and the search surfaces refuse. A set URL that cannot be
-	// reached stays a boot error inside NewClient.
-	var meiliMan meilisearch.ServiceManager
-
-	if url := buildinfo.Getenv("MEILISEARCH_URL"); url != "" {
-		meiliMan = meilisearch.New(
-			url,
-			meilisearch.WithAPIKey(buildinfo.Getenv("MEILISEARCH_MASTER_KEY")),
-		)
-	}
-
-	searchClient, err := search.NewClient(termCtx, meiliMan)
+	// the index is a cache of the database kept on local disk, which is
+	// what confines a deployment to one core instance. Opening it builds
+	// it from the database when it is missing or outdated.
+	searchIndex, err := search.Open(termCtx, log, buildinfo.Getenv("SEARCH_INDEX_PATH"), dbc)
 	if err != nil {
-		fail(log, closers, "cannot create search gateway client", err)
+		fail(log, closers, "cannot open the search index", err)
 		return
 	}
 
-	searchJobs := search.NewJobs(searchClient.Configured())
+	closers = append([]io.Closer{searchIndex}, closers...)
+
+	searchJobMan := searchMan.NewManager(log, dbc, searchIndex)
 
 	objectStorageURL := buildinfo.Getenv("OBJECT_STORAGE_URL")
 
@@ -293,8 +285,8 @@ func main() { //nolint:maintidx // main performs linear wiring of all components
 		summaryModel,
 		metrics,
 		editClient,
-		searchClient,
-		searchJobs,
+		searchIndex,
+		searchJobMan,
 		datasourceMan,
 		githubMan,
 		webchangeClient,
@@ -307,7 +299,6 @@ func main() { //nolint:maintidx // main performs linear wiring of all components
 	warnDisabled(log, githubMan.Configured(), "github app integration is disabled")
 	warnDisabled(log, slackMan.Configured(), "slack app integration is disabled")
 	warnDisabled(log, assistantMan.Configured(), "assistant is disabled")
-	warnDisabled(log, searchClient.Configured(), "search is disabled")
 	warnDisabled(log, webchangeClient.Configured(), "changedetection integration is disabled")
 
 	serverHost, serverPort, err := parseServerAddress(buildinfo.Getenv("SERVER_ADDRESS"))
@@ -344,8 +335,8 @@ func main() { //nolint:maintidx // main performs linear wiring of all components
 		githubMan,
 		slackMan,
 		webchangeClient,
-		searchClient,
-		searchJobs,
+		searchIndex,
+		searchJobMan,
 		notifMan,
 		emailSender,
 		http.DefaultClient,
@@ -389,11 +380,7 @@ func main() { //nolint:maintidx // main performs linear wiring of all components
 	backgroundSupv.Go(assistantMan.Start)
 	backgroundSupv.Go(simulationChecker.Start)
 
-	// without search there are no queued jobs to drain, so the manager
-	// is not started at all.
-	if searchClient.Configured() {
-		backgroundSupv.Go(searchMan.NewManager(log, dbc, searchClient).Start)
-	}
+	backgroundSupv.Go(searchJobMan.Start)
 
 	<-termCtx.Done()
 

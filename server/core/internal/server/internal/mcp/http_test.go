@@ -12,7 +12,6 @@ import (
 	"github.com/jarcoal/httpmock"
 	"github.com/oxynote/oxynote/server/core/internal/assistant/tools"
 	toolsMock "github.com/oxynote/oxynote/server/core/internal/assistant/tools/_mock"
-	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/oxynote/oxynote/server/core/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +19,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m, testutil.IgnoreBleveWorkers())
 }
 
 // _testSessionURL is the internal MCP session endpoint the mocked
@@ -35,6 +34,11 @@ func discardLog() *slog.Logger {
 	return slog.New(slog.DiscardHandler)
 }
 
+// stubSearchTrigger satisfies the tools' SearchTrigger with a no-op.
+type stubSearchTrigger struct{}
+
+func (stubSearchTrigger) Trigger() {}
+
 // stubToolsDB builds the tools-package DB mock every test tool set
 // runs against.
 func stubToolsDB() *toolsMock.DB {
@@ -47,10 +51,8 @@ func stubSet(db *toolsMock.DB) *tools.Set {
 	return tools.New(tools.NewDeps(
 		discardLog(),
 		db,
-		&toolsMock.Searcher{
-			ConfiguredFunc: func() bool { return true },
-		},
-		search.NewJobs(true),
+		&toolsMock.Searcher{},
+		stubSearchTrigger{},
 		nil,
 		nil,
 		nil,

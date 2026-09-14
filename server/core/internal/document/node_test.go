@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/rs/xid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -245,99 +244,6 @@ func Test_Block_Flatten(t *testing.T) {
 			assert.Equal(t, c.Expected, c.Block.Flatten())
 		})
 	}
-}
-
-func Test_RootBlock_Search(t *testing.T) {
-	t.Parallel()
-
-	documentID := xid.New()
-
-	rb := RootBlock{
-		Type: BlockNodeDoc,
-		Content: []Block{
-			{
-				Type:  BlockNodeParagraph,
-				Attrs: Attributes{"uid": "p1"},
-				Content: []Block{
-					{Type: BlockNodeText, Text: "first"},
-				},
-			},
-			{
-				Type:  BlockNodeBulletList,
-				Attrs: Attributes{"uid": "l1"},
-				Content: []Block{
-					{
-						Type:  BlockNodeListItem,
-						Attrs: Attributes{"uid": "li1"},
-						Content: []Block{
-							{Type: BlockNodeText, Text: "nested"},
-						},
-					},
-				},
-			},
-			// marks split the text into multiple fragments; all of
-			// them must be indexed, not just the last one.
-			{
-				Type:  BlockNodeParagraph,
-				Attrs: Attributes{"uid": "p2"},
-				Content: []Block{
-					{Type: BlockNodeText, Text: "plain "},
-					{Type: BlockNodeText, Text: "bold", Marks: []Mark{{Type: "bold"}}},
-					{Type: BlockNodeText, Text: " tail"},
-				},
-			},
-			// no uid: the text is not indexable.
-			{
-				Type: BlockNodeParagraph,
-				Content: []Block{
-					{Type: BlockNodeText, Text: "orphan"},
-				},
-			},
-			// no text: nothing to index.
-			{Type: BlockNodeHorizontalRule, Attrs: Attributes{"uid": "hr1"}},
-			// a metric block's title is an attribute, not a text child.
-			{
-				Type:  BlockNodeMetricBlock,
-				Attrs: Attributes{"uid": "m1", "title": "Pizza Fridays"},
-			},
-			// an untitled metric block has nothing to index.
-			{
-				Type:  BlockNodeMetricBlock,
-				Attrs: Attributes{"uid": "m2", "title": ""},
-			},
-			{
-				Type:  BlockNodeMetricBlock,
-				Attrs: Attributes{"uid": "m3"},
-			},
-			// a file block's name is an attribute, not a text child.
-			{
-				Type:  BlockNodeFileBlock,
-				Attrs: Attributes{"uid": "f1", "name": "quarterly-report.pdf", "size": 2048},
-			},
-			// a file block still uploading has no name to index.
-			{
-				Type:  BlockNodeFileBlock,
-				Attrs: Attributes{"uid": "f2"},
-			},
-		},
-	}
-
-	scope := search.Scope{
-		OrganizationID: "org-1",
-		DocumentID:     documentID,
-		BranchID:       xid.New(),
-		BranchName:     "draft",
-	}
-
-	res := rb.Search(scope)
-
-	assert.Equal(t, map[string]search.Block{
-		"p1":  scope.Block("p1", "paragraph", "first"),
-		"li1": scope.Block("li1", "listItem", "nested"),
-		"p2":  scope.Block("p2", "paragraph", "plain bold tail"),
-		"m1":  scope.Block("m1", "metricBlock", "Pizza Fridays"),
-		"f1":  scope.Block("f1", "fileBlock", "quarterly-report.pdf"),
-	}, res)
 }
 
 func Test_RootBlock_StripCommentMarks(t *testing.T) {

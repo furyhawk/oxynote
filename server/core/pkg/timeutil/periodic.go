@@ -13,6 +13,7 @@ type PeriodicExec struct {
 	fn        func(ctx context.Context)
 	recovery  func(v any)
 	immediate bool
+	trigger   chan struct{}
 }
 
 // NewPeriodicExec creates a fresh periodic executor.
@@ -35,6 +36,20 @@ func NewPeriodicExec(
 		fn:        fn,
 		recovery:  recovery,
 		immediate: immediate,
+		// one pending trigger is enough: a run serves every trigger that
+		// arrived before it, so later ones that find the slot taken are
+		// already covered.
+		trigger: make(chan struct{}, 1),
+	}
+}
+
+// Trigger runs the function at once, on top of the interval, which it
+// does not reset. It never blocks and coalesces with a trigger already
+// pending, so it is safe on a request path.
+func (pe *PeriodicExec) Trigger() {
+	select {
+	case pe.trigger <- struct{}{}:
+	default:
 	}
 }
 
@@ -55,6 +70,8 @@ func (pe *PeriodicExec) Start(ctx context.Context) {
 		case <-tm.C:
 			pe.exec(ctx)
 			tm.Reset(pe.interval)
+		case <-pe.trigger:
+			pe.exec(ctx)
 		}
 	}
 }

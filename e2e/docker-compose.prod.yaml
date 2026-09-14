@@ -35,8 +35,6 @@ services:
     environment:
       - OXYNOTE_PUBLIC_URL=http://localhost:19080
       - OXYNOTE_DB_DSN=postgresql://devuser:devpass@postgres/devdb?sslmode=disable
-      - OXYNOTE_MEILISEARCH_URL=http://meilisearch:7700
-      - OXYNOTE_MEILISEARCH_MASTER_KEY=devmasterkey
       - OXYNOTE_SMTP_DSN=smtp://mailpit:1025?tls=none
       - OXYNOTE_EMAIL_FROM_ADDRESS=Oxynote <team@oxynote.io>
       - OXYNOTE_MAX_ORGANIZATION_MEMBERS=5
@@ -50,8 +48,6 @@ services:
       - OXYNOTE_RATE_LIMIT_DISABLED=true
     depends_on:
       postgres:
-        condition: service_healthy
-      meilisearch:
         condition: service_healthy
     # the image ships its own layered probe (every internal service plus the
     # front door), which is what the probe container and the tests wait on.
@@ -85,18 +81,6 @@ services:
       POSTGRES_DB: devdb
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U devuser -d devdb"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
-  meilisearch:
-    image: getmeili/meilisearch:v1.53.2
-    environment:
-      - MEILI_MASTER_KEY=devmasterkey
-      - MEILI_ENV=development
-      - MEILI_LOG_LEVEL=WARN
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:7700/health"]
       interval: 5s
       timeout: 5s
       retries: 20

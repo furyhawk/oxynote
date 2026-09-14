@@ -27,7 +27,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m, testutil.IgnoreBleveWorkers())
 }
 
 // fixed IDs used across test requests.
@@ -70,7 +70,7 @@ func newTestHandler(db DB, pub *fakePublisher) (*Handler, *callbackCounts) {
 		notifPub:        pub,
 		storer:          &StorerMock{},
 		webchangeClient: webchange.NewClient("", ""),
-		searchJobs:      search.NewJobs(true),
+		searchTrigger:   &SearchTriggerMock{},
 	}
 
 	hdl.tree.changeCallback = func(string, null.Value[xid.ID]) { cnt.tree++ }
@@ -152,17 +152,17 @@ func Test_NewHandler(t *testing.T) {
 	t.Parallel()
 
 	db := &DBMock{}
-	gw := &SearchGatewayMock{}
-	jobs := search.NewJobs(true)
+	searcher := &SearcherMock{}
+	trigger := &SearchTriggerMock{}
 	pub := &fakePublisher{}
 	st := &StorerMock{}
 
-	hdl := NewHandler(slog.New(slog.DiscardHandler), db, nil, nil, gw, jobs, pub, st)
+	hdl := NewHandler(slog.New(slog.DiscardHandler), db, nil, nil, searcher, trigger, pub, st)
 	require.NotNil(t, hdl)
 	assert.NotNil(t, hdl.log)
 	assert.Same(t, db, hdl.db)
-	assert.Same(t, gw, hdl.searchGateway)
-	assert.Same(t, jobs, hdl.searchJobs)
+	assert.Same(t, searcher, hdl.searcher)
+	assert.Same(t, trigger, hdl.searchTrigger)
 	assert.Same(t, pub, hdl.notifPub)
 	assert.Same(t, st, hdl.storer)
 	assert.Nil(t, hdl.githubMan)
@@ -1168,24 +1168,29 @@ func Test_Handler_UpdateDocumentTree(t *testing.T) {
 
 func Test_Handler_SearchDocuments(t *testing.T) {
 	cc := map[string]struct {
-		Gateway   *SearchGatewayMock
+		Searcher  *SearcherMock
 		NoSession bool
 		Query     string
 		RespCode  int
 		RespBody  string
 	}{
 		"No session in context": {
-			Gateway:   &SearchGatewayMock{},
+			Searcher:  &SearcherMock{},
 			NoSession: true,
 			Query:     "?q=test",
 			RespCode:  http.StatusUnauthorized,
 		},
 		"Empty search query": {
-			Gateway:  &SearchGatewayMock{},
+			Searcher: &SearcherMock{},
 			RespCode: http.StatusBadRequest,
 		},
-		"Search gateway error": {
-			Gateway: &SearchGatewayMock{
+		"Overlong search query": {
+			Searcher: &SearcherMock{},
+			Query:    "?q=" + strings.Repeat("a", _searchQueryMaxLength+1),
+			RespCode: http.StatusBadRequest,
+		},
+		"Searcher error": {
+			Searcher: &SearcherMock{
 				SearchDocumentsFunc: func(context.Context, string, string) ([]byte, error) {
 					return nil, errors.New("boom")
 				},
@@ -1193,18 +1198,8 @@ func Test_Handler_SearchDocuments(t *testing.T) {
 			Query:    "?q=test",
 			RespCode: http.StatusInternalServerError,
 		},
-		"Search not configured": {
-			Gateway: &SearchGatewayMock{
-				SearchDocumentsFunc: func(context.Context, string, string) ([]byte, error) {
-					return nil, search.ErrNotConfigured
-				},
-			},
-			Query:    "?q=test",
-			RespCode: http.StatusConflict,
-			RespBody: `{"code":"search.not_configured","message":"search is not configured"}`,
-		},
 		"Successful search": {
-			Gateway: &SearchGatewayMock{
+			Searcher: &SearcherMock{
 				SearchDocumentsFunc: func(context.Context, string, string) ([]byte, error) {
 					return []byte(`{"hits":[]}`), nil
 				},
@@ -1220,7 +1215,7 @@ func Test_Handler_SearchDocuments(t *testing.T) {
 			t.Parallel()
 
 			hdl, _ := newTestHandler(&DBMock{}, &fakePublisher{})
-			hdl.searchGateway = c.Gateway
+			hdl.searcher = c.Searcher
 
 			req := httptest.NewRequest(http.MethodGet, "http://test.com/"+c.Query, http.NoBody)
 
@@ -1315,7 +1310,7 @@ func Test_Handler_CreateDocument(t *testing.T) {
 		},
 		"Search job insertion error": {
 			Tx: &TxMock{
-				InsertDocumentSearchJobFunc: func(context.Context, search.BlocksDifference) error {
+				InsertSearchJobFunc: func(context.Context, search.Job) error {
 					return errors.New("boom")
 				},
 			},
@@ -1469,7 +1464,7 @@ func Test_Handler_DeleteDocument(t *testing.T) {
 				DeleteDocumentFunc: func(context.Context, xid.ID, string) ([]xid.ID, error) {
 					return []xid.ID{_documentID}, nil
 				},
-				InsertDocumentSearchJobFunc: func(context.Context, search.BlocksDifference) error {
+				InsertSearchJobFunc: func(context.Context, search.Job) error {
 					return errors.New("boom")
 				},
 			},
@@ -1521,11 +1516,11 @@ func Test_Handler_DeleteDocument(t *testing.T) {
 				require.Len(t, c.Tx.DeleteDocumentCalls(), 1)
 				assert.Equal(t, _documentID, c.Tx.DeleteDocumentCalls()[0].ID)
 
-				// the removal of the returned subtree ids rides the same
+				// the resync of the returned subtree ids rides the same
 				// transaction as the delete.
-				ff := c.Tx.InsertDocumentSearchJobCalls()
+				ff := c.Tx.InsertSearchJobCalls()
 				require.Len(t, ff, 1)
-				assert.Equal(t, []xid.ID{_documentID}, ff[0].Diff.RemovedDocuments)
+				assert.Equal(t, search.DocumentScope("org1", _documentID), ff[0].Job)
 			}
 		})
 	}

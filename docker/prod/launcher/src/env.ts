@@ -64,7 +64,6 @@ export interface Config {
 	objectStorage: ObjectStorageConfig | undefined
 	smtp: SmtpConfig | undefined
 	emailFromAddress: string
-	meilisearch: { url: string; masterKey: string } | undefined
 	changeDetection: { url: string; apiKey: string } | undefined
 	githubApp: GitHubAppConfig | undefined
 	slackApp: SlackAppConfig | undefined
@@ -339,8 +338,6 @@ const baseSchema = z.object({
 	OXYNOTE_OBJECT_STORAGE_DSN: objectStorageDsn.optional(),
 	OXYNOTE_SMTP_DSN: smtpDsn.optional(),
 	OXYNOTE_EMAIL_FROM_ADDRESS: z.string().optional(),
-	OXYNOTE_MEILISEARCH_URL: httpUrl().optional(),
-	OXYNOTE_MEILISEARCH_MASTER_KEY: z.string().optional(),
 	OXYNOTE_CHANGE_DETECTION_URL: httpUrl().optional(),
 	OXYNOTE_CHANGE_DETECTION_API_KEY: z.string().optional(),
 	OXYNOTE_GITHUB_APP_ID: z
@@ -403,11 +400,6 @@ const featureGroups: {
 		key: "OXYNOTE_SMTP_DSN",
 		requires: ["OXYNOTE_EMAIL_FROM_ADDRESS"],
 		companions: ["OXYNOTE_EMAIL_FROM_ADDRESS"],
-	},
-	{
-		key: "OXYNOTE_MEILISEARCH_URL",
-		requires: ["OXYNOTE_MEILISEARCH_MASTER_KEY"],
-		companions: ["OXYNOTE_MEILISEARCH_MASTER_KEY"],
 	},
 	{
 		key: "OXYNOTE_CHANGE_DETECTION_URL",
@@ -576,14 +568,6 @@ export function loadConfig(source: Record<string, string | undefined>): Config {
 		objectStorage: values.OXYNOTE_OBJECT_STORAGE_DSN,
 		smtp: values.OXYNOTE_SMTP_DSN,
 		emailFromAddress: values.OXYNOTE_EMAIL_FROM_ADDRESS ?? "",
-		meilisearch: values.OXYNOTE_MEILISEARCH_URL
-			? {
-					url: values.OXYNOTE_MEILISEARCH_URL,
-					masterKey:
-						values.OXYNOTE_MEILISEARCH_MASTER_KEY ??
-						"",
-				}
-			: undefined,
 		changeDetection: values.OXYNOTE_CHANGE_DETECTION_URL
 			? {
 					url: values.OXYNOTE_CHANGE_DETECTION_URL,

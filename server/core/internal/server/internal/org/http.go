@@ -47,7 +47,7 @@ type Handler struct {
 	storer          Storer
 	githubMan       *github.Manager
 	webchangeClient *webchange.Client
-	searchJobs      *search.Jobs
+	searchTrigger   SearchTrigger
 	logoLocation    string
 }
 
@@ -58,7 +58,7 @@ func NewHandler(
 	storer Storer,
 	githubMan *github.Manager,
 	webchangeClient *webchange.Client,
-	searchJobs *search.Jobs,
+	searchTrigger SearchTrigger,
 	logoLocationFormat string,
 ) *Handler {
 	return &Handler{
@@ -67,7 +67,7 @@ func NewHandler(
 		storer:          storer,
 		githubMan:       githubMan,
 		webchangeClient: webchangeClient,
-		searchJobs:      searchJobs,
+		searchTrigger:   searchTrigger,
 		logoLocation:    logoLocationFormat,
 	}
 }
@@ -151,7 +151,7 @@ func (h *Handler) InitializeOrganization(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err = h.searchJobs.Enqueue(r.Context(), tx, search.BlocksDiff(nil, doc.Search())); err != nil {
+	if err = tx.InsertSearchJob(r.Context(), search.BranchScope(id, doc.ID, doc.BranchID)); err != nil {
 		httpserver.RespondError(h.log, w, err)
 		return
 	}
@@ -161,6 +161,8 @@ func (h *Handler) InitializeOrganization(w http.ResponseWriter, r *http.Request)
 		httpserver.RespondError(h.log, w, err)
 		return
 	}
+
+	h.searchTrigger.Trigger()
 
 	httpserver.Respond(
 		h.log,
@@ -291,9 +293,7 @@ func (h *Handler) TeardownOrganization(w http.ResponseWriter, r *http.Request) {
 
 	defer tx.Rollback() //nolint:errcheck // error provides no meaningful info
 
-	if err = h.searchJobs.Enqueue(r.Context(), tx, search.BlocksDifference{
-		RemovedOrganizations: []string{id},
-	}); err != nil {
+	if err = tx.InsertSearchJob(r.Context(), search.OrganizationScope(id)); err != nil {
 		httpserver.RespondError(h.log, w, err)
 		return
 	}
@@ -313,6 +313,8 @@ func (h *Handler) TeardownOrganization(w http.ResponseWriter, r *http.Request) {
 		httpserver.RespondError(h.log, w, err)
 		return
 	}
+
+	h.searchTrigger.Trigger()
 
 	// the logo is the organization's own object; the documents' files are
 	// left to the file manager, which reclaims them once the cascade nulls
@@ -364,6 +366,14 @@ type DB interface {
 	DBAgent
 }
 
+// SearchTrigger runs the search-job worker once a job has committed.
+//
+//go:generate ../../../../scripts/codegen/mock -t internal SearchTrigger search_trigger
+type SearchTrigger interface {
+	// Trigger should run a search-job pass right away.
+	Trigger()
+}
+
 // Tx is an interface that combines sqlutil.Tx and DBAgent.
 //
 //go:generate ../../../../scripts/codegen/mock -t internal Tx tx
@@ -382,8 +392,8 @@ type DBAgent interface {
 	// InsertDocument should insert the document.
 	InsertDocument(ctx context.Context, doc document.Document) error
 
-	// InsertDocumentSearchJob should insert the document search job.
-	InsertDocumentSearchJob(ctx context.Context, diff search.BlocksDifference) error
+	// InsertSearchJob should queue the search job's scope.
+	InsertSearchJob(ctx context.Context, job search.Job) error
 
 	// FetchDocumentHooksByOrganizationID should return every hook of the
 	// organization.

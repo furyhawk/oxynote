@@ -35,7 +35,6 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
 		},
 		smtp: undefined,
 		emailFromAddress: "",
-		meilisearch: undefined,
 		changeDetection: undefined,
 		githubApp: undefined,
 		slackApp: undefined,

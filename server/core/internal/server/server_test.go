@@ -17,7 +17,6 @@ import (
 	"github.com/oxynote/oxynote/server/core/internal/assistant/provider"
 	"github.com/oxynote/oxynote/server/core/internal/buildinfo"
 	datasourceCore "github.com/oxynote/oxynote/server/core/internal/datasource"
-	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/oxynote/oxynote/server/core/pkg/metricutil"
 	"github.com/oxynote/oxynote/server/core/pkg/testutil"
 	wsMock "github.com/oxynote/wetsocks/wsserver/_mock"
@@ -60,17 +59,15 @@ func Test_Options_validate(t *testing.T) {
 	assert.EqualError(t, Options{}.validate(), "missing mcp session url")
 }
 
-// stubSearchGateway satisfies the document handler's SearchGateway with a
-// fixed configured flag.
-type stubSearchGateway struct {
-	configured bool
-}
+// stubSearcher satisfies the document handler's Searcher.
+type stubSearcher struct{}
 
-func (g stubSearchGateway) Configured() bool {
-	return g.configured
-}
+// stubSearchTrigger satisfies SearchTrigger with a no-op.
+type stubSearchTrigger struct{}
 
-func (stubSearchGateway) SearchDocuments(context.Context, string, string) ([]byte, error) {
+func (stubSearchTrigger) Trigger() {}
+
+func (stubSearcher) SearchDocuments(context.Context, string, string) ([]byte, error) {
 	return nil, nil
 }
 
@@ -83,7 +80,7 @@ func Test_NewServer(t *testing.T) {
 	githubMan, err := github.NewManager(nil, github.Options{})
 	require.NoError(t, err)
 
-	assistantMan := assistantCore.NewManager(log, nil, &redis.Pool{}, nil, nil, fc, nil, nil, search.NewJobs(false), nil, githubMan, nil, "claude")
+	assistantMan := assistantCore.NewManager(log, nil, &redis.Pool{}, nil, nil, fc, nil, nil, stubSearchTrigger{}, nil, githubMan, nil, "claude")
 
 	slackMan, err := slack.NewManager(log, nil, nil, nil, nil, slack.Options{})
 	require.NoError(t, err)
@@ -107,8 +104,8 @@ func Test_NewServer(t *testing.T) {
 			githubMan,
 			slackMan,
 			webchange.NewClient("", ""),
-			stubSearchGateway{},
-			search.NewJobs(false),
+			stubSearcher{},
+			stubSearchTrigger{},
 			notifier,
 			nil,
 			http.DefaultClient,
@@ -135,14 +132,14 @@ func Test_NewServer(t *testing.T) {
 			// a manager of this subtest's own: NewServer calls
 			// SetTreeNotifier, which must not race the parallel
 			// success case's identical call on a shared manager.
-			assistantCore.NewManager(log, nil, &redis.Pool{}, nil, nil, fc, nil, nil, search.NewJobs(false), nil, githubMan, nil, "claude"),
+			assistantCore.NewManager(log, nil, &redis.Pool{}, nil, nil, fc, nil, nil, stubSearchTrigger{}, nil, githubMan, nil, "claude"),
 			datasourceCore.NewManager(log, nil),
 			nil,
 			githubMan,
 			slackMan,
 			webchange.NewClient("", ""),
-			stubSearchGateway{},
-			search.NewJobs(false),
+			stubSearcher{},
+			stubSearchTrigger{},
 			notifier,
 			nil,
 			http.DefaultClient,
@@ -175,8 +172,8 @@ func Test_NewServer(t *testing.T) {
 			githubMan,
 			slackMan,
 			webchange.NewClient("", ""),
-			stubSearchGateway{},
-			search.NewJobs(false),
+			stubSearcher{},
+			stubSearchTrigger{},
 			notifier,
 			nil,
 			http.DefaultClient,
@@ -234,14 +231,14 @@ func Test_NewServer(t *testing.T) {
 			db,
 			fc,
 			storer,
-			assistantCore.NewManager(log, nil, &redis.Pool{}, nil, nil, fc, nil, nil, search.NewJobs(false), nil, githubMan, nil, "claude"),
+			assistantCore.NewManager(log, nil, &redis.Pool{}, nil, nil, fc, nil, nil, stubSearchTrigger{}, nil, githubMan, nil, "claude"),
 			datasourceCore.NewManager(log, nil),
 			nil,
 			githubMan,
 			slackMan,
 			webchange.NewClient("http://changedetection.test", ""),
-			stubSearchGateway{configured: true},
-			search.NewJobs(true),
+			stubSearcher{},
+			stubSearchTrigger{},
 			notifier,
 			nil,
 			http.DefaultClient,
@@ -260,7 +257,6 @@ func Test_NewServer(t *testing.T) {
 				Model:  "claude-opus-5",
 			},
 			ChangeDetection: true,
-			Search:          true,
 		}, srv.capabilities)
 	})
 }

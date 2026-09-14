@@ -24,6 +24,11 @@ export const dataDir = "/oxynote/data"
 // secrets do.
 const objectStorageLocalPath = `${dataDir}/object-storage`
 
+// where core keeps the search index. It is a cache of the database that
+// core rebuilds when it is missing, and it sits on the data volume so a
+// restart does not pay for that rebuild.
+const searchIndexPath = `${dataDir}/search`
+
 // the fixed path a GitHub App's private key is mounted at when the
 // integration is enabled.
 const githubPrivateKeyPath = "/oxynote/github/private-key.pem"
@@ -95,9 +100,7 @@ export function buildChildEnvs(
 		OXYNOTE_CORE_SERVER_ADDRESS: `127.0.0.1:${corePort}`,
 		OXYNOTE_CORE_DB_DSN: config.databaseDsn,
 		OXYNOTE_CORE_VALKEY_DSN: config.valkeyDsn ?? "",
-		OXYNOTE_CORE_MEILISEARCH_URL: config.meilisearch?.url ?? "",
-		OXYNOTE_CORE_MEILISEARCH_MASTER_KEY:
-			config.meilisearch?.masterKey ?? "",
+		OXYNOTE_CORE_SEARCH_INDEX_PATH: searchIndexPath,
 		// an empty URL is what makes core store objects on disk at
 		// OBJECT_STORAGE_LOCAL_PATH instead of in a remote store.
 		OXYNOTE_CORE_OBJECT_STORAGE_URL:

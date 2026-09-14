@@ -1,38 +1,53 @@
 package search
 
-import "context"
+import (
+	"github.com/guregu/null/v5"
+	"github.com/rs/xid"
+)
 
-// Jobs is the way into the document search-job queue: every enqueue in
-// the codebase goes through it, so whether a deployment indexes at all
-// is decided here rather than by each call site or the database layer.
-type Jobs struct {
-	enabled bool
+// Job names a scope of the index to bring back in line with the database:
+// a branch, a whole document, or a whole organization. It carries no
+// content, so applying it in any order or any number of times yields the
+// same index.
+type Job struct {
+	// ID is the unique identifier for the job.
+	ID int64 `db:"id"`
+
+	// Version counts the times the scope was queued while the job was
+	// pending. A job is deleted only at the version it was applied with,
+	// so a change committed during the application is picked up again.
+	Version int64 `db:"version"`
+
+	// OrganizationID is the organization the scope belongs to.
+	OrganizationID string `db:"organization_id"`
+
+	// DocumentID is the document the scope narrows to, if any.
+	DocumentID null.Value[xid.ID] `db:"document_id"`
+
+	// BranchID is the branch the scope narrows to, if any.
+	BranchID null.Value[xid.ID] `db:"branch_id"`
 }
 
-// NewJobs creates a fresh instance of Jobs. When enabled is false —
-// search is not configured on this deployment — every enqueued job is
-// dropped instead of piling up in a table nothing consumes; documents
-// created meanwhile were never indexed, so there is nothing stale to
-// clean up either.
-func NewJobs(enabled bool) *Jobs {
-	return &Jobs{
-		enabled: enabled,
+// BranchScope names one branch of a document.
+func BranchScope(organizationID string, documentID, branchID xid.ID) Job {
+	return Job{
+		OrganizationID: organizationID,
+		DocumentID:     null.ValueFrom(documentID),
+		BranchID:       null.ValueFrom(branchID),
 	}
 }
 
-// Enqueue queues the diff through the given inserter, which is the
-// caller's own database handle so the job commits atomically with the
-// content change it describes.
-func (j *Jobs) Enqueue(ctx context.Context, ins JobInserter, diff BlocksDifference) error {
-	if !j.enabled {
-		return nil
+// DocumentScope names every branch of a document.
+func DocumentScope(organizationID string, documentID xid.ID) Job {
+	return Job{
+		OrganizationID: organizationID,
+		DocumentID:     null.ValueFrom(documentID),
 	}
-
-	return ins.InsertDocumentSearchJob(ctx, diff)
 }
 
-// JobInserter is the database surface Enqueue writes through.
-type JobInserter interface {
-	// InsertDocumentSearchJob should insert the document search job.
-	InsertDocumentSearchJob(ctx context.Context, diff BlocksDifference) error
+// OrganizationScope names every entry of an organization.
+func OrganizationScope(organizationID string) Job {
+	return Job{
+		OrganizationID: organizationID,
+	}
 }

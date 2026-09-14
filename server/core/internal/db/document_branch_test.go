@@ -600,6 +600,59 @@ func Test_agent_FetchDocumentUnsafeByBranchID(t *testing.T) {
 	testutil.AssertFilterEqual(t, branch, res)
 }
 
+func Test_agent_FetchDocumentBranchesAfter(t *testing.T) {
+	db := prepTempDB(t)
+
+	// error - cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	res, err := db.FetchDocumentBranchesAfter(ctx, xid.ID{}, 10)
+	require.Error(t, err)
+	assert.Nil(t, res)
+
+	// success - no branches
+	res, err = db.FetchDocumentBranchesAfter(context.Background(), xid.ID{}, 10)
+	require.NoError(t, err)
+	assert.Empty(t, res)
+
+	// success - every branch across organizations, in id order. Each
+	// prepared document comes with its own default branch, so two documents
+	// and three extra branches make five.
+	branches := prepDocumentBranches(t, db, 3, func(i int, doc *document.Document) {
+		if i == 2 {
+			other := prepDocuments(t, db, 1, nil)[0]
+			doc.ID = other.ID
+			doc.OrganizationID = other.OrganizationID
+		}
+	})
+
+	all, err := db.FetchDocumentBranchesAfter(context.Background(), xid.ID{}, 10)
+	require.NoError(t, err)
+	require.Len(t, all, 5)
+
+	ids := make([]string, 0, len(all))
+
+	for _, doc := range all {
+		ids = append(ids, doc.BranchID.String())
+	}
+
+	assert.IsIncreasing(t, ids)
+
+	for _, branch := range branches {
+		assert.Contains(t, ids, branch.BranchID.String())
+	}
+
+	// success - a page, then the rest after the page's last id
+	res, err = db.FetchDocumentBranchesAfter(context.Background(), xid.ID{}, 2)
+	require.NoError(t, err)
+	testutil.AssertFilterEqual(t, all[:2], res, null.Value[xid.ID]{})
+
+	res, err = db.FetchDocumentBranchesAfter(context.Background(), all[1].BranchID, 10)
+	require.NoError(t, err)
+	testutil.AssertFilterEqual(t, all[2:], res, null.Value[xid.ID]{})
+}
+
 // prepHistoryEntries writes count entries of the document's branch, one per
 // aggregation bucket so each lands as its own entry, oldest first.
 func prepHistoryEntries(t *testing.T, db *DB, doc *document.Document, count int) []document.HistoryEntry {

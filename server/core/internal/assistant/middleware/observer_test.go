@@ -19,7 +19,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m, testutil.IgnoreBleveWorkers())
 }
 
 func Test_NewObserver(t *testing.T) {

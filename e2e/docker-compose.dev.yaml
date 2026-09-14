@@ -105,8 +105,7 @@ services:
     image: ghcr.io/oxynote/core:e2e-dev
     environment:
       - OXYNOTE_CORE_DB_DSN=postgresql://devuser:devpass@postgres/devdb?sslmode=disable
-      - OXYNOTE_CORE_MEILISEARCH_URL=http://meilisearch:7700
-      - OXYNOTE_CORE_MEILISEARCH_MASTER_KEY=devmasterkey
+      - OXYNOTE_CORE_SEARCH_INDEX_PATH=/home/nonroot/search
       - OXYNOTE_CORE_OBJECT_STORAGE_LOCAL_PATH=/home/nonroot/storage
       - OXYNOTE_CORE_SERVER_AUTH_BETTER_AUTH_URL=http://auth-realtime:8081/api/auth/get-session
       # the MCP surface: core validates bearer tokens against auth-realtime
@@ -127,8 +126,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      meilisearch:
-        condition: service_healthy
 
   postgres:
     image: postgres:18.6-alpine
@@ -139,19 +136,6 @@ services:
       POSTGRES_DB: devdb
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U devuser -d devdb"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
-  meilisearch:
-    image: getmeili/meilisearch:v1.53.2
-    environment:
-      - MEILI_MASTER_KEY=devmasterkey
-      - MEILI_ENV=development
-      - MEILI_LOG_LEVEL=WARN
-      - MEILI_NO_ANALYTICS=true
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:7700/health"]
       interval: 5s
       timeout: 5s
       retries: 20

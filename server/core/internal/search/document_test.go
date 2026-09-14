@@ -1,96 +1,29 @@
 package search
 
 import (
-	"encoding/json"
 	"testing"
 
+	"github.com/oxynote/oxynote/server/core/internal/document"
 	"github.com/rs/xid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func Test_BlocksDiff(t *testing.T) {
-	t.Parallel()
-
-	// empty inputs
-	empty := BlocksDiff(nil, nil)
-
-	assert.Empty(t, empty.Added)
-	assert.Empty(t, empty.Updated)
-	assert.Empty(t, empty.Removed)
-
-	// added, updated and removed blocks
-	kept := Block{ID: "kept", Text: "same"}
-	changed := Block{ID: "changed", Text: "old"}
-	changedNew := Block{ID: "changed", Text: "new"}
-	removed := Block{ID: "removed", Text: "gone"}
-	added := Block{ID: "added", Text: "fresh"}
-
-	diff := BlocksDiff(
-		map[string]Block{"kept": kept, "changed": changed, "removed": removed},
-		map[string]Block{"kept": kept, "changed": changedNew, "added": added},
-	)
-
-	assert.Equal(t, []Block{added}, diff.Added)
-	assert.Equal(t, []Block{changedNew}, diff.Updated)
-	assert.Equal(t, []Block{removed}, diff.Removed)
-}
-
-// stubBlocksDifference builds a difference carrying one block of each kind.
-func stubBlocksDifference() BlocksDifference {
-	return BlocksDifference{
-		Added:   []Block{{ID: "a", Text: "added"}},
-		Updated: []Block{{ID: "u", Text: "updated"}},
-		Removed: []Block{{ID: "r", Text: "removed"}},
-	}
-}
-
-func Test_BlocksDifference_Value(t *testing.T) {
-	t.Parallel()
-
-	orig := stubBlocksDifference()
-
-	val, err := orig.Value()
-	require.NoError(t, err)
-
-	data, ok := val.([]byte)
-	require.True(t, ok)
-
-	exp, err := json.Marshal(orig)
-	require.NoError(t, err)
-	assert.JSONEq(t, string(exp), string(data))
-}
-
-func Test_BlocksDifference_Scan(t *testing.T) {
-	t.Parallel()
-
-	orig := stubBlocksDifference()
-
-	val, err := orig.Value()
-	require.NoError(t, err)
-
-	var decoded BlocksDifference
-
-	require.NoError(t, decoded.Scan(val))
-	assert.Equal(t, orig, decoded)
-
-	require.NoError(t, decoded.Scan(nil))
-	assert.Equal(t, orig, decoded, "nil scan should leave the value untouched")
-
-	assert.Error(t, decoded.Scan("not bytes"))
-	assert.Error(t, decoded.Scan([]byte(`{not json`)))
-}
-
-func Test_Scope_Block(t *testing.T) {
-	t.Parallel()
-
-	scope := Scope{
+// stubScope builds a scope on a draft branch.
+func stubScope() Scope {
+	return Scope{
 		OrganizationID: "org-1",
 		DocumentID:     xid.New(),
 		BranchID:       xid.New(),
 		BranchName:     "draft",
 		BranchDefault:  false,
 	}
+}
+
+func Test_Scope_Block(t *testing.T) {
+	t.Parallel()
+
+	scope := stubScope()
 
 	assert.Equal(t, Block{
 		ID:             scope.BranchID.String() + "-p1",
@@ -102,4 +35,156 @@ func Test_Scope_Block(t *testing.T) {
 		Type:           "paragraph",
 		Text:           "hello",
 	}, scope.Block("p1", "paragraph", "hello"))
+}
+
+func Test_Scope_entries(t *testing.T) {
+	t.Parallel()
+
+	blocks := []document.Block{
+		{
+			Type:  document.BlockNodeParagraph,
+			Attrs: document.Attributes{"uid": "p1"},
+			Content: []document.Block{
+				{Type: document.BlockNodeText, Text: "first"},
+			},
+		},
+		{
+			Type:  document.BlockNodeBulletList,
+			Attrs: document.Attributes{"uid": "l1"},
+			Content: []document.Block{
+				{
+					Type:  document.BlockNodeListItem,
+					Attrs: document.Attributes{"uid": "li1"},
+					Content: []document.Block{
+						{Type: document.BlockNodeText, Text: "nested"},
+					},
+				},
+			},
+		},
+		// marks split the text into multiple fragments; all of them are
+		// indexed, not just the last one.
+		{
+			Type:  document.BlockNodeParagraph,
+			Attrs: document.Attributes{"uid": "p2"},
+			Content: []document.Block{
+				{Type: document.BlockNodeText, Text: "plain "},
+				{Type: document.BlockNodeText, Text: "bold", Marks: []document.Mark{{Type: "bold"}}},
+				{Type: document.BlockNodeText, Text: " tail"},
+			},
+		},
+		// no uid: the text is not indexable.
+		{
+			Type: document.BlockNodeParagraph,
+			Content: []document.Block{
+				{Type: document.BlockNodeText, Text: "orphan"},
+			},
+		},
+		// no text: nothing to index.
+		{Type: document.BlockNodeHorizontalRule, Attrs: document.Attributes{"uid": "hr1"}},
+		// a metric block's title is an attribute, not a text child.
+		{
+			Type:  document.BlockNodeMetricBlock,
+			Attrs: document.Attributes{"uid": "m1", "title": "Pizza Fridays"},
+		},
+		// an untitled metric block has nothing to index.
+		{
+			Type:  document.BlockNodeMetricBlock,
+			Attrs: document.Attributes{"uid": "m2", "title": ""},
+		},
+		{
+			Type:  document.BlockNodeMetricBlock,
+			Attrs: document.Attributes{"uid": "m3"},
+		},
+		// a file block's name is an attribute, not a text child.
+		{
+			Type:  document.BlockNodeFileBlock,
+			Attrs: document.Attributes{"uid": "f1", "name": "quarterly-report.pdf", "size": 2048},
+		},
+		// a file block still uploading has no name to index.
+		{
+			Type:  document.BlockNodeFileBlock,
+			Attrs: document.Attributes{"uid": "f2"},
+		},
+		// an image block is described by its alt and title attributes.
+		{
+			Type:  document.BlockNodeImageBlock,
+			Attrs: document.Attributes{"uid": "i1", "alt": "architecture diagram", "title": "Overview"},
+		},
+		{
+			Type:  document.BlockNodeImageBlock,
+			Attrs: document.Attributes{"uid": "i2", "alt": "login flow"},
+		},
+		// an undescribed image has nothing to index.
+		{
+			Type:  document.BlockNodeImageBlock,
+			Attrs: document.Attributes{"uid": "i3", "src": "/x.png"},
+		},
+	}
+
+	scope := stubScope()
+	res := make(map[string]Block)
+
+	for _, b := range blocks {
+		scope.entries(b, res)
+	}
+
+	assert.Equal(t, map[string]Block{
+		"p1":  scope.Block("p1", "paragraph", "first"),
+		"li1": scope.Block("li1", "listItem", "nested"),
+		"p2":  scope.Block("p2", "paragraph", "plain bold tail"),
+		"m1":  scope.Block("m1", "metricBlock", "Pizza Fridays"),
+		"f1":  scope.Block("f1", "fileBlock", "quarterly-report.pdf"),
+		"i1":  scope.Block("i1", "imageBlock", "architecture diagram Overview"),
+		"i2":  scope.Block("i2", "imageBlock", "login flow"),
+	}, res)
+}
+
+func Test_Entries(t *testing.T) {
+	t.Parallel()
+
+	doc := document.Document{
+		ID:             xid.New(),
+		OrganizationID: "org-1",
+		BranchID:       xid.New(),
+		BranchName:     document.DefaultBranch,
+		DocumentName:   "Runbook",
+		Content: document.RootBlock{
+			Type: document.BlockNodeDoc,
+			Content: []document.Block{
+				{
+					Type:  document.BlockNodeParagraph,
+					Attrs: document.Attributes{"uid": "p1"},
+					Content: []document.Block{
+						{Type: document.BlockNodeText, Text: "hello"},
+					},
+				},
+			},
+		},
+		Default: true,
+	}
+
+	res := Entries(doc)
+
+	// the content block plus the synthetic document-name block.
+	require.Len(t, res, 2)
+
+	nameBlock, ok := res[doc.ID.String()]
+	require.True(t, ok)
+	assert.Equal(t, Block{
+		ID:             doc.BranchID.String() + "-docname",
+		OrganizationID: "org-1",
+		DocumentID:     doc.ID,
+		BranchID:       doc.BranchID,
+		BranchName:     document.DefaultBranch,
+		BranchDefault:  true,
+		Type:           "document",
+		Text:           "Runbook",
+	}, nameBlock)
+
+	contentBlock, ok := res["p1"]
+	require.True(t, ok)
+	assert.Equal(t, doc.BranchID.String()+"-p1", contentBlock.ID)
+	assert.Equal(t, doc.BranchID, contentBlock.BranchID)
+	assert.True(t, contentBlock.BranchDefault)
+	assert.Equal(t, "hello", contentBlock.Text)
 }

@@ -23,8 +23,8 @@ import { signUpWithWorkspace } from "../helpers/workspace"
 
 test.describe("search", () => {
 	// on top of the usual setup, a find waits out the storage debounce
-	// and the ten-second search-indexing pass before the first hit can
-	// appear. slow() triples the budget for that chain.
+	// before the first hit can appear; the index itself follows the
+	// persist directly. slow() triples the budget for that chain.
 	test.beforeEach(() => {
 		test.slow()
 	})

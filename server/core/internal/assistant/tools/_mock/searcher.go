@@ -5,10 +5,9 @@ package mock
 
 import (
 	"context"
-	"sync"
-
 	"github.com/oxynote/oxynote/server/core/internal/assistant/tools"
 	"github.com/oxynote/oxynote/server/core/internal/search"
+	"sync"
 )
 
 // Ensure, that Searcher does implement tools.Searcher.
@@ -19,29 +18,23 @@ var _ tools.Searcher = &Searcher{}
 //
 //	func TestSomethingThatUsesSearcher(t *testing.T) {
 //
-//		// make and configure a mocked tools.Searcher
+//		// make and configure a mocked Searcher
 //		mockedSearcher := &Searcher{
 //			SearchDocumentBlocksFunc: func(ctx context.Context, organizationID string, query string, limit int) ([]search.Block, error) {
 //				panic("mock out the SearchDocumentBlocks method")
 //			},
 //		}
 //
-//		// use mockedSearcher in code that requires tools.Searcher
+//		// use mockedSearcher in code that requires Searcher
 //		// and then make assertions.
 //
 //	}
 type Searcher struct {
-	// ConfiguredFunc mocks the Configured method.
-	ConfiguredFunc func() bool
-
 	// SearchDocumentBlocksFunc mocks the SearchDocumentBlocks method.
 	SearchDocumentBlocksFunc func(ctx context.Context, organizationID string, query string, limit int) ([]search.Block, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// Configured holds details about calls to the Configured method.
-		Configured []struct {
-		}
 		// SearchDocumentBlocks holds details about calls to the SearchDocumentBlocks method.
 		SearchDocumentBlocks []struct {
 			// Ctx is the ctx argument value.
@@ -54,7 +47,6 @@ type Searcher struct {
 			Limit int
 		}
 	}
-	lockConfigured           sync.RWMutex
 	lockSearchDocumentBlocks sync.RWMutex
 }
 
@@ -76,10 +68,10 @@ func (mock *Searcher) SearchDocumentBlocks(ctx context.Context, organizationID s
 	mock.lockSearchDocumentBlocks.Unlock()
 	if mock.SearchDocumentBlocksFunc == nil {
 		var (
-			blocksOut []search.Block
-			errOut    error
+			out0   []search.Block
+			errOut error
 		)
-		return blocksOut, errOut
+		return out0, errOut
 	}
 	return mock.SearchDocumentBlocksFunc(ctx, organizationID, query, limit)
 }
@@ -103,35 +95,5 @@ func (mock *Searcher) SearchDocumentBlocksCalls() []struct {
 	mock.lockSearchDocumentBlocks.RLock()
 	calls = mock.calls.SearchDocumentBlocks
 	mock.lockSearchDocumentBlocks.RUnlock()
-	return calls
-}
-
-// Configured calls ConfiguredFunc.
-func (mock *Searcher) Configured() bool {
-	callInfo := struct {
-	}{}
-	mock.lockConfigured.Lock()
-	mock.calls.Configured = append(mock.calls.Configured, callInfo)
-	mock.lockConfigured.Unlock()
-	if mock.ConfiguredFunc == nil {
-		var (
-			bOut bool
-		)
-		return bOut
-	}
-	return mock.ConfiguredFunc()
-}
-
-// ConfiguredCalls gets all the calls that were made to Configured.
-// Check the length with:
-//
-//	len(mockedSearcher.ConfiguredCalls())
-func (mock *Searcher) ConfiguredCalls() []struct {
-} {
-	var calls []struct {
-	}
-	mock.lockConfigured.RLock()
-	calls = mock.calls.Configured
-	mock.lockConfigured.RUnlock()
 	return calls
 }

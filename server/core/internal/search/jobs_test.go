@@ -1,49 +1,40 @@
 package search
 
 import (
-	"context"
 	"testing"
 
+	"github.com/guregu/null/v5"
+	"github.com/rs/xid"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-// insertRecorder records InsertDocumentSearchJob calls for Jobs tests.
-type insertRecorder struct {
-	diffs []BlocksDifference
-	err   error
-}
-
-func (ir *insertRecorder) InsertDocumentSearchJob(_ context.Context, diff BlocksDifference) error {
-	ir.diffs = append(ir.diffs, diff)
-
-	return ir.err
-}
-
-func Test_NewJobs(t *testing.T) {
+func Test_BranchScope(t *testing.T) {
 	t.Parallel()
 
-	j := NewJobs(true)
-	require.NotNil(t, j)
-	assert.True(t, j.enabled)
+	documentID, branchID := xid.New(), xid.New()
+
+	assert.Equal(t, Job{
+		OrganizationID: "org-1",
+		DocumentID:     null.ValueFrom(documentID),
+		BranchID:       null.ValueFrom(branchID),
+	}, BranchScope("org-1", documentID, branchID))
 }
 
-func Test_Jobs_Enqueue(t *testing.T) {
+func Test_DocumentScope(t *testing.T) {
 	t.Parallel()
 
-	diff := BlocksDifference{
-		RemovedOrganizations: []string{"org1"},
-	}
+	documentID := xid.New()
 
-	// disabled drops the job without touching the inserter.
-	ir := &insertRecorder{}
-	require.NoError(t, NewJobs(false).Enqueue(context.Background(), ir, diff))
-	assert.Empty(t, ir.diffs)
+	assert.Equal(t, Job{
+		OrganizationID: "org-1",
+		DocumentID:     null.ValueFrom(documentID),
+	}, DocumentScope("org-1", documentID))
+}
 
-	// enabled writes through and propagates the inserter's error.
-	ir = &insertRecorder{err: assert.AnError}
-	err := NewJobs(true).Enqueue(context.Background(), ir, diff)
-	assert.Equal(t, assert.AnError, err)
-	require.Len(t, ir.diffs, 1)
-	assert.Equal(t, diff, ir.diffs[0])
+func Test_OrganizationScope(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, Job{
+		OrganizationID: "org-1",
+	}, OrganizationScope("org-1"))
 }

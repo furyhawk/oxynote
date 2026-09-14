@@ -187,3 +187,9 @@ func Test_Writer_Flush(t *testing.T) {
 	require.NoError(t, w.Flush())
 	assert.Equal(t, "data", b.String())
 }
+
+func Test_IgnoreBleveWorkers(t *testing.T) {
+	t.Parallel()
+
+	assert.NotNil(t, IgnoreBleveWorkers())
+}

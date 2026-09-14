@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/guregu/null/v5"
@@ -227,7 +226,7 @@ func Test_Handler_UpdateDocumentBranchByIDUnsafe(t *testing.T) {
 				FetchDocumentMaintainersFunc: func(context.Context, xid.ID, string) ([]string, error) {
 					return []string{"u1", "u9"}, nil
 				},
-				InsertDocumentSearchJobFunc: func(context.Context, search.BlocksDifference) error {
+				InsertSearchJobFunc: func(context.Context, search.Job) error {
 					return errors.New("boom")
 				},
 			},
@@ -307,18 +306,14 @@ func Test_Handler_UpdateDocumentBranchByIDUnsafe(t *testing.T) {
 			assert.Len(t, c.Tx.CommitCalls(), c.Committed)
 			assert.Equal(t, c.Metadata, cnt.metadata)
 			assert.Equal(t, c.Maintainers, cnt.maintainers)
-			assert.Len(t, c.Tx.InsertDocumentSearchJobCalls(), c.SearchJobs)
+			assert.Len(t, c.Tx.InsertSearchJobCalls(), c.SearchJobs)
 
-			// the diff is scoped to the persisted branch: entries are keyed
-			// by its id, whichever branch it is.
+			// the job is scoped to the persisted branch, whichever branch
+			// it is.
 			if !c.BranchID.IsZero() {
-				diff := c.Tx.InsertDocumentSearchJobCalls()[0].Diff
-				require.NotEmpty(t, diff.Updated)
-
-				for _, b := range diff.Updated {
-					assert.Equal(t, c.BranchID, b.BranchID)
-					assert.True(t, strings.HasPrefix(b.ID, c.BranchID.String()+"-"))
-				}
+				job := c.Tx.InsertSearchJobCalls()[0].Job
+				assert.Equal(t, c.BranchID, job.BranchID.V)
+				assert.True(t, job.DocumentID.Valid)
 			}
 		})
 	}
@@ -782,7 +777,7 @@ func Test_Handler_CreateDocumentBranch(t *testing.T) {
 				},
 			},
 			Tx: &TxMock{
-				InsertDocumentSearchJobFunc: func(context.Context, search.BlocksDifference) error {
+				InsertSearchJobFunc: func(context.Context, search.Job) error {
 					return errors.New("boom")
 				},
 			},
@@ -846,16 +841,10 @@ func Test_Handler_CreateDocumentBranch(t *testing.T) {
 				assert.Equal(t, _branchID, c.Tx.CopyBranchTagsCalls()[0].FromBranchID)
 				assert.Equal(t, forked.BranchID, c.Tx.CopyBranchTagsCalls()[0].ToBranchID)
 
-				// the fork's entries are added under its own branch id before
-				// the commit, so the branch is searchable without an edit.
-				require.Len(t, c.Tx.InsertDocumentSearchJobCalls(), 1)
-				diff := c.Tx.InsertDocumentSearchJobCalls()[0].Diff
-				require.NotEmpty(t, diff.Added)
-
-				for _, b := range diff.Added {
-					assert.Equal(t, forked.BranchID, b.BranchID)
-					assert.True(t, strings.HasPrefix(b.ID, forked.BranchID.String()+"-"))
-				}
+				// the fork is queued under its own branch id before the
+				// commit, so the branch is searchable without an edit.
+				require.Len(t, c.Tx.InsertSearchJobCalls(), 1)
+				assert.Equal(t, search.BranchScope("org1", forked.ID, forked.BranchID), c.Tx.InsertSearchJobCalls()[0].Job)
 			}
 
 			if len(c.CopiedHooks) == 0 {
@@ -978,7 +967,7 @@ func Test_Handler_DeleteDocumentBranch(t *testing.T) {
 				},
 			},
 			Tx: &TxMock{
-				InsertDocumentSearchJobFunc: func(context.Context, search.BlocksDifference) error {
+				InsertSearchJobFunc: func(context.Context, search.Job) error {
 					return errors.New("boom")
 				},
 			},
@@ -1024,13 +1013,11 @@ func Test_Handler_DeleteDocumentBranch(t *testing.T) {
 			assert.Len(t, tx.DeleteDocumentBranchByIDCalls(), c.Deleted)
 			assert.Len(t, tx.CommitCalls(), c.Committed)
 
-			// the branch row is gone with its content, so the index is
-			// cleared by branch id.
+			// the branch row is gone with its content, so the worker finds
+			// nothing under the scope and clears it.
 			if c.RespCode == http.StatusNoContent {
-				require.Len(t, tx.InsertDocumentSearchJobCalls(), 1)
-				assert.Equal(t, search.BlocksDifference{
-					RemovedBranches: []search.BranchRemoval{{DocumentID: _documentID, BranchID: _branchID}},
-				}, tx.InsertDocumentSearchJobCalls()[0].Diff)
+				require.Len(t, tx.InsertSearchJobCalls(), 1)
+				assert.Equal(t, search.BranchScope("org1", _documentID, _branchID), tx.InsertSearchJobCalls()[0].Job)
 			}
 		})
 	}
@@ -1203,7 +1190,7 @@ func Test_Handler_UpdateDocumentBranch(t *testing.T) {
 				},
 			},
 			Tx: &TxMock{
-				InsertDocumentSearchJobFunc: func(context.Context, search.BlocksDifference) error {
+				InsertSearchJobFunc: func(context.Context, search.Job) error {
 					return errors.New("boom")
 				},
 			},
@@ -1268,7 +1255,7 @@ func Test_Handler_UpdateDocumentBranch(t *testing.T) {
 
 			assert.Equal(t, c.RespCode, rec.Code)
 			assert.Len(t, tx.UpdateDocumentBranchMetadataCalls(), c.Updated)
-			assert.Len(t, tx.InsertDocumentSearchJobCalls(), c.Jobs)
+			assert.Len(t, tx.InsertSearchJobCalls(), c.Jobs)
 			assert.Equal(t, c.Metadata, cnt.metadata)
 
 			if c.RespCode == http.StatusOK {
@@ -1279,13 +1266,10 @@ func Test_Handler_UpdateDocumentBranch(t *testing.T) {
 				assert.Len(t, tx.CommitCalls(), 1)
 			}
 
-			// a rename rewrites every entry of the branch, since each one
-			// carries the branch name.
+			// a rename resyncs the branch, since every entry carries the
+			// branch name.
 			if c.Jobs == 1 && c.RespCode == http.StatusOK {
-				diff := tx.InsertDocumentSearchJobCalls()[0].Diff
-				require.Len(t, diff.Updated, 1)
-				assert.Equal(t, _branchID.String()+"-docname", diff.Updated[0].ID)
-				assert.Equal(t, "Renamed", diff.Updated[0].BranchName)
+				assert.Equal(t, search.BranchScope("org1", _documentID, _branchID), tx.InsertSearchJobCalls()[0].Job)
 			}
 		})
 	}

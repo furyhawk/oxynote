@@ -22,7 +22,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m, testutil.IgnoreBleveWorkers())
 }
 
 // chatServer serves HandleChat with a test session on every request and

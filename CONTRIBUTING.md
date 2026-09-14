@@ -49,9 +49,10 @@ picked up by simply running them again.
 The dev stack reads `docker/env/*.local.env`, which `make setup` creates
 from the committed `*.example.env` templates. The files are gitignored and
 the defaults work out of the box. Integrations (GitHub app, Slack app, AI
-assistant, email, changedetection.io, Meilisearch) are optional and stay
-disabled until their variables are set; the frontend hides features the
-deployment does not offer.
+assistant, email, changedetection.io) are optional and stay disabled until
+their variables are set; the frontend hides features the deployment does
+not offer. Search is built in: core keeps its index on the container's
+volume and rebuilds it from Postgres when it is missing.
 
 ```sh
 make check-env   # report variables that drifted between the templates and your local files

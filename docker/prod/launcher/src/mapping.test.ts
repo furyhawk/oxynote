@@ -194,6 +194,16 @@ describe("buildChildEnvs", () => {
 		expect(envs.core.OXYNOTE_CORE_OBJECT_STORAGE_BUCKET).toBe("")
 	})
 
+	// the index is a cache of the database, kept on the volume so a restart
+	// does not rebuild it; operators never point it elsewhere
+	it("keeps the search index on the data volume", ({ expect }) => {
+		const envs = build()
+
+		expect(envs.core.OXYNOTE_CORE_SEARCH_INDEX_PATH).toBe(
+			"/oxynote/data/search",
+		)
+	})
+
 	it("keeps the storage path alongside a configured object store", ({
 		expect,
 	}) => {
@@ -248,7 +258,6 @@ describe("buildChildEnvs", () => {
 	it("leaves a disabled feature's variables empty", ({ expect }) => {
 		const envs = build()
 
-		expect(envs.core.OXYNOTE_CORE_MEILISEARCH_URL).toBe("")
 		expect(envs.core.OXYNOTE_CORE_EMAIL_SMTP_HOST).toBe("")
 		expect(envs.core.OXYNOTE_CORE_GITHUB_APP_ID).toBe("")
 		expect(envs.core.OXYNOTE_CORE_SLACK_CLIENT_ID).toBe("")
@@ -272,10 +281,6 @@ describe("buildChildEnvs", () => {
 					tls: "starttls",
 				},
 				emailFromAddress: "Oxynote <team@example.com>",
-				meilisearch: {
-					url: "http://meilisearch:7700",
-					masterKey: "master",
-				},
 				githubApp: {
 					appId: "123",
 					appSlug: "oxynote",
@@ -308,9 +313,6 @@ describe("buildChildEnvs", () => {
 		expect(envs.core.OXYNOTE_CORE_EMAIL_SMTP_TLS).toBe("starttls")
 		expect(envs.core.OXYNOTE_CORE_EMAIL_FROM_ADDRESS).toBe(
 			"Oxynote <team@example.com>",
-		)
-		expect(envs.core.OXYNOTE_CORE_MEILISEARCH_MASTER_KEY).toBe(
-			"master",
 		)
 		expect(envs.core.OXYNOTE_CORE_GITHUB_APP_ID).toBe("123")
 		expect(envs.core.OXYNOTE_CORE_GITHUB_PRIVATE_KEY_PATH).toBe(

@@ -59,10 +59,9 @@ type Deps struct {
 	// search is the full-text index behind search_documents.
 	search Searcher
 
-	// jobs is the way into the search-job queue: it decides whether a
-	// deployment indexes at all, so writes queue through it instead of
-	// hitting the database directly.
-	jobs *search.Jobs
+	// searchTrigger runs the search-job worker once a write that queued a
+	// job has committed.
+	searchTrigger SearchTrigger
 
 	// runners hands out the runner a data-source tool reads through.
 	runners DataSourceRunners
@@ -112,7 +111,7 @@ func NewDeps(
 	log *slog.Logger,
 	db DB,
 	searcher Searcher,
-	jobs *search.Jobs,
+	searchTrigger SearchTrigger,
 	runners DataSourceRunners,
 	githubMan *github.Manager,
 	webchangeClient *webchange.Client,
@@ -131,7 +130,7 @@ func NewDeps(
 		),
 		db:              db,
 		search:          searcher,
-		jobs:            jobs,
+		searchTrigger:   searchTrigger,
 		runners:         runners,
 		githubMan:       githubMan,
 		webchangeClient: webchangeClient,
@@ -451,7 +450,7 @@ func (i *input) CreateDocument(doc document.Document) error {
 
 	// without this the document is invisible to search until someone
 	// edits it, since only the persist path queues a job.
-	if err := i.jobs.Enqueue(i.ctx, tx, search.BlocksDiff(nil, doc.Search())); err != nil {
+	if err := tx.InsertSearchJob(i.ctx, search.BranchScope(i.orgID, doc.ID, doc.BranchID)); err != nil {
 		return fmt.Errorf("insert search job: %w", err)
 	}
 
@@ -459,6 +458,7 @@ func (i *input) CreateDocument(doc document.Document) error {
 		return fmt.Errorf("commit: %w", err)
 	}
 
+	i.searchTrigger.Trigger()
 	i.recordTouched(doc.ID, doc.BranchID)
 
 	return nil
@@ -511,13 +511,19 @@ func (i *input) DeleteDocument(id xid.ID) error {
 		return ErrUnknownDocument
 	}
 
-	if err := i.jobs.Enqueue(i.ctx, tx, search.BlocksDifference{
-		RemovedDocuments: ids,
-	}); err != nil {
-		return fmt.Errorf("insert search job: %w", err)
+	for _, id := range ids {
+		if err := tx.InsertSearchJob(i.ctx, search.DocumentScope(i.orgID, id)); err != nil {
+			return fmt.Errorf("insert search job: %w", err)
+		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	i.searchTrigger.Trigger()
+
+	return nil
 }
 
 // MoveDocument re-parents the document doc describes.
@@ -1317,9 +1323,9 @@ type Tx interface {
 	// document's maintainer set. Used by create_document.
 	UpsertDocumentMaintainers(ctx context.Context, documentID xid.ID, organizationID string, maintainerIDs []string) error
 
-	// InsertDocumentSearchJob should queue the search index update for a
-	// document. Used by create_document and delete_document.
-	InsertDocumentSearchJob(ctx context.Context, diff search.BlocksDifference) error
+	// InsertSearchJob should queue the search job's scope. Used by
+	// create_document and delete_document.
+	InsertSearchJob(ctx context.Context, job search.Job) error
 
 	// DeleteDocument should remove a document and report the ids of the
 	// document and of every cascade-deleted descendant. Used by
@@ -1327,15 +1333,19 @@ type Tx interface {
 	DeleteDocument(ctx context.Context, id xid.ID, organizationID string) ([]xid.ID, error)
 }
 
+// SearchTrigger runs the search-job worker once a job has committed.
+//
+//go:generate ../../../scripts/codegen/mock -t internal SearchTrigger search_trigger
+type SearchTrigger interface {
+	// Trigger should run a search-job pass right away.
+	Trigger()
+}
+
 // Searcher is the full-text search surface search_documents uses.
-// The document/search Meilisearch client satisfies it.
+// The search index satisfies it.
 //
 //go:generate ../../../scripts/codegen/mock -t both Searcher searcher
 type Searcher interface {
-	// Configured should report whether search is configured on this
-	// deployment.
-	Configured() bool
-
 	// SearchDocumentBlocks should return blocks whose text matches the
 	// query, scoped to the organization and capped at limit hits.
 	SearchDocumentBlocks(ctx context.Context, organizationID, query string, limit int) ([]search.Block, error)

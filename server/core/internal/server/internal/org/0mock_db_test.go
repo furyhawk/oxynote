@@ -49,8 +49,8 @@ var _ DB = &DBMock{}
 //			InsertDocumentFunc: func(ctx context.Context, doc document.Document) error {
 //				panic("mock out the InsertDocument method")
 //			},
-//			InsertDocumentSearchJobFunc: func(ctx context.Context, diff search.BlocksDifference) error {
-//				panic("mock out the InsertDocumentSearchJob method")
+//			InsertSearchJobFunc: func(ctx context.Context, job search.Job) error {
+//				panic("mock out the InsertSearchJob method")
 //			},
 //			InsertTagFunc: func(ctx context.Context, t tag.Tag) error {
 //				panic("mock out the InsertTag method")
@@ -92,8 +92,8 @@ type DBMock struct {
 	// InsertDocumentFunc mocks the InsertDocument method.
 	InsertDocumentFunc func(ctx context.Context, doc document.Document) error
 
-	// InsertDocumentSearchJobFunc mocks the InsertDocumentSearchJob method.
-	InsertDocumentSearchJobFunc func(ctx context.Context, diff search.BlocksDifference) error
+	// InsertSearchJobFunc mocks the InsertSearchJob method.
+	InsertSearchJobFunc func(ctx context.Context, job search.Job) error
 
 	// InsertTagFunc mocks the InsertTag method.
 	InsertTagFunc func(ctx context.Context, t tag.Tag) error
@@ -168,12 +168,12 @@ type DBMock struct {
 			// Doc is the doc argument value.
 			Doc document.Document
 		}
-		// InsertDocumentSearchJob holds details about calls to the InsertDocumentSearchJob method.
-		InsertDocumentSearchJob []struct {
+		// InsertSearchJob holds details about calls to the InsertSearchJob method.
+		InsertSearchJob []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Diff is the diff argument value.
-			Diff search.BlocksDifference
+			// Job is the job argument value.
+			Job search.Job
 		}
 		// InsertTag holds details about calls to the InsertTag method.
 		InsertTag []struct {
@@ -211,7 +211,7 @@ type DBMock struct {
 	lockFetchOrganizationMembers                  sync.RWMutex
 	lockInsertDataSource                          sync.RWMutex
 	lockInsertDocument                            sync.RWMutex
-	lockInsertDocumentSearchJob                   sync.RWMutex
+	lockInsertSearchJob                           sync.RWMutex
 	lockInsertTag                                 sync.RWMutex
 	lockUpdateOrganizationLogo                    sync.RWMutex
 	lockUpsertDocumentMaintainers                 sync.RWMutex
@@ -541,42 +541,42 @@ func (mock *DBMock) InsertDocumentCalls() []struct {
 	return calls
 }
 
-// InsertDocumentSearchJob calls InsertDocumentSearchJobFunc.
-func (mock *DBMock) InsertDocumentSearchJob(ctx context.Context, diff search.BlocksDifference) error {
+// InsertSearchJob calls InsertSearchJobFunc.
+func (mock *DBMock) InsertSearchJob(ctx context.Context, job search.Job) error {
 	callInfo := struct {
-		Ctx  context.Context
-		Diff search.BlocksDifference
+		Ctx context.Context
+		Job search.Job
 	}{
-		Ctx:  ctx,
-		Diff: diff,
+		Ctx: ctx,
+		Job: job,
 	}
-	mock.lockInsertDocumentSearchJob.Lock()
-	mock.calls.InsertDocumentSearchJob = append(mock.calls.InsertDocumentSearchJob, callInfo)
-	mock.lockInsertDocumentSearchJob.Unlock()
-	if mock.InsertDocumentSearchJobFunc == nil {
+	mock.lockInsertSearchJob.Lock()
+	mock.calls.InsertSearchJob = append(mock.calls.InsertSearchJob, callInfo)
+	mock.lockInsertSearchJob.Unlock()
+	if mock.InsertSearchJobFunc == nil {
 		var (
 			errOut error
 		)
 		return errOut
 	}
-	return mock.InsertDocumentSearchJobFunc(ctx, diff)
+	return mock.InsertSearchJobFunc(ctx, job)
 }
 
-// InsertDocumentSearchJobCalls gets all the calls that were made to InsertDocumentSearchJob.
+// InsertSearchJobCalls gets all the calls that were made to InsertSearchJob.
 // Check the length with:
 //
-//	len(mockedDB.InsertDocumentSearchJobCalls())
-func (mock *DBMock) InsertDocumentSearchJobCalls() []struct {
-	Ctx  context.Context
-	Diff search.BlocksDifference
+//	len(mockedDB.InsertSearchJobCalls())
+func (mock *DBMock) InsertSearchJobCalls() []struct {
+	Ctx context.Context
+	Job search.Job
 } {
 	var calls []struct {
-		Ctx  context.Context
-		Diff search.BlocksDifference
+		Ctx context.Context
+		Job search.Job
 	}
-	mock.lockInsertDocumentSearchJob.RLock()
-	calls = mock.calls.InsertDocumentSearchJob
-	mock.lockInsertDocumentSearchJob.RUnlock()
+	mock.lockInsertSearchJob.RLock()
+	calls = mock.calls.InsertSearchJob
+	mock.lockInsertSearchJob.RUnlock()
 	return calls
 }
 

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/guregu/null/v5"
-	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/oxynote/oxynote/server/core/pkg/httpserver"
 	"github.com/oxynote/oxynote/server/core/pkg/strutil"
 	"github.com/oxynote/oxynote/server/core/pkg/timeutil"
@@ -297,25 +296,6 @@ func (d Document) HistoryEntry() HistoryEntry {
 		RawContent: d.RawContent,
 		CreatedAt:  d.UpdatedAt,
 	}
-}
-
-// Search converts the document's branch to search blocks for indexing.
-func (d Document) Search() map[string]search.Block {
-	scope := search.Scope{
-		OrganizationID: d.OrganizationID,
-		DocumentID:     d.ID,
-		BranchID:       d.BranchID,
-		BranchName:     d.BranchName,
-		BranchDefault:  d.Default,
-	}
-
-	res := d.Content.Search(scope)
-
-	// a special block carrying the document name. The map is keyed by the
-	// document ID, which no content block shares.
-	res[d.ID.String()] = scope.Block("docname", "document", d.DocumentName)
-
-	return res
 }
 
 // HistoryEntry represents one entry in a document's history.

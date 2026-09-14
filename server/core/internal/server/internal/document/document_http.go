@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"unicode/utf8"
 
 	"github.com/guregu/null/v5"
 	"github.com/oxynote/oxynote/server/core/internal/apps/github"
@@ -23,6 +24,11 @@ import (
 	"github.com/oxynote/oxynote/server/core/pkg/sqlutil"
 	"github.com/rs/xid"
 )
+
+// _searchQueryMaxLength caps a search query in characters. Every term
+// expands to a dictionary walk inside the process, so the query size
+// bounds the work one request can ask for.
+const _searchQueryMaxLength = 200
 
 // ErrInvalidSearchQuery is returned when the search query is invalid.
 var ErrInvalidSearchQuery = errutil.New(http.StatusBadRequest, "document.invalid_search_query", "invalid search query")
@@ -44,8 +50,8 @@ type Handler struct {
 	db              DB
 	githubMan       *github.Manager
 	webchangeClient *webchange.Client
-	searchGateway   SearchGateway
-	searchJobs      *search.Jobs
+	searcher        Searcher
+	searchTrigger   SearchTrigger
 	notifPub        notification.Publisher
 	storer          Storer
 
@@ -72,8 +78,8 @@ func NewHandler(
 	db DB,
 	githubMan *github.Manager,
 	webchangeClient *webchange.Client,
-	searchGateway SearchGateway,
-	searchJobs *search.Jobs,
+	searcher Searcher,
+	searchTrigger SearchTrigger,
 	notifPub notification.Publisher,
 	storer Storer,
 ) *Handler {
@@ -82,8 +88,8 @@ func NewHandler(
 		db:              db,
 		githubMan:       githubMan,
 		webchangeClient: webchangeClient,
-		searchGateway:   searchGateway,
-		searchJobs:      searchJobs,
+		searcher:        searcher,
+		searchTrigger:   searchTrigger,
 		notifPub:        notifPub,
 		storer:          storer,
 	}
@@ -515,7 +521,7 @@ func (h *Handler) SearchDocuments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := r.URL.Query().Get("q")
-	if q == "" {
+	if q == "" || utf8.RuneCountInString(q) > _searchQueryMaxLength {
 		httpserver.RespondError(
 			h.log,
 			w,
@@ -525,7 +531,7 @@ func (h *Handler) SearchDocuments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := h.searchGateway.SearchDocuments(r.Context(), session.ActiveOrganizationID, q)
+	data, err := h.searcher.SearchDocuments(r.Context(), session.ActiveOrganizationID, q)
 	if err != nil {
 		httpserver.RespondError(h.log, w, err)
 		return
@@ -691,10 +697,8 @@ func (h *Handler) DeleteDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(ids) != 0 {
-		if err = h.searchJobs.Enqueue(r.Context(), tx, search.BlocksDifference{
-			RemovedDocuments: ids,
-		}); err != nil {
+	for _, id := range ids {
+		if err = tx.InsertSearchJob(r.Context(), search.DocumentScope(session.ActiveOrganizationID, id)); err != nil {
 			httpserver.RespondError(h.log, w, err)
 			return
 		}
@@ -705,6 +709,8 @@ func (h *Handler) DeleteDocument(w http.ResponseWriter, r *http.Request) {
 		httpserver.RespondError(h.log, w, err)
 		return
 	}
+
+	h.searchTrigger.Trigger()
 
 	if h.tree.changeCallback != nil {
 		h.tree.changeCallback(session.ActiveOrganizationID, doc.ParentID)
@@ -903,7 +909,7 @@ func (h *Handler) insertDocumentTx(
 		return err
 	}
 
-	if err := h.searchJobs.Enqueue(ctx, tx, search.BlocksDiff(nil, doc.Search())); err != nil {
+	if err := tx.InsertSearchJob(ctx, search.BranchScope(session.ActiveOrganizationID, doc.ID, doc.BranchID)); err != nil {
 		return err
 	}
 
@@ -921,7 +927,13 @@ func (h *Handler) insertDocumentTx(
 		return err
 	}
 
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	h.searchTrigger.Trigger()
+
+	return nil
 }
 
 // DB is an interface that combines sqlutil.DB and DBAgent.
@@ -979,8 +991,8 @@ type DocumentsDBAgent interface {
 	// InsertDocument should insert the document.
 	InsertDocument(ctx context.Context, doc documentCore.Document) error
 
-	// InsertDocumentSearchJob should insert the document search job.
-	InsertDocumentSearchJob(ctx context.Context, diff search.BlocksDifference) error
+	// InsertSearchJob should queue the search job's scope.
+	InsertSearchJob(ctx context.Context, job search.Job) error
 
 	// CheckDocumentExists returns nil if the document exists and belongs to the given organization.
 	CheckDocumentExists(ctx context.Context, id xid.ID, organizationID string) error
@@ -1112,14 +1124,19 @@ type Storer interface {
 	Copy(ctx context.Context, srcFolder, srcID, dstFolder, dstID string) error
 }
 
-// SearchGateway is an interface that handles communication with the search engine.
+// SearchTrigger runs the search-job worker once a job has committed.
 //
-//go:generate ../../../../scripts/codegen/mock -t internal SearchGateway
-type SearchGateway interface {
-	// Configured should report whether search is configured on this
-	// deployment.
-	Configured() bool
+//go:generate ../../../../scripts/codegen/mock -t internal SearchTrigger search_trigger
+type SearchTrigger interface {
+	// Trigger should run a search-job pass right away.
+	Trigger()
+}
 
+// Searcher is the full-text search surface the search endpoint answers
+// from.
+//
+//go:generate ../../../../scripts/codegen/mock -t internal Searcher searcher
+type Searcher interface {
 	// SearchDocuments should find the documents matching the query.
 	SearchDocuments(ctx context.Context, organizationID, query string) ([]byte, error)
 }

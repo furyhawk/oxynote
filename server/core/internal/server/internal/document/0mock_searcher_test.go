@@ -8,37 +8,31 @@ import (
 	"sync"
 )
 
-// Ensure, that SearchGatewayMock does implement SearchGateway.
+// Ensure, that SearcherMock does implement Searcher.
 // If this is not the case, regenerate this file with moq.
-var _ SearchGateway = &SearchGatewayMock{}
+var _ Searcher = &SearcherMock{}
 
-// SearchGatewayMock is a mock implementation of SearchGateway.
+// SearcherMock is a mock implementation of Searcher.
 //
-//	func TestSomethingThatUsesSearchGateway(t *testing.T) {
+//	func TestSomethingThatUsesSearcher(t *testing.T) {
 //
-//		// make and configure a mocked SearchGateway
-//		mockedSearchGateway := &SearchGatewayMock{
+//		// make and configure a mocked Searcher
+//		mockedSearcher := &SearcherMock{
 //			SearchDocumentsFunc: func(ctx context.Context, organizationID string, query string) ([]byte, error) {
 //				panic("mock out the SearchDocuments method")
 //			},
 //		}
 //
-//		// use mockedSearchGateway in code that requires SearchGateway
+//		// use mockedSearcher in code that requires Searcher
 //		// and then make assertions.
 //
 //	}
-type SearchGatewayMock struct {
-	// ConfiguredFunc mocks the Configured method.
-	ConfiguredFunc func() bool
-
+type SearcherMock struct {
 	// SearchDocumentsFunc mocks the SearchDocuments method.
 	SearchDocumentsFunc func(ctx context.Context, organizationID string, query string) ([]byte, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// Configured holds details about calls to the Configured method.
-		Configured []struct {
-		}
 		// SearchDocuments holds details about calls to the SearchDocuments method.
 		SearchDocuments []struct {
 			// Ctx is the ctx argument value.
@@ -49,12 +43,11 @@ type SearchGatewayMock struct {
 			Query string
 		}
 	}
-	lockConfigured      sync.RWMutex
 	lockSearchDocuments sync.RWMutex
 }
 
 // SearchDocuments calls SearchDocumentsFunc.
-func (mock *SearchGatewayMock) SearchDocuments(ctx context.Context, organizationID string, query string) ([]byte, error) {
+func (mock *SearcherMock) SearchDocuments(ctx context.Context, organizationID string, query string) ([]byte, error) {
 	callInfo := struct {
 		Ctx            context.Context
 		OrganizationID string
@@ -69,10 +62,10 @@ func (mock *SearchGatewayMock) SearchDocuments(ctx context.Context, organization
 	mock.lockSearchDocuments.Unlock()
 	if mock.SearchDocumentsFunc == nil {
 		var (
-			bytesOut []byte
-			errOut   error
+			out0   []byte
+			errOut error
 		)
-		return bytesOut, errOut
+		return out0, errOut
 	}
 	return mock.SearchDocumentsFunc(ctx, organizationID, query)
 }
@@ -80,8 +73,8 @@ func (mock *SearchGatewayMock) SearchDocuments(ctx context.Context, organization
 // SearchDocumentsCalls gets all the calls that were made to SearchDocuments.
 // Check the length with:
 //
-//	len(mockedSearchGateway.SearchDocumentsCalls())
-func (mock *SearchGatewayMock) SearchDocumentsCalls() []struct {
+//	len(mockedSearcher.SearchDocumentsCalls())
+func (mock *SearcherMock) SearchDocumentsCalls() []struct {
 	Ctx            context.Context
 	OrganizationID string
 	Query          string
@@ -94,35 +87,5 @@ func (mock *SearchGatewayMock) SearchDocumentsCalls() []struct {
 	mock.lockSearchDocuments.RLock()
 	calls = mock.calls.SearchDocuments
 	mock.lockSearchDocuments.RUnlock()
-	return calls
-}
-
-// Configured calls ConfiguredFunc.
-func (mock *SearchGatewayMock) Configured() bool {
-	callInfo := struct {
-	}{}
-	mock.lockConfigured.Lock()
-	mock.calls.Configured = append(mock.calls.Configured, callInfo)
-	mock.lockConfigured.Unlock()
-	if mock.ConfiguredFunc == nil {
-		var (
-			bOut bool
-		)
-		return bOut
-	}
-	return mock.ConfiguredFunc()
-}
-
-// ConfiguredCalls gets all the calls that were made to Configured.
-// Check the length with:
-//
-//	len(mockedSearchGateway.ConfiguredCalls())
-func (mock *SearchGatewayMock) ConfiguredCalls() []struct {
-} {
-	var calls []struct {
-	}
-	mock.lockConfigured.RLock()
-	calls = mock.calls.Configured
-	mock.lockConfigured.RUnlock()
 	return calls
 }

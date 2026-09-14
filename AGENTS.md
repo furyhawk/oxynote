@@ -139,9 +139,8 @@ Component commands are in the nested files.
   auth-realtime `OXYNOTE_AUTH_REALTIME_*`, the frontend `NUXT_PUBLIC_*`.
 - **`_DSN` vs `_URL`**: a connection string carrying credentials ends in
   `_DSN`; a plain address ends in `_URL` and any credential is its own
-  variable (`MEILISEARCH_URL` + `_MASTER_KEY`). The suffix says whether the
-  value is a secret, so the same dependency is never `_DSN` on one side of
-  the trust boundary and `_URL` on the other.
+  variable (`CHANGEDETECTION_API_URL` + `_API_KEY`). The suffix says whether
+  the value is a secret and never changes across the trust boundary.
 
 ## Code style (TS/JS — web and auth-realtime)
 

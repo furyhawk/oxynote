@@ -32,7 +32,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m, testutil.IgnoreBleveWorkers())
 }
 
 // addSession stores a test session on the request context.
@@ -89,7 +89,7 @@ func Test_NewHandler(t *testing.T) {
 	githubMan := &github.Manager{}
 	webchangeClient := &webchange.Client{}
 
-	searchJobs := search.NewJobs(true)
+	searchTrigger := &SearchTriggerMock{}
 
 	hdl := NewHandler(
 		slog.New(slog.DiscardHandler),
@@ -97,7 +97,7 @@ func Test_NewHandler(t *testing.T) {
 		storer,
 		githubMan,
 		webchangeClient,
-		searchJobs,
+		searchTrigger,
 		"loc",
 	)
 	require.NotNil(t, hdl)
@@ -106,7 +106,7 @@ func Test_NewHandler(t *testing.T) {
 	assert.Same(t, storer, hdl.storer)
 	assert.Same(t, githubMan, hdl.githubMan)
 	assert.Same(t, webchangeClient, hdl.webchangeClient)
-	assert.Same(t, searchJobs, hdl.searchJobs)
+	assert.Same(t, searchTrigger, hdl.searchTrigger)
 	assert.Equal(t, "loc", hdl.logoLocation)
 }
 
@@ -233,7 +233,7 @@ func Test_Handler_InitializeOrganization(t *testing.T) {
 
 	wasSearchJobInserted := func(count int) check {
 		return func(t *testing.T, _ *DBMock, tx *TxMock, _ *httptest.ResponseRecorder) {
-			assert.Len(t, tx.InsertDocumentSearchJobCalls(), count)
+			assert.Len(t, tx.InsertSearchJobCalls(), count)
 		}
 	}
 
@@ -374,7 +374,7 @@ func Test_Handler_InitializeOrganization(t *testing.T) {
 		"Search job insertion error": {
 			Members: []string{"member1"},
 			Tx: &TxMock{
-				InsertDocumentSearchJobFunc: func(context.Context, search.BlocksDifference) error {
+				InsertSearchJobFunc: func(context.Context, search.Job) error {
 					return errors.New("boom")
 				},
 			},
@@ -433,9 +433,9 @@ func Test_Handler_InitializeOrganization(t *testing.T) {
 			}
 
 			hdl := Handler{
-				log:        slog.New(slog.DiscardHandler),
-				db:         withTx(db, c.Tx, c.BeginErr),
-				searchJobs: search.NewJobs(true),
+				log:           slog.New(slog.DiscardHandler),
+				db:            withTx(db, c.Tx, c.BeginErr),
+				searchTrigger: &SearchTriggerMock{},
 			}
 
 			req := httptest.NewRequest(http.MethodPost, "http://test.com/", http.NoBody)
@@ -811,14 +811,14 @@ func Test_Handler_TeardownOrganization(t *testing.T) {
 
 	wasSearchJobInserted := func(count int) check {
 		return func(t *testing.T, _ *DBMock, tx *TxMock, _ *StorerMock, _ *httptest.ResponseRecorder) {
-			ff := tx.InsertDocumentSearchJobCalls()
+			ff := tx.InsertSearchJobCalls()
 			require.Len(t, ff, count)
 
 			if count == 0 {
 				return
 			}
 
-			assert.Equal(t, []string{"org2"}, ff[0].Diff.RemovedOrganizations)
+			assert.Equal(t, search.OrganizationScope("org2"), ff[0].Job)
 		}
 	}
 
@@ -928,7 +928,7 @@ func Test_Handler_TeardownOrganization(t *testing.T) {
 		"Search job insertion error": {
 			DB: &DBMock{},
 			Tx: &TxMock{
-				InsertDocumentSearchJobFunc: func(context.Context, search.BlocksDifference) error {
+				InsertSearchJobFunc: func(context.Context, search.Job) error {
 					return errors.New("boom")
 				},
 			},
@@ -1014,10 +1014,10 @@ func Test_Handler_TeardownOrganization(t *testing.T) {
 			}
 
 			hdl := Handler{
-				log:        slog.New(slog.DiscardHandler),
-				db:         withTx(c.DB, c.Tx, c.BeginErr),
-				storer:     storer,
-				searchJobs: search.NewJobs(true),
+				log:           slog.New(slog.DiscardHandler),
+				db:            withTx(c.DB, c.Tx, c.BeginErr),
+				storer:        storer,
+				searchTrigger: &SearchTriggerMock{},
 			}
 
 			req := httptest.NewRequest(http.MethodPost, "http://test.com/", http.NoBody)

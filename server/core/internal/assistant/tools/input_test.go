@@ -34,7 +34,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m, testutil.IgnoreBleveWorkers())
 }
 
 // _testDocID is the document id the tool tests address.
@@ -72,12 +72,10 @@ func testDeps(db *DBMock, applier *EditApplierMock, tree *TreeNotifierMock) *Dep
 	}
 
 	d := &Deps{
-		log: discardLog(),
-		db:  db,
-		search: &SearcherMock{
-			ConfiguredFunc: func() bool { return true },
-		},
-		jobs: search.NewJobs(true),
+		log:           discardLog(),
+		db:            db,
+		search:        &SearcherMock{},
+		searchTrigger: &SearchTriggerMock{},
 		runners: &DataSourceRunnersMock{
 			RunnerFunc: func(datasource.DataSource) datasource.Runner {
 				return &datasourceMock.Runner{}
@@ -405,15 +403,15 @@ func Test_NewDeps(t *testing.T) {
 		RunnerFunc: func(datasource.DataSource) datasource.Runner { return runner },
 	}
 
-	jobs := search.NewJobs(true)
+	trigger := &SearchTriggerMock{}
 
-	d := NewDeps(discardLog(), db, searcher, jobs, runners, gh, wc, applier, tree, tags, hooks, offload, "org", "user")
+	d := NewDeps(discardLog(), db, searcher, trigger, runners, gh, wc, applier, tree, tags, hooks, offload, "org", "user")
 	require.NotNil(t, d)
 
 	assert.NotNil(t, d.log)
 	assert.Same(t, db, d.db)
 	assert.Same(t, searcher, d.search)
-	assert.Same(t, jobs, d.jobs)
+	assert.Same(t, trigger, d.searchTrigger)
 	assert.Same(t, runners, d.runners)
 	assert.Same(t, gh, d.githubMan)
 	assert.Same(t, wc, d.webchangeClient)
@@ -520,7 +518,7 @@ func Test_input_CreateDocument(t *testing.T) {
 			UpsertDocumentMaintainersFunc: func(context.Context, xid.ID, string, []string) error {
 				return upsertErr
 			},
-			InsertDocumentSearchJobFunc: func(context.Context, search.BlocksDifference) error {
+			InsertSearchJobFunc: func(context.Context, search.Job) error {
 				return jobErr
 			},
 			CommitFunc: func() error { return commitErr },
@@ -631,7 +629,7 @@ func Test_input_DeleteDocument(t *testing.T) {
 			DeleteDocumentFunc: func(context.Context, xid.ID, string) ([]xid.ID, error) {
 				return ids, deleteErr
 			},
-			InsertDocumentSearchJobFunc: func(context.Context, search.BlocksDifference) error {
+			InsertSearchJobFunc: func(context.Context, search.Job) error {
 				return jobErr
 			},
 			CommitFunc: func() error { return commitErr },
@@ -681,7 +679,8 @@ func Test_input_DeleteDocument(t *testing.T) {
 		"Delete and search removal land together": func() tcase {
 			tx := stubTx([]xid.ID{docID, xid.New()}, nil, nil, nil)
 
-			return tcase{DB: stubDB(tx, nil), Tx: tx, Commits: 1, Jobs: 1}
+			// one job per cascade-deleted document.
+			return tcase{DB: stubDB(tx, nil), Tx: tx, Commits: 1, Jobs: 2}
 		}(),
 	}
 
@@ -706,11 +705,12 @@ func Test_input_DeleteDocument(t *testing.T) {
 			assert.Len(t, c.Tx.CommitCalls(), c.Commits)
 			assert.Len(t, c.Tx.RollbackCalls(), 1)
 
-			ff := c.Tx.InsertDocumentSearchJobCalls()
+			ff := c.Tx.InsertSearchJobCalls()
 			require.Len(t, ff, c.Jobs)
 
 			if c.Jobs != 0 {
-				assert.NotEmpty(t, ff[0].Diff.RemovedDocuments)
+				assert.True(t, ff[0].Job.DocumentID.Valid)
+				assert.False(t, ff[0].Job.BranchID.Valid)
 			}
 		})
 	}

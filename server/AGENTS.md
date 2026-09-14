@@ -11,8 +11,8 @@ auth-realtime: [auth-realtime/AGENTS.md](auth-realtime/AGENTS.md).
 
 ## Stack
 
-- `server/core/`: one binary, `cmd/core`, on `:8080`. Owns Postgres,
-  Meilisearch, Valkey, object storage, the GitHub/Slack apps, the assistant
+- `server/core/`: one binary, `cmd/core`, on `:8080`. Owns Postgres, the
+  search index, Valkey, object storage, the GitHub/Slack apps, the assistant
   and outbound data-source connections.
 - `server/auth-realtime/`: `:8081`, Better Auth (organization plugin) and
   Hocuspocus in one Hono process; forwards non-auth `/api/...` to core
@@ -39,9 +39,9 @@ GitHub and Slack callback URLs point at `:8080/core/api/apps/...`.
 
 - `/api/...`: session-authed via auth-realtime's `/api/auth/get-session`
   (`SERVER_AUTH_BETTER_AUTH_URL`). `GET /api/capabilities` reports one
-  boolean per optional service (`github`, `slack`, `changeDetection`,
-  `search`), snapshotted at boot from each client's `Configured()`, plus
-  `aiAssistant` (`status` + `model`).
+  boolean per optional service (`github`, `slack`, `changeDetection`),
+  snapshotted at boot from each client's `Configured()`, plus `aiAssistant`
+  (`status` + `model`).
 - `/api/x/...`: no auth; auth-realtime fetches/stores branch content here
   (`/x/documents/{id}/branches`, `/x/documents/{id}/branch/{branchId}`),
   triggers emails and initializes or tears down orgs.
@@ -119,12 +119,13 @@ ones included; the dev compose reads only the gitignored `*.local.env`
 copies. Core reads `OXYNOTE_CORE_*` through `buildinfo.Getenv("FOO")`.
 
 Every integration is optional and keyed on one variable (`GITHUB_APP_ID`,
-`SLACK_CLIENT_ID`, `ASSISTANT_PROVIDER`, `MEILISEARCH_DSN`,
-`CHANGEDETECTION_API_URL`, `VALKEY_ADDRESS`, `S3_URL`, `EMAIL_SMTP_HOST`).
-Key set with the rest of its group missing is a boot error; key empty
-disables the feature (routes answer `<domain>.not_configured`, background
-work skipped). Two degrade instead and confine the deployment to one
-instance: empty `S3_URL` stores objects under `S3_LOCAL_PATH` (no default;
-unset is a boot error), empty `VALKEY_ADDRESS` keeps assistant conversations
-in-process (`pkg/memkit`). A model too weak for the assistant disables it
-with a warning.
+`SLACK_CLIENT_ID`, `ASSISTANT_PROVIDER`, `CHANGEDETECTION_API_URL`,
+`VALKEY_ADDRESS`, `S3_URL`, `EMAIL_SMTP_HOST`). Key set with the rest of its
+group missing is a boot error; key empty disables the feature (routes answer
+`<domain>.not_configured`, background work skipped). Two degrade instead:
+empty `S3_URL` stores objects under `S3_LOCAL_PATH` (no default; unset is a
+boot error), empty `VALKEY_ADDRESS` keeps assistant conversations in-process
+(`pkg/memkit`). A model too weak for the assistant disables it with a
+warning. Search: `SEARCH_INDEX_PATH` (no default) is a bleve index, a
+Postgres cache rebuilt at boot when missing or outdated; it pins a
+deployment to one core instance.

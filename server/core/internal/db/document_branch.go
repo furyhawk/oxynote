@@ -187,6 +187,29 @@ func (a *agent) FetchDocumentUnsafeByBranchID(ctx context.Context, branchID xid.
 	return doc, nil
 }
 
+// FetchDocumentBranchesAfter fetches up to limit branches whose id sorts
+// after the given one, joined against their document, in id order and
+// across every organization.
+func (a *agent) FetchDocumentBranchesAfter(ctx context.Context, after xid.ID, limit int) ([]document.Document, error) {
+	// a zero id is compared as its string form, since its driver value
+	// would be a null the comparison cannot take.
+	q, args := a.selectDocumentBranch(a.builder.Select()).
+		Where(sq.Gt{
+			"db.id": after.String(),
+		}).
+		OrderBy("db.id ASC").
+		Limit(uint64(limit)).
+		MustSql()
+
+	docs := []document.Document{}
+
+	if err := sqlx.SelectContext(ctx, a.sql, &docs, q, args...); err != nil {
+		return nil, err
+	}
+
+	return docs, nil
+}
+
 // selectDocumentBranch prepares a select statement joining a document against
 // one of its branches. The organization scope is left to the caller, since
 // the unsafe variants exist precisely to go without it.

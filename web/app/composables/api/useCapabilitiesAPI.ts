@@ -32,7 +32,6 @@ export default function () {
 	// leaves nothing for the apps settings section to show
 	const isAnyAppEnabled = enabled((c) => c.github || c.slack)
 	const isChangeDetectionEnabled = enabled((c) => c.changeDetection)
-	const isSearchEnabled = enabled((c) => c.search)
 
 	const assistantStatus = computed(
 		() => fetchCapabilities.data.value?.aiAssistant.status ?? null,
@@ -52,7 +51,6 @@ export default function () {
 		isSlackEnabled,
 		isAnyAppEnabled,
 		isChangeDetectionEnabled,
-		isSearchEnabled,
 		isAssistantEnabled,
 		assistantStatus,
 		assistantModel,

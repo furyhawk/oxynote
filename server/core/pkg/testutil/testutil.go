@@ -21,7 +21,15 @@ import (
 	"github.com/jarcoal/httpmock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
+
+// IgnoreBleveWorkers ignores the analysis workers bleve starts when it is
+// loaded and never stops, for goleak.VerifyTestMain in every package that
+// links the search index.
+func IgnoreBleveWorkers() goleak.Option {
+	return goleak.IgnoreTopFunction("github.com/blevesearch/bleve_index_api.AnalysisWorker")
+}
 
 // AddChiCtx adds the provided URL parameter to the context's chi route
 // context, creating one when the context doesn't carry it yet.

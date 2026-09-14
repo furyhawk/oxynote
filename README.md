@@ -123,7 +123,7 @@ docker run -d --name oxynote \
 Open http://localhost:8080 and sign up.
 
 <details>
-<summary>No PostgreSQL yet? This compose file starts one next to Oxynote, plus Meilisearch for search and Mailpit for email</summary>
+<summary>No PostgreSQL yet? This compose file starts one next to Oxynote, plus Mailpit for email</summary>
 
 ```yaml
 name: oxynote
@@ -135,8 +135,6 @@ services:
       - "8080:8080"
     environment:
       - OXYNOTE_DB_DSN=postgresql://oxynote:change-me-db@postgres/oxynote?sslmode=disable
-      - OXYNOTE_MEILISEARCH_URL=http://meilisearch:7700
-      - OXYNOTE_MEILISEARCH_MASTER_KEY=change-me-meili-key
       # point these at a real relay to have mail delivered; here they go
       # to the mailpit service below.
       - OXYNOTE_SMTP_DSN=smtp://mailpit:1025?tls=none
@@ -145,8 +143,6 @@ services:
       - oxynote_data:/oxynote/data
     depends_on:
       postgres:
-        condition: service_healthy
-      meilisearch:
         condition: service_healthy
       mailpit:
         condition: service_started
@@ -170,22 +166,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # full-text search.
-  meilisearch:
-    image: getmeili/meilisearch:v1.53.1
-    environment:
-      - MEILI_ENV=production
-      - MEILI_MASTER_KEY=change-me-meili-key
-      - MEILI_NO_ANALYTICS=true
-    volumes:
-      - meilisearch_data:/meili_data
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:7700/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
   # catches every mail Oxynote sends and shows it at
   # http://localhost:8025.
   mailpit:
@@ -197,13 +177,12 @@ services:
 volumes:
   oxynote_data:
   postgres_data:
-  meilisearch_data:
 ```
 
 </details>
 
-Everything else, from search and email to object storage, the GitHub
-and Slack apps, social login and Rubber Duck, is one variable away and
+Everything else, from email to object storage, the GitHub and Slack
+apps, social login and Rubber Duck, is one variable away and
 listed in [docker/prod/README.md](docker/prod/README.md). To run from
 source, see [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -29,7 +29,7 @@ func stubCreateDB(checkErr error) *DBMock {
 				UpsertDocumentMaintainersFunc: func(context.Context, xid.ID, string, []string) error {
 					return nil
 				},
-				InsertDocumentSearchJobFunc: func(context.Context, search.BlocksDifference) error {
+				InsertSearchJobFunc: func(context.Context, search.Job) error {
 					return nil
 				},
 			}))
@@ -601,7 +601,7 @@ func Test_deleteDocument_Execute(t *testing.T) {
 				DeleteDocumentFunc: func(_ context.Context, id xid.ID, _ string) ([]xid.ID, error) {
 					return []xid.ID{id}, deleteErr
 				},
-				InsertDocumentSearchJobFunc: func(context.Context, search.BlocksDifference) error {
+				InsertSearchJobFunc: func(context.Context, search.Job) error {
 					return nil
 				},
 			}))

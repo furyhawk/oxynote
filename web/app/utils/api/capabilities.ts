@@ -17,5 +17,4 @@ export interface Capabilities {
 	slack: boolean
 	aiAssistant: AssistantCapability
 	changeDetection: boolean
-	search: boolean
 }

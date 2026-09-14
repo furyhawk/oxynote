@@ -320,19 +320,6 @@ describe("loadConfig", () => {
 	})
 
 	describe("feature groups", () => {
-		it("requires the meilisearch master key with the URL", ({
-			expect,
-		}) => {
-			expect(() =>
-				loadConfig(
-					completeEnv({
-						OXYNOTE_MEILISEARCH_URL:
-							"http://meilisearch:7700",
-					}),
-				),
-			).toThrow("OXYNOTE_MEILISEARCH_MASTER_KEY")
-		})
-
 		it("rejects a companion without its keying variable", ({
 			expect,
 		}) => {
@@ -393,10 +380,6 @@ describe("loadConfig", () => {
 		}) => {
 			const config = loadConfig(
 				completeEnv({
-					OXYNOTE_MEILISEARCH_URL:
-						"http://meilisearch:7700",
-					OXYNOTE_MEILISEARCH_MASTER_KEY:
-						"master",
 					OXYNOTE_CHANGE_DETECTION_URL:
 						"http://changeDetection:5000",
 					OXYNOTE_GITHUB_APP_ID: "123",
@@ -413,10 +396,6 @@ describe("loadConfig", () => {
 				}),
 			)
 
-			expect(config.meilisearch).toEqual({
-				url: "http://meilisearch:7700",
-				masterKey: "master",
-			})
 			expect(config.changeDetection).toEqual({
 				url: "http://changeDetection:5000",
 				apiKey: "",

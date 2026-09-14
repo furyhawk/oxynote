@@ -1,12 +1,15 @@
 package search
 
 import (
-	"database/sql/driver"
-	"encoding/json"
-	"fmt"
+	"strings"
 
+	"github.com/oxynote/oxynote/server/core/internal/document"
 	"github.com/rs/xid"
 )
+
+// _documentNameUID is the uid of the synthetic entry carrying a branch's
+// document name. Content blocks never use it.
+const _documentNameUID = "docname"
 
 // Block represents a information block. It can be a paragraph, heading, or
 // any other type of content in a document.
@@ -35,6 +38,45 @@ type Block struct {
 
 	// Text is the text content of the block, if applicable.
 	Text string `json:"text"`
+}
+
+// record is the shape a block is written to the index in. bleve walks
+// struct fields by reflection and would take an xid's byte array for a
+// list of numbers, so the ids are flattened to strings first.
+type record struct {
+	// OrganizationID specifies the organization the block belongs to.
+	OrganizationID string `json:"organizationId"`
+
+	// DocumentID specifies the document the block belongs to.
+	DocumentID string `json:"documentId"`
+
+	// BranchID specifies the branch the block belongs to.
+	BranchID string `json:"branchId"`
+
+	// BranchName specifies the name of the branch, kept for display only.
+	BranchName string `json:"branchName"`
+
+	// BranchDefault indicates whether the branch is the document's default.
+	BranchDefault bool `json:"branchDefault"`
+
+	// Type specifies the block type (e.g., "paragraph", "heading").
+	Type string `json:"type"`
+
+	// Text specifies the searchable text of the block.
+	Text string `json:"text"`
+}
+
+// record flattens the block for indexing.
+func (b Block) record() record {
+	return record{
+		OrganizationID: b.OrganizationID,
+		DocumentID:     b.DocumentID.String(),
+		BranchID:       b.BranchID.String(),
+		BranchName:     b.BranchName,
+		BranchDefault:  b.BranchDefault,
+		Type:           b.Type,
+		Text:           b.Text,
+	}
 }
 
 // Scope is the branch every block of one indexing pass belongs to.
@@ -71,93 +113,68 @@ func (s Scope) Block(uid, typ, text string) Block {
 	}
 }
 
-// BranchRemoval names a branch whose every block is removed. The document
-// id is carried so the removal is ordered with the document's other jobs.
-type BranchRemoval struct {
-	// DocumentID is the document the branch belonged to.
-	DocumentID xid.ID `json:"documentId"`
+// entries collects the index entries of the block and its descendants
+// into res, keyed by block uid.
+func (s Scope) entries(b document.Block, res map[string]Block) {
+	var text strings.Builder
 
-	// BranchID is the removed branch.
-	BranchID xid.ID `json:"branchId"`
-}
-
-// BlocksDifference represents the differences between two slices of Blocks.
-type BlocksDifference struct {
-	// Updated contains blocks that have been modified.
-	Updated []Block `json:"updated"`
-
-	// Added contains blocks that have been added.
-	Added []Block `json:"added"`
-
-	// Removed contains blocks that have been removed.
-	Removed []Block `json:"removed"`
-
-	// RemovedBranches contains branches whose every block is removed.
-	// Deleting a branch drops its content row, so the index is cleared by
-	// branch instead of by block.
-	RemovedBranches []BranchRemoval `json:"removedBranches"`
-
-	// RemovedDocuments contains documents whose every block is removed.
-	// Deleting a document cascades to its descendants in the database,
-	// which makes enumerating their blocks impossible after the fact, so
-	// the index is cleared by document instead.
-	RemovedDocuments []xid.ID `json:"removedDocuments"`
-
-	// RemovedOrganizations contains organizations whose every block is
-	// removed. Organizations are deleted outside of core, so this is the
-	// only handle left on the content that went with them.
-	RemovedOrganizations []string `json:"removedOrganizations"`
-}
-
-// BlocksDiff compares two slices of Blocks and returns the differences
-// as a BlocksDifference struct.
-func BlocksDiff(a, b map[string]Block) BlocksDifference {
-	var diff BlocksDifference
-
-	// Check for added and updated blocks.
-	for id, blockB := range b {
-		blockA, exists := a[id]
-		if !exists {
-			diff.Added = append(diff.Added, blockB)
-		} else if blockA != blockB {
-			diff.Updated = append(diff.Updated, blockB)
+	for _, cb := range b.Content {
+		// every parent node holding text has a child of the text type,
+		// headings, paragraphs, code blocks and list items included.
+		if cb.Type == document.BlockNodeText {
+			text.WriteString(cb.Text)
+			continue
 		}
+
+		s.entries(cb, res)
 	}
 
-	// Check for removed blocks.
-	for id, blockA := range a {
-		if _, exists := b[id]; !exists {
-			diff.Removed = append(diff.Removed, blockA)
+	// a metric, file or image block has no text children; what describes
+	// it sits in its attributes.
+	switch b.Type { //nolint:exhaustive // the other types index their text children
+	case document.BlockNodeMetricBlock:
+		if title, ok := b.Attrs[document.AttrTitle].(string); ok {
+			text.WriteString(title)
 		}
+	case document.BlockNodeFileBlock:
+		if name, ok := b.Attrs[document.AttrName].(string); ok {
+			text.WriteString(name)
+		}
+	case document.BlockNodeImageBlock:
+		alt, _ := b.Attrs[document.AttrAlt].(string)
+		title, _ := b.Attrs[document.AttrTitle].(string)
+
+		text.WriteString(strings.TrimSpace(alt + " " + title))
 	}
 
-	return diff
-}
-
-// Scan implements the sql.Scanner interface for BlocksDifference.
-func (bd *BlocksDifference) Scan(value any) error {
-	if value == nil {
-		return nil
+	if text.Len() == 0 {
+		return
 	}
 
-	bytes, ok := value.([]byte)
-	if !ok {
-		return fmt.Errorf("failed to scan BlocksDifference: expected []byte, got %T", value)
+	if id, ok := b.UID(); ok && id != "" {
+		res[id] = s.Block(id, string(b.Type), text.String())
+	}
+}
+
+// Entries converts a document branch into its index entries, keyed by
+// block uid. A synthetic entry carries the document name; its key is the
+// document id, which no content block shares.
+func Entries(doc document.Document) map[string]Block {
+	scope := Scope{
+		OrganizationID: doc.OrganizationID,
+		DocumentID:     doc.ID,
+		BranchID:       doc.BranchID,
+		BranchName:     doc.BranchName,
+		BranchDefault:  doc.Default,
 	}
 
-	return json.Unmarshal(bytes, bd)
-}
+	res := make(map[string]Block)
 
-// Value implements the driver.Valuer interface for BlocksDifference.
-func (bd BlocksDifference) Value() (driver.Value, error) {
-	return json.Marshal(bd)
-}
+	for _, b := range doc.Content.Content {
+		scope.entries(b, res)
+	}
 
-// DocumentSearchJob represents a search index update job.
-type DocumentSearchJob struct {
-	// ID is the unique identifier for the search job.
-	ID int64 `db:"id"`
+	res[doc.ID.String()] = scope.Block(_documentNameUID, "document", doc.DocumentName)
 
-	// BlockDiff contains the differences in blocks for the document.
-	BlockDiff BlocksDifference `db:"block_diff"`
+	return res
 }

@@ -109,8 +109,8 @@ var _ Tx = &TxMock{}
 //			InsertDocumentHookFunc: func(ctx context.Context, hk hook.Hook) error {
 //				panic("mock out the InsertDocumentHook method")
 //			},
-//			InsertDocumentSearchJobFunc: func(ctx context.Context, diff search.BlocksDifference) error {
-//				panic("mock out the InsertDocumentSearchJob method")
+//			InsertSearchJobFunc: func(ctx context.Context, job search.Job) error {
+//				panic("mock out the InsertSearchJob method")
 //			},
 //			PromoteBranchApprovalsFunc: func(ctx context.Context, fromBranchID xid.ID, toBranchID xid.ID, organizationID string) error {
 //				panic("mock out the PromoteBranchApprovals method")
@@ -233,8 +233,8 @@ type TxMock struct {
 	// InsertDocumentHookFunc mocks the InsertDocumentHook method.
 	InsertDocumentHookFunc func(ctx context.Context, hk hook.Hook) error
 
-	// InsertDocumentSearchJobFunc mocks the InsertDocumentSearchJob method.
-	InsertDocumentSearchJobFunc func(ctx context.Context, diff search.BlocksDifference) error
+	// InsertSearchJobFunc mocks the InsertSearchJob method.
+	InsertSearchJobFunc func(ctx context.Context, job search.Job) error
 
 	// PromoteBranchApprovalsFunc mocks the PromoteBranchApprovals method.
 	PromoteBranchApprovalsFunc func(ctx context.Context, fromBranchID xid.ID, toBranchID xid.ID, organizationID string) error
@@ -508,12 +508,12 @@ type TxMock struct {
 			// Hk is the hk argument value.
 			Hk hook.Hook
 		}
-		// InsertDocumentSearchJob holds details about calls to the InsertDocumentSearchJob method.
-		InsertDocumentSearchJob []struct {
+		// InsertSearchJob holds details about calls to the InsertSearchJob method.
+		InsertSearchJob []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Diff is the diff argument value.
-			Diff search.BlocksDifference
+			// Job is the job argument value.
+			Job search.Job
 		}
 		// PromoteBranchApprovals holds details about calls to the PromoteBranchApprovals method.
 		PromoteBranchApprovals []struct {
@@ -630,7 +630,7 @@ type TxMock struct {
 	lockInsertDocumentBranch                sync.RWMutex
 	lockInsertDocumentFile                  sync.RWMutex
 	lockInsertDocumentHook                  sync.RWMutex
-	lockInsertDocumentSearchJob             sync.RWMutex
+	lockInsertSearchJob                     sync.RWMutex
 	lockPromoteBranchApprovals              sync.RWMutex
 	lockReplaceBranchTags                   sync.RWMutex
 	lockRollback                            sync.RWMutex
@@ -1837,42 +1837,42 @@ func (mock *TxMock) InsertDocumentHookCalls() []struct {
 	return calls
 }
 
-// InsertDocumentSearchJob calls InsertDocumentSearchJobFunc.
-func (mock *TxMock) InsertDocumentSearchJob(ctx context.Context, diff search.BlocksDifference) error {
+// InsertSearchJob calls InsertSearchJobFunc.
+func (mock *TxMock) InsertSearchJob(ctx context.Context, job search.Job) error {
 	callInfo := struct {
-		Ctx  context.Context
-		Diff search.BlocksDifference
+		Ctx context.Context
+		Job search.Job
 	}{
-		Ctx:  ctx,
-		Diff: diff,
+		Ctx: ctx,
+		Job: job,
 	}
-	mock.lockInsertDocumentSearchJob.Lock()
-	mock.calls.InsertDocumentSearchJob = append(mock.calls.InsertDocumentSearchJob, callInfo)
-	mock.lockInsertDocumentSearchJob.Unlock()
-	if mock.InsertDocumentSearchJobFunc == nil {
+	mock.lockInsertSearchJob.Lock()
+	mock.calls.InsertSearchJob = append(mock.calls.InsertSearchJob, callInfo)
+	mock.lockInsertSearchJob.Unlock()
+	if mock.InsertSearchJobFunc == nil {
 		var (
 			errOut error
 		)
 		return errOut
 	}
-	return mock.InsertDocumentSearchJobFunc(ctx, diff)
+	return mock.InsertSearchJobFunc(ctx, job)
 }
 
-// InsertDocumentSearchJobCalls gets all the calls that were made to InsertDocumentSearchJob.
+// InsertSearchJobCalls gets all the calls that were made to InsertSearchJob.
 // Check the length with:
 //
-//	len(mockedTx.InsertDocumentSearchJobCalls())
-func (mock *TxMock) InsertDocumentSearchJobCalls() []struct {
-	Ctx  context.Context
-	Diff search.BlocksDifference
+//	len(mockedTx.InsertSearchJobCalls())
+func (mock *TxMock) InsertSearchJobCalls() []struct {
+	Ctx context.Context
+	Job search.Job
 } {
 	var calls []struct {
-		Ctx  context.Context
-		Diff search.BlocksDifference
+		Ctx context.Context
+		Job search.Job
 	}
-	mock.lockInsertDocumentSearchJob.RLock()
-	calls = mock.calls.InsertDocumentSearchJob
-	mock.lockInsertDocumentSearchJob.RUnlock()
+	mock.lockInsertSearchJob.RLock()
+	calls = mock.calls.InsertSearchJob
+	mock.lockInsertSearchJob.RUnlock()
 	return calls
 }
 

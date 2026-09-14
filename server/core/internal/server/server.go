@@ -19,7 +19,6 @@ import (
 	"github.com/oxynote/oxynote/server/core/internal/buildinfo"
 	datasourceCore "github.com/oxynote/oxynote/server/core/internal/datasource"
 	notificationCore "github.com/oxynote/oxynote/server/core/internal/notification"
-	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/oxynote/oxynote/server/core/internal/server/internal/assistant"
 	"github.com/oxynote/oxynote/server/core/internal/server/internal/auth"
 	"github.com/oxynote/oxynote/server/core/internal/server/internal/block"
@@ -143,8 +142,8 @@ func NewServer(
 	githubMan *githubCore.Manager,
 	slackMan *slackCore.Manager,
 	webchangeClient *webchange.Client,
-	searchGateway document.SearchGateway,
-	searchJobs *search.Jobs,
+	searcher document.Searcher,
+	searchTrigger SearchTrigger,
 	notifier Notifier,
 	emailSender email.Sender,
 	client *http.Client,
@@ -163,7 +162,6 @@ func NewServer(
 			Slack:           slackMan.Configured(),
 			AIAssistant:     opts.Assistant,
 			ChangeDetection: webchangeClient.Configured(),
-			Search:          searchGateway.Configured(),
 		},
 	}
 
@@ -174,10 +172,10 @@ func NewServer(
 		storageClient,
 		githubMan,
 		webchangeClient,
-		searchJobs,
+		searchTrigger,
 		opts.PublicURL+_organizationLogoLocation,
 	)
-	srv.handlers.document = document.NewHandler(log, db, githubMan, webchangeClient, searchGateway, searchJobs, notifier, storageClient)
+	srv.handlers.document = document.NewHandler(log, db, githubMan, webchangeClient, searcher, searchTrigger, notifier, storageClient)
 	srv.handlers.tag = tag.NewHandler(log, db)
 	srv.handlers.comment = comment.NewHandler(log, db, notifier)
 	srv.handlers.files = files.NewHandler(log, db, storageClient, opts.PublicURL)
@@ -371,6 +369,15 @@ type Storer interface {
 	user.Storer
 	files.Storer
 	document.Storer
+}
+
+// SearchTrigger runs the search-job worker once a job has committed; the
+// handlers call it after their commits.
+//
+//go:generate ../../scripts/codegen/mock -t internal SearchTrigger search_trigger
+type SearchTrigger interface {
+	// Trigger should run a search-job pass right away.
+	Trigger()
 }
 
 // Notifier is an interface that combines notificationCore.Notifier and

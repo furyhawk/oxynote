@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"net/url"
 	"strings"
 
-	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/oxynote/oxynote/server/core/pkg/strutil"
 	"github.com/rs/xid"
 )
@@ -75,19 +73,6 @@ func (rb RootBlock) HasBlock(blockID string) bool {
 	}
 
 	return false
-}
-
-// Search transforms RootBlock into a search compatible type.
-func (rb RootBlock) Search(scope search.Scope) map[string]search.Block {
-	res := make(map[string]search.Block)
-
-	for _, b := range rb.Content {
-		content := b.Search(scope)
-
-		maps.Insert(res, maps.All(content))
-	}
-
-	return res
 }
 
 // Value transforms stopper type into a database entry.
@@ -215,48 +200,6 @@ func (b Block) HasBlock(blockID string) bool {
 	_, ok := b.FindByUID(blockID)
 
 	return ok
-}
-
-// Search transforms Block into a search compatible type.
-func (b Block) Search(scope search.Scope) map[string]search.Block {
-	res := make(map[string]search.Block)
-
-	var text strings.Builder
-
-	for _, cb := range b.Content {
-		// All parent nodes that contain text have a content element
-		// with the text type. This includes Headings, Paragraphs,
-		// CodeBlock, CodeBlockTitle, ListItem and so on.
-		if cb.Type == BlockNodeText {
-			text.WriteString(cb.Text)
-			continue
-		}
-
-		content := cb.Search(scope)
-
-		maps.Insert(res, maps.All(content))
-	}
-
-	// a metric block and a file block have no text children; the title
-	// and the file name are attributes.
-	switch b.Type { //nolint:exhaustive // the other types index their text children
-	case BlockNodeMetricBlock:
-		if title, ok := b.Attrs[AttrTitle].(string); ok {
-			text.WriteString(title)
-		}
-	case BlockNodeFileBlock:
-		if name, ok := b.Attrs[AttrName].(string); ok {
-			text.WriteString(name)
-		}
-	}
-
-	if text.Len() != 0 {
-		if id, ok := b.UID(); ok && id != "" {
-			res[id] = scope.Block(id, string(b.Type), text.String())
-		}
-	}
-
-	return res
 }
 
 // Mark represents a mark, such as bold or italic.
