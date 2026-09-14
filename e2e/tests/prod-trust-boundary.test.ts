@@ -166,6 +166,14 @@ test.describe("internal service binds", () => {
 
 		expect(result.reached, result.detail).toBe(true)
 	})
+
+	// the same control for the connection-level probe postgres gets: nc
+	// has to connect to the front door, or its refusal on 5432 is no evidence.
+	test("accepts a connection on the front door port from the same container", async () => {
+		const result = await probeFromNetwork(FRONT_DOOR.port)
+
+		expect(result.reached, result.detail).toBe(true)
+	})
 })
 
 test.describe("front door blocks", () => {

@@ -29,6 +29,15 @@ const objectStorageLocalPath = `${dataDir}/object-storage`
 // restart does not pay for that rebuild.
 const searchIndexPath = `${dataDir}/search`
 
+// the embedded PostgreSQL, run when no external DSN is configured. It
+// listens on a unix socket and on no TCP port at all; the port only names
+// the socket file, and the boot check dials it all the same. The app role
+// and its database share one name.
+export const postgresPort = 5432
+export const postgresSocketDir = "/tmp/postgresql"
+export const postgresDataDir = `${dataDir}/postgres`
+export const postgresDatabase = "oxynote"
+
 // the fixed path a GitHub App's private key is mounted at when the
 // integration is enabled.
 const githubPrivateKeyPath = "/oxynote/github/private-key.pem"
@@ -79,6 +88,15 @@ function aiAssistantEnv(
 	)
 }
 
+// the operator's database, or the embedded one's socket. The generated
+// password is base64url, so it needs no escaping inside the URL.
+function databaseDsn(config: Config, secrets: Secrets): string {
+	return (
+		config.databaseDsn ??
+		`postgresql://${postgresDatabase}:${secrets.databasePassword}@/${postgresDatabase}?host=${postgresSocketDir}&sslmode=disable`
+	)
+}
+
 // buildChildEnvs assembles each process's environment from scratch: a child
 // receives exactly its own component's variables and nothing else, so no
 // flat OXYNOTE_* value and no other component's secret ever leaks through.
@@ -91,6 +109,7 @@ export function buildChildEnvs(
 	const publicCoreUrl = `${config.publicOrigin}/core`
 	const publicAuthRealtimeUrl = `${config.publicOrigin}/auth-realtime`
 	const mcpResourceUrl = `${config.publicOrigin}/core/api/mcp`
+	const dbDsn = databaseDsn(config, secrets)
 	const sentryDsns = config.crashReportingDisabled
 		? { webDsn: "", coreDsn: "", authRealtimeDsn: "" }
 		: bakedSentryDsns
@@ -98,7 +117,7 @@ export function buildChildEnvs(
 	const core: Record<string, string> = {
 		...inheritedEnv,
 		OXYNOTE_CORE_SERVER_ADDRESS: `127.0.0.1:${corePort}`,
-		OXYNOTE_CORE_DB_DSN: config.databaseDsn,
+		OXYNOTE_CORE_DB_DSN: dbDsn,
 		OXYNOTE_CORE_VALKEY_DSN: config.valkeyDsn ?? "",
 		OXYNOTE_CORE_SEARCH_INDEX_PATH: searchIndexPath,
 		// an empty URL is what makes core store objects on disk at
@@ -162,7 +181,7 @@ export function buildChildEnvs(
 		NODE_ENV: "production",
 		OXYNOTE_AUTH_REALTIME_ADDRESS: `127.0.0.1:${authRealtimePort}`,
 		OXYNOTE_AUTH_REALTIME_BACKEND_URL: coreUrl,
-		OXYNOTE_AUTH_REALTIME_DB_DSN: config.databaseDsn,
+		OXYNOTE_AUTH_REALTIME_DB_DSN: dbDsn,
 		OXYNOTE_AUTH_REALTIME_VALKEY_DSN: config.valkeyDsn ?? "",
 		OXYNOTE_AUTH_REALTIME_BETTER_AUTH_BASE_URL:
 			publicAuthRealtimeUrl,

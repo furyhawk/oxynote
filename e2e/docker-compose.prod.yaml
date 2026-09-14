@@ -15,10 +15,11 @@
 #     mailpit), so it coexists with the dev stack and the e2e dev stack alike
 #   - env is inlined and committed; there is nothing secret to protect
 #   - every image is pinned
-#   - no OXYNOTE_VALKEY_DSN and no OXYNOTE_OBJECT_STORAGE_DSN, which is the default
-#     single-node deployment: the assistant keeps its conversations in the
-#     core process, better-auth keeps no secondary storage, and uploaded
-#     images live on the data volume
+#   - no OXYNOTE_DB_DSN, OXYNOTE_VALKEY_DSN or OXYNOTE_OBJECT_STORAGE_DSN, which
+#     is the default single-node deployment: the image runs its own
+#     PostgreSQL, the assistant keeps its conversations in the core process,
+#     better-auth keeps no secondary storage, and uploaded images live on the
+#     data volume
 #
 # the image is built by `make prod-build`, not by compose: core's binary has
 # to come from goreleaser and be staged for the Dockerfile's COPY, so there
@@ -34,7 +35,6 @@ services:
       - "19080:8080"
     environment:
       - OXYNOTE_PUBLIC_URL=http://localhost:19080
-      - OXYNOTE_DB_DSN=postgresql://devuser:devpass@postgres/devdb?sslmode=disable
       - OXYNOTE_SMTP_DSN=smtp://mailpit:1025?tls=none
       - OXYNOTE_EMAIL_FROM_ADDRESS=Oxynote <team@oxynote.io>
       - OXYNOTE_MAX_ORGANIZATION_MEMBERS=5
@@ -46,9 +46,6 @@ services:
       # gives sign-in and sign-up three per ten seconds between them, so the
       # limiter would fail the suite rather than the code under test.
       - OXYNOTE_RATE_LIMIT_DISABLED=true
-    depends_on:
-      postgres:
-        condition: service_healthy
     # the image ships its own layered probe (every internal service plus the
     # front door), which is what the probe container and the tests wait on.
     # Its start period is three minutes; compose inherits that.
@@ -71,19 +68,6 @@ services:
     depends_on:
       oxynote:
         condition: service_healthy
-
-  postgres:
-    image: postgres:18.6-alpine
-    command: ["postgres", "-c", "log_checkpoints=off"]
-    environment:
-      POSTGRES_USER: devuser
-      POSTGRES_PASSWORD: devpass
-      POSTGRES_DB: devdb
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U devuser -d devdb"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
 
   # the tests read verification links out of mailpit's REST API, so its http
   # port is published rather than proxied through the image's front door —

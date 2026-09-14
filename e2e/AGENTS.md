@@ -89,12 +89,14 @@ installs run. A test that needs either says why.
 ## The prod stack
 
 `docker-compose.prod.yaml` is `docker/prod/docker-compose.example.yaml`
-retuned as a fixture (`:19080`, `:19025`, inlined env, pinned images).
+retuned as a fixture (`:19080`, `:19025`, inlined env, pinned images). It
+sets no `OXYNOTE_DB_DSN`, so the image runs its embedded Postgres.
 Compose builds nothing; the image comes from `make prod-build`, tagged
 `:e2e-prod`, and CI's cache reaches it through `PROD_BUILD_EXTRA`. A `probe`
 container (idle alpine on the private network) exists for the
 trust-boundary tests: internal ports are not published, so only a sibling
-container can tell loopback from wildcard binds.
+container can tell loopback from wildcard binds. Postgres speaks no HTTP, so
+its port is probed with `nc -z`, against a control on the front door.
 
 ## Testing standards
 

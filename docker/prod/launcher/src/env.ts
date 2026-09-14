@@ -54,7 +54,9 @@ export interface Config {
 	cookieDomain: string
 	// the ws(s) counterpart of publicOrigin.
 	publicWebSocketOrigin: string
-	databaseDsn: string
+	// absent unless the operator points the image at an external
+	// PostgreSQL; the image then runs its own on the data volume.
+	databaseDsn: string | undefined
 	// absent on a deployment running without valkey: the assistant keeps
 	// its conversations in the core process and better-auth keeps no
 	// secondary storage.
@@ -333,7 +335,7 @@ const aiAssistantKeys = [
 // variable — fails loudly instead of being silently ignored.
 const baseSchema = z.object({
 	OXYNOTE_PUBLIC_URL: publicOrigin.optional(),
-	OXYNOTE_DB_DSN: z.string().min(1),
+	OXYNOTE_DB_DSN: z.string().min(1).optional(),
 	OXYNOTE_VALKEY_DSN: valkeyDsn.optional(),
 	OXYNOTE_OBJECT_STORAGE_DSN: objectStorageDsn.optional(),
 	OXYNOTE_SMTP_DSN: smtpDsn.optional(),

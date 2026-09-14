@@ -6,11 +6,11 @@ export interface ChildSpec {
 	command: string
 	args: string[]
 	env: Record<string, string>
-	// the URL polled until it answers 200; the child counts as started
-	// only after that, which is what serializes core's migrations before
+	// polled until it resolves true; the child counts as started only
+	// after that, which is what serializes core's migrations before
 	// auth-realtime and keeps caddy's published port silent until the
 	// whole stack answers.
-	readyUrl: string
+	ready(): Promise<boolean>
 	readyTimeoutMs: number
 	// how long a SIGTERM'd child may drain before SIGKILL.
 	stopGraceMs: number
@@ -25,8 +25,6 @@ export interface SupervisorDeps {
 		args: string[],
 		env: Record<string, string>,
 	): ChildProcess
-	// answers whether a GET to the URL returned 200.
-	probe(url: string): Promise<boolean>
 	sleep(ms: number): Promise<void>
 	// the supervisor's own events.
 	log: Logger
@@ -94,7 +92,7 @@ export function createSupervisor(deps: SupervisorDeps): Supervisor {
 				)
 			}
 
-			if (await deps.probe(child.spec.readyUrl)) {
+			if (await child.spec.ready()) {
 				return
 			}
 

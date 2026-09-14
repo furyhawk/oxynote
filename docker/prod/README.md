@@ -1,12 +1,13 @@
 # Oxynote production image
 
 One container running the whole product: Caddy (front door), the web app
-(Nuxt SSR), the core API server, and the auth/realtime service, supervised by
-a small launcher. PostgreSQL runs outside the image and is the only thing
-it requires; Valkey, an S3-compatible object store, an SMTP relay and
-changedetection.io are optional and also external. Full-text search is
-built in: core keeps its index on the data volume and rebuilds it from
-PostgreSQL when it is missing, so the image runs as a single instance.
+(Nuxt SSR), the core API server, the auth/realtime service and a PostgreSQL
+database, supervised by a small launcher. Nothing outside the image is
+required: an external PostgreSQL can take the embedded one's place, and
+Valkey, an S3-compatible object store, an SMTP relay and changedetection.io
+are optional and external. Full-text search is built in: core keeps its
+index on the data volume and rebuilds it from PostgreSQL when it is missing,
+so the image runs as a single instance.
 
 ## Quick start
 
@@ -34,11 +35,11 @@ Everything is configured through flat `OXYNOTE_*` variables. Setting any
 other `OXYNOTE_`-prefixed variable (a typo, or a component-internal name)
 fails the boot with an error naming it.
 
-### Required
+### Database
 
 | Variable | Meaning |
 | --- | --- |
-| `OXYNOTE_DB_DSN` | PostgreSQL DSN, e.g. `postgresql://user:pass@host/db?sslmode=require`. One database serves the whole product; migrations run automatically at boot. |
+| `OXYNOTE_DB_DSN` | an external PostgreSQL, e.g. `postgresql://user:pass@host/db?sslmode=require`. Unset, the image runs its own PostgreSQL 18 with its data under `/oxynote/data/postgres`; set, the embedded one never starts. One database serves the whole product; migrations run automatically at boot. |
 
 ### Public address
 
@@ -77,14 +78,24 @@ exceptions rather than the traffic),
 ## Secrets and the data volume
 
 Internal secrets (session signing, data-source credential encryption, the
-GitHub/Slack install-state keys) are generated on first boot and stored under
-`/oxynote/data/secrets/` with owner-only permissions — keep that volume.
+GitHub/Slack install-state keys, the embedded database's password) are
+generated on first boot and stored under `/oxynote/data/secrets/` with
+owner-only permissions — keep that volume.
+
+- Unless `OXYNOTE_DB_DSN` is set, the database lives there too, under
+  `/oxynote/data/postgres`, and so does every document. Back it up with the
+  `pg_dump` the image ships:
+
+  ```sh
+  docker compose exec -T oxynote sh -c 'PGPASSWORD="$(cat /oxynote/data/secrets/database-password)" \
+    /usr/libexec/postgresql18/pg_dump -h /tmp/postgresql -U oxynote oxynote' > oxynote.sql
+  ```
 
 - Unless an object store is configured, every uploaded image lives there
   too, under `/oxynote/data/object-storage`.
 - **Losing the volume signs everyone out, permanently orphans every stored
   data-source credential** — the encryption key cannot be rotated — **and
-  takes the uploaded images with it.**
+  takes the uploaded images, and the embedded database, with it.**
 - Two advanced overrides exist for migrating an existing deployment in:
   `OXYNOTE_AUTH_SECRET` (session/token signing) and
   `OXYNOTE_DATA_SOURCE_ENCRYPTION_KEY` (exactly 16, 24, or 32 bytes). An
@@ -98,6 +109,10 @@ GitHub/Slack install-state keys) are generated on first boot and stored under
   at boot and refuses to serve otherwise. Caddy additionally blocks the
   internal paths (`/core/api/x/*`, `/auth-realtime/api/internal/*`) at the
   front door.
+- The embedded PostgreSQL listens on a unix socket inside the container and
+  on no TCP port. Every connection needs the app role's generated password,
+  and that role owns the product's database and nothing else, so a data
+  source pointed at the socket gets nowhere.
 - Keep the backing services on a private network reachable only by this
   container, and where Valkey is used enable its authentication
   (`requirepass` + a credentialed `OXYNOTE_VALKEY_DSN`).
@@ -129,7 +144,7 @@ unmodified (Apache-2.0) and [tini](https://github.com/krallin/tini) (MIT) as
 the init process. Both are downloaded at pinned versions and
 checksum-verified during the image build, and both licenses ship under
 `/oxynote/licenses/`. Node.js comes from the pinned Alpine base (the v24 line, with full
-ICU locale data).
+ICU locale data), and so does PostgreSQL 18.
 
 The image is published for `linux/amd64` and `linux/arm64`; a pull fetches
 the variant for the machine's architecture.

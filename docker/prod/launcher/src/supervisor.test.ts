@@ -54,7 +54,7 @@ function spec(name: string, overrides: Partial<ChildSpec> = {}): ChildSpec {
 		command: `/bin/${name}`,
 		args: ["--run"],
 		env: { KEY: name },
-		readyUrl: `http://127.0.0.1:1/${name}`,
+		ready: () => Promise.resolve(true),
 		readyTimeoutMs: 1_000,
 		stopGraceMs: 100,
 		...overrides,
@@ -71,9 +71,6 @@ function harness(childOptions: { exitOnTerm?: boolean } = {}) {
 
 		return child.process
 	})
-	const probe = vi
-		.fn<(url: string) => Promise<boolean>>()
-		.mockResolvedValue(true)
 	const log = {
 		info: vi.fn<(message: string) => void>(),
 		warn: vi.fn<(message: string) => void>(),
@@ -84,7 +81,6 @@ function harness(childOptions: { exitOnTerm?: boolean } = {}) {
 
 	const supervisor = createSupervisor({
 		spawn,
-		probe,
 		sleep: () => Promise.resolve(),
 		log,
 		logChildLine,
@@ -94,7 +90,6 @@ function harness(childOptions: { exitOnTerm?: boolean } = {}) {
 	return {
 		children,
 		spawn,
-		probe,
 		log,
 		logChildLine,
 		onUnexpectedExit,
@@ -118,23 +113,21 @@ describe("createSupervisor", () => {
 			)
 		})
 
-		it("waits for the readiness probe before resolving", async ({
+		it("waits for the readiness check before resolving", async ({
 			expect,
 		}) => {
 			const h = harness()
-			h.probe
+			const ready = vi
+				.fn<() => Promise<boolean>>()
 				.mockResolvedValueOnce(false)
 				.mockResolvedValueOnce(false)
 				.mockResolvedValue(true)
 
 			await h.supervisor.start(
-				spec("core", { readyTimeoutMs: 5_000 }),
+				spec("core", { ready, readyTimeoutMs: 5_000 }),
 			)
 
-			expect(h.probe).toHaveBeenCalledTimes(3)
-			expect(h.probe).toHaveBeenCalledWith(
-				"http://127.0.0.1:1/core",
-			)
+			expect(ready).toHaveBeenCalledTimes(3)
 			expect(h.log.info).toHaveBeenCalledWith("core is ready")
 		})
 
@@ -142,11 +135,14 @@ describe("createSupervisor", () => {
 			expect,
 		}) => {
 			const h = harness()
-			h.probe.mockResolvedValue(false)
 
 			await expect(
 				h.supervisor.start(
-					spec("core", { readyTimeoutMs: 1_000 }),
+					spec("core", {
+						ready: () =>
+							Promise.resolve(false),
+						readyTimeoutMs: 1_000,
+					}),
 				),
 			).rejects.toThrow(
 				"core did not become ready within 1000ms",
@@ -158,14 +154,14 @@ describe("createSupervisor", () => {
 			expect,
 		}) => {
 			const h = harness()
-			h.probe.mockImplementation(() => {
+			const ready = () => {
 				h.children[0]?.exit(3)
 
 				return Promise.resolve(false)
-			})
+			}
 
 			await expect(
-				h.supervisor.start(spec("core")),
+				h.supervisor.start(spec("core", { ready })),
 			).rejects.toThrow("core exited before becoming ready")
 			expect(h.onUnexpectedExit).toHaveBeenCalledWith(
 				"core",

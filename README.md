@@ -109,13 +109,11 @@ puzzle are coming.
 
 ## Quick start
 
-Oxynote is one container plus a PostgreSQL database. With a database
-already running, this is all it takes:
+Oxynote is one container. This is all it takes:
 
 ```sh
 docker run -d --name oxynote \
   -p 8080:8080 \
-  -e OXYNOTE_DB_DSN='postgresql://dbusername:dbpass@postgres.example.com/oxynote?sslmode=require' \
   -v oxynote_data:/oxynote/data \
   ghcr.io/oxynote/oxynote:latest
 ```
@@ -123,7 +121,7 @@ docker run -d --name oxynote \
 Open http://localhost:8080 and sign up.
 
 <details>
-<summary>No PostgreSQL yet? This compose file starts one next to Oxynote, plus Mailpit for email</summary>
+<summary>Want email? This compose file starts Mailpit next to Oxynote</summary>
 
 ```yaml
 name: oxynote
@@ -134,7 +132,6 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - OXYNOTE_DB_DSN=postgresql://oxynote:change-me-db@postgres/oxynote?sslmode=disable
       # point these at a real relay to have mail delivered; here they go
       # to the mailpit service below.
       - OXYNOTE_SMTP_DSN=smtp://mailpit:1025?tls=none
@@ -142,28 +139,11 @@ services:
     volumes:
       - oxynote_data:/oxynote/data
     depends_on:
-      postgres:
-        condition: service_healthy
       mailpit:
         condition: service_started
     # the image shuts its services down in order, flushing open documents
     # last; docker's default 10s grace would kill that mid-flush.
     stop_grace_period: 60s
-    restart: unless-stopped
-
-  postgres:
-    image: postgres:18.6-alpine
-    environment:
-      - POSTGRES_USER=oxynote
-      - POSTGRES_PASSWORD=change-me-db
-      - POSTGRES_DB=oxynote
-    volumes:
-      - postgres_data:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U oxynote -d oxynote"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     restart: unless-stopped
 
   # catches every mail Oxynote sends and shows it at
@@ -176,7 +156,6 @@ services:
 
 volumes:
   oxynote_data:
-  postgres_data:
 ```
 
 </details>

@@ -36,6 +36,7 @@ describe("ensureSecrets", () => {
 		expect(report.generated.toSorted()).toEqual([
 			"auth-secret",
 			"data-source-encryption-key",
+			"database-password",
 			"github-installation-signing-secret",
 			"slack-installation-signing-secret",
 		])

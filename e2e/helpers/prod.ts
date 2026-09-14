@@ -5,16 +5,19 @@ import { composeArgs, composeCwd } from "./stack"
 
 // the production image's internal port layout, mirroring
 // docker/prod/launcher/src/mapping.ts. Caddy (8080) is the only
-// wildcard listener; the three services behind it bind 127.0.0.1, and
-// caddy's own admin API is switched off rather than bound anywhere.
+// wildcard listener; the three services behind it bind 127.0.0.1, the
+// embedded postgres listens on a unix socket and no TCP port, and caddy's
+// own admin API is switched off rather than bound anywhere.
 //
-// Each entry carries a path that answers 200 when the service is reached,
-// so a probe that gets through is unambiguous rather than a bare 404.
+// An HTTP service carries a path that answers 200 when it is reached, so a
+// probe that gets through is unambiguous rather than a bare 404. Postgres
+// speaks no HTTP and has no path: it is probed for an accepted connection.
 export const INTERNAL_SERVICES = [
 	{ name: "core", port: "8180", path: "/api/x/version" },
 	{ name: "auth-realtime", port: "8181", path: "/api/auth-config" },
 	{ name: "web", port: "3000", path: "/login" },
 	{ name: "caddy admin", port: "2019", path: "/config/" },
+	{ name: "postgres", port: "5432", path: undefined },
 ] as const
 
 // the front door of the container, reached the same way as the ports above.
@@ -45,8 +48,12 @@ export interface ProbeResult {
 // well as the loopback bind still fails here.
 export async function probeFromNetwork(
 	port: string,
-	path: string,
+	path?: string,
 ): Promise<ProbeResult> {
+	if (path === undefined) {
+		return probeConnection(port)
+	}
+
 	const url = `http://${TARGET_SERVICE}:${port}${path}`
 	const { code, output } = await runCompose([
 		"exec",
@@ -70,6 +77,30 @@ export async function probeFromNetwork(
 	return {
 		reached,
 		detail: `${url} -> ${output.trim() || `exit ${String(code)}`}`,
+	}
+}
+
+// probeConnection asks only whether the port accepts a TCP connection, for
+// a service an HTTP client cannot tell apart from a closed port: postgres
+// answers wget's request with a protocol error, which reads as a refusal.
+// busybox nc exits 0 when the connection is accepted.
+async function probeConnection(port: string): Promise<ProbeResult> {
+	const target = `${TARGET_SERVICE}:${port}`
+	const { code, output } = await runCompose([
+		"exec",
+		"-T",
+		PROBE_SERVICE,
+		"nc",
+		"-z",
+		"-w",
+		"3",
+		TARGET_SERVICE,
+		port,
+	])
+
+	return {
+		reached: code === 0,
+		detail: `${target} -> ${output.trim() || `exit ${String(code)}`}`,
 	}
 }
 

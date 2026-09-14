@@ -121,6 +121,37 @@ describe("buildChildEnvs", () => {
 		)
 	})
 
+	it("hands core and auth-realtime the operator's database", ({
+		expect,
+	}) => {
+		const envs = build()
+
+		expect(envs.core.OXYNOTE_CORE_DB_DSN).toBe(
+			"postgresql://user:pass@postgres/oxynote",
+		)
+		expect(envs.authRealtime.OXYNOTE_AUTH_REALTIME_DB_DSN).toBe(
+			"postgresql://user:pass@postgres/oxynote",
+		)
+	})
+
+	// the embedded database listens on no TCP port, so both reach it
+	// through its socket, with the password the launcher generated
+	it("points both at the embedded database's socket without a DSN", ({
+		expect,
+	}) => {
+		const envs = build(testConfig({ databaseDsn: undefined }))
+		const dsn =
+			"postgresql://oxynote:test-database-password@/oxynote?host=/tmp/postgresql&sslmode=disable"
+
+		expect(envs.core.OXYNOTE_CORE_DB_DSN).toBe(dsn)
+		expect(envs.authRealtime.OXYNOTE_AUTH_REALTIME_DB_DSN).toBe(dsn)
+		expect(
+			Object.values(envs.web).some((value) =>
+				value.includes("test-database-password"),
+			),
+		).toBe(false)
+	})
+
 	it("keeps every child's environment to its own component", ({
 		expect,
 	}) => {

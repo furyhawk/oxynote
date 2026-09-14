@@ -130,16 +130,22 @@ FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec4
 # when alpine's branch rotates a package (they keep only the newest build
 # per branch); bump the ARGs together with the base digest, which a
 # dependabot bump of the digest alone cannot do. icu-data-full replaces the
-# English-only default so Intl formats every locale during SSR.
+# English-only default so Intl formats every locale during SSR, and
+# postgresql18 is the embedded database, with pg_dump among its tools. Its
+# major is part of the package name and of the launcher's
+# /usr/libexec/postgresql18 paths: a data directory only opens under the
+# major that wrote it, so a major bump needs an upgrade path for existing
+# volumes, not only a new pin.
 ARG NODE_APK_VERSION=24.18.1-r0
 ARG ICU_DATA_APK_VERSION=78.1-r0
+ARG POSTGRESQL_APK_VERSION=18.6-r0
 
 # the uid is explicit and never changes: the data volume's files are owned
 # by it, so a shift between releases would lock an existing deployment out
 # of its own secrets. The three directories are the volume mount point
 # (which the launcher writes generated secrets into), the mount point for
 # a GitHub App private key, and caddy's scratch dir.
-RUN apk add --no-cache "nodejs=${NODE_APK_VERSION}" "icu-data-full=${ICU_DATA_APK_VERSION}" \
+RUN apk add --no-cache "nodejs=${NODE_APK_VERSION}" "icu-data-full=${ICU_DATA_APK_VERSION}" "postgresql18=${POSTGRESQL_APK_VERSION}" \
 	&& adduser -D -H -u 65532 oxynote \
 	&& mkdir -p /oxynote/data /oxynote/github /tmp/caddy \
 	&& chown -R oxynote /oxynote /tmp/caddy
@@ -159,6 +165,7 @@ COPY --from=auth-realtime-builder /server/dist/bundle.mjs /oxynote/auth-realtime
 COPY --from=launcher-builder /launcher/dist/launcher.mjs /oxynote/prod/launcher.mjs
 COPY docker/prod/healthcheck.mjs /oxynote/prod/healthcheck.mjs
 COPY docker/prod/Caddyfile /oxynote/prod/Caddyfile
+COPY docker/prod/pg_hba.conf /oxynote/prod/pg_hba.conf
 
 # what ghcr reads to link the package to this repository, and what a
 # scanner reads to tell one build from another. IMAGE_VERSION and

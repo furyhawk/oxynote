@@ -7,8 +7,9 @@ principles and TS/JS style live in the root [AGENTS.md](../../AGENTS.md).
 
 One public image (`ghcr.io/oxynote/oxynote`) running Caddy, web (Nuxt SSR),
 core and auth-realtime under `launcher/` (`@oxynote/launcher`, pnpm), a
-TypeScript supervisor run by node under tini. Postgres is the only required
-external service; valkey, an S3-compatible store, SMTP and
+TypeScript supervisor run by node under tini, plus an embedded Postgres that
+`OXYNOTE_DB_DSN` swaps for an external one. Valkey, an S3-compatible store,
+SMTP and
 changedetection.io are optional (without a store, objects live on the data
 volume, as does the search index, which core rebuilds from Postgres when
 missing). `docker-compose.example.yaml` is the canonical deployment and
@@ -45,6 +46,16 @@ mailpit, since signup needs a verified address.
   [e2e/tests/prod-trust-boundary.test.ts](../../e2e/tests/prod-trust-boundary.test.ts)
   asserts the same from outside. Changing any of this is a security
   decision.
+- **The embedded Postgres is reached only through its socket, and only with
+  a password.** `listen_addresses` is empty (5432 stays in the boot check
+  and the trust-boundary table), `pg_hba.conf` is shipped in the image and
+  passed as `hba_file`, and the app role owns its database and nothing
+  else. Core dials the data sources workspace members configure, so trust
+  auth or a superuser app role hands every organization's data to anyone
+  who can add one. The major is fixed by the `postgresql18` package and the
+  launcher's `/usr/libexec/postgresql18` paths; a data directory only opens
+  under the major that wrote it, so a major bump needs an upgrade path for
+  existing volumes.
 - **`Caddyfile` is a sibling of [docker/Caddyfile](../Caddyfile)**: same
   routes, same 403 blocks on `/core/api/x/*` and
   `/auth-realtime/api/internal/*`; only the upstreams differ. Change both

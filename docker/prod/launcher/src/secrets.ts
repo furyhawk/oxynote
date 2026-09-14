@@ -7,6 +7,7 @@ export interface Secrets {
 	dataSourceEncryptionKey: string
 	githubInstallationSigningSecret: string
 	slackInstallationSigningSecret: string
+	databasePassword: string
 }
 
 export interface SecretOverrides {
@@ -118,6 +119,7 @@ export function ensureSecrets(
 		slackInstallationSigningSecret: resolve(
 			"slack-installation-signing-secret",
 		),
+		databasePassword: resolve("database-password"),
 	}
 
 	return { secrets, report }

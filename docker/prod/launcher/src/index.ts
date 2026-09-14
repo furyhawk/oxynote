@@ -1,10 +1,16 @@
-import { spawn } from "node:child_process"
+import { execFile, spawn, spawnSync } from "node:child_process"
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs"
 import net from "node:net"
 import os from "node:os"
 import { join } from "node:path"
 import * as Sentry from "@sentry/node"
 import { destination } from "pino"
 import { bakedLauncherSentryDsn, bakedSentryDsns } from "./baked.js"
+import {
+	databaseReadiness,
+	databaseServer,
+	prepareDatabase,
+} from "./database.js"
 import { loadConfig, type Config } from "./env.js"
 import { checkLoopbackExposure } from "./loopback.js"
 import { childRecord, createLogger } from "./logging.js"
@@ -16,6 +22,7 @@ import {
 	corePort,
 	coreUrl,
 	dataDir,
+	postgresPort,
 	webPort,
 	webUrl,
 } from "./mapping.js"
@@ -107,6 +114,45 @@ function connects(host: string, port: number): Promise<boolean> {
 	})
 }
 
+// runs one of the database's first-boot steps to completion. It blocks,
+// which costs nothing: no child is running yet.
+function runToCompletion(
+	command: string,
+	args: string[],
+	input: string,
+	env: Record<string, string>,
+): void {
+	const result = spawnSync(command, args, {
+		env,
+		input,
+		encoding: "utf8",
+	})
+
+	if (result.error) {
+		throw result.error
+	}
+
+	if (result.status !== 0) {
+		throw new Error(
+			`${command} exited with code ${String(result.status)}: ${`${result.stdout}${result.stderr}`.trim()}`,
+		)
+	}
+}
+
+// answers whether a command exits 0, for a readiness check that is a
+// program rather than a URL.
+function succeeds(
+	command: string,
+	args: string[],
+	env: Record<string, string>,
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		execFile(command, args, { env, timeout: 2_000 }, (err) => {
+			resolve(err === null)
+		})
+	})
+}
+
 let shuttingDown = false
 
 async function shutdown(supervisor: Supervisor, code: number): Promise<void> {
@@ -131,7 +177,8 @@ function logEnabledFeatures(config: Config): void {
 	const state = (enabled: boolean) => (enabled ? "on" : "off")
 
 	log.info(
-		`email ${state(config.smtp !== undefined)}, ` +
+		`database ${config.databaseDsn === undefined ? "embedded" : "external"}, ` +
+			`email ${state(config.smtp !== undefined)}, ` +
 			`github app ${state(config.githubApp !== undefined)}, ` +
 			`slack app ${state(config.slackApp !== undefined)}, ` +
 			`ai assistant ${state((config.aiAssistant.PROVIDER ?? "") !== "")}, ` +
@@ -163,10 +210,48 @@ async function main(): Promise<void> {
 		)
 	}
 
-	const envs = buildChildEnvs(config, secrets, bakedSentryDsns, {
-		PATH: process.env.PATH ?? "",
-		HOME: "/oxynote",
-	})
+	const inheritedEnv = { PATH: process.env.PATH ?? "", HOME: "/oxynote" }
+	const envs = buildChildEnvs(
+		config,
+		secrets,
+		bakedSentryDsns,
+		inheritedEnv,
+	)
+	const embeddedDatabase = config.databaseDsn === undefined
+
+	if (embeddedDatabase) {
+		const created = prepareDatabase(
+			{
+				exists: existsSync,
+				remove: (path) => {
+					rmSync(path, {
+						recursive: true,
+						force: true,
+					})
+				},
+				rename: renameSync,
+				makeDir: (path) => {
+					mkdirSync(path, {
+						recursive: true,
+						mode: 0o700,
+					})
+				},
+				run: (command, args, input) => {
+					runToCompletion(
+						command,
+						args,
+						input,
+						inheritedEnv,
+					)
+				},
+			},
+			secrets.databasePassword,
+		)
+
+		if (created) {
+			log.info("created the embedded database")
+		}
+	}
 
 	const supervisor = createSupervisor({
 		spawn: (command, args, env) =>
@@ -174,7 +259,6 @@ async function main(): Promise<void> {
 				env,
 				stdio: ["ignore", "pipe", "pipe"],
 			}),
-		probe,
 		sleep,
 		log,
 		logChildLine,
@@ -201,12 +285,33 @@ async function main(): Promise<void> {
 	process.once("SIGINT", () => void shutdown(supervisor, 0))
 
 	const specs: ChildSpec[] = [
+		// first to start and so last to stop, once every client is gone.
+		...(embeddedDatabase
+			? [
+					{
+						name: "postgres",
+						command: databaseServer.command,
+						args: databaseServer.args,
+						env: inheritedEnv,
+						ready: () =>
+							succeeds(
+								databaseReadiness.command,
+								databaseReadiness.args,
+								inheritedEnv,
+							),
+						readyTimeoutMs: 60_000,
+						// the shutdown checkpoint writes out every
+						// buffer still in memory.
+						stopGraceMs: 20_000,
+					},
+				]
+			: []),
 		{
 			name: "core",
 			command: "/oxynote/core/server",
 			args: [],
 			env: envs.core,
-			readyUrl: `${coreUrl}/api/x/version`,
+			ready: () => probe(`${coreUrl}/api/x/version`),
 			// the first boot runs the migrations and creates the
 			// storage bucket before listening.
 			readyTimeoutMs: 180_000,
@@ -220,7 +325,8 @@ async function main(): Promise<void> {
 			// the bundled app never sees.
 			args: ["/oxynote/auth-realtime/index.mjs"],
 			env: envs.authRealtime,
-			readyUrl: `${authRealtimeUrl}/api/auth-config`,
+			ready: () =>
+				probe(`${authRealtimeUrl}/api/auth-config`),
 			readyTimeoutMs: 60_000,
 			// the shutdown flush may persist every open document.
 			stopGraceMs: 20_000,
@@ -230,7 +336,7 @@ async function main(): Promise<void> {
 			command: process.execPath,
 			args: ["/oxynote/web/server/index.mjs"],
 			env: envs.web,
-			readyUrl: `${webUrl}/login`,
+			ready: () => probe(`${webUrl}/login`),
 			readyTimeoutMs: 60_000,
 			stopGraceMs: 10_000,
 			// nitro announces its loopback bind with a bare
@@ -248,7 +354,10 @@ async function main(): Promise<void> {
 				"caddyfile",
 			],
 			env: envs.caddy,
-			readyUrl: `http://127.0.0.1:${caddyPort}/auth-realtime/api/auth-config`,
+			ready: () =>
+				probe(
+					`http://127.0.0.1:${caddyPort}/auth-realtime/api/auth-config`,
+				),
 			readyTimeoutMs: 30_000,
 			stopGraceMs: 10_000,
 		},
@@ -265,7 +374,7 @@ async function main(): Promise<void> {
 		// serving.
 		const exposed = await checkLoopbackExposure(
 			{ addresses: externalAddresses, connects },
-			[corePort, authRealtimePort, webPort],
+			[corePort, authRealtimePort, webPort, postgresPort],
 		)
 
 		if (exposed.length > 0) {

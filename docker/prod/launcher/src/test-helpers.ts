@@ -77,5 +77,6 @@ export function testSecrets(): Secrets {
 		dataSourceEncryptionKey: "0123456789abcdef0123456789abcdef",
 		githubInstallationSigningSecret: "github-installation-secret",
 		slackInstallationSigningSecret: "slack-installation-secret",
+		databasePassword: "test-database-password",
 	}
 }

@@ -3,7 +3,7 @@ import { loadConfig } from "./env.js"
 import { completeEnv } from "./test-helpers.js"
 
 describe("loadConfig", () => {
-	it("maps every required variable onto the typed configuration", ({
+	it("maps the backing services onto the typed configuration", ({
 		expect,
 	}) => {
 		const config = loadConfig(completeEnv())
@@ -30,9 +30,19 @@ describe("loadConfig", () => {
 	})
 
 	it("treats an empty value as an absent variable", ({ expect }) => {
-		expect(() =>
-			loadConfig(completeEnv({ OXYNOTE_DB_DSN: "" })),
-		).toThrow("OXYNOTE_DB_DSN")
+		const config = loadConfig(completeEnv({ OXYNOTE_DB_DSN: "" }))
+
+		expect(config.databaseDsn).toBeUndefined()
+	})
+
+	it("leaves the database to the image when no DSN is set", ({
+		expect,
+	}) => {
+		const config = loadConfig(
+			completeEnv({ OXYNOTE_DB_DSN: undefined }),
+		)
+
+		expect(config.databaseDsn).toBeUndefined()
 	})
 
 	it.for([
