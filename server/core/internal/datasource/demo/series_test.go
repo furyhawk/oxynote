@@ -188,18 +188,75 @@ func Test_countAt(t *testing.T) {
 	assert.InDelta(t, 2_000.0, sum/5_000, 50)
 }
 
+func Test_endpoint(t *testing.T) {
+	t.Parallel()
+
+	const draws = 4_000
+
+	// the closed form has to agree with the walk it stands in for: a
+	// segment stepped out in full ends where endpoint says it does, in
+	// distribution. Both are sampled over many streams and compared on
+	// mean and spread.
+	stepped := make([]float64, 0, draws)
+	drawn := make([]float64, 0, draws)
+
+	for i := range int64(draws) {
+		v := 100.0
+		r := newRand(1, i)
+
+		for range _segment {
+			v = step(v, _testWalk, r)
+		}
+
+		stepped = append(stepped, v)
+		drawn = append(drawn, endpoint(100, _testWalk, newRand(2, i)))
+	}
+
+	sm, ss := meanStdDev(stepped)
+	dm, ds := meanStdDev(drawn)
+
+	assert.InDelta(t, sm, dm, 2)
+	assert.InDelta(t, ss, ds, ss*0.15)
+
+	// a day is long enough for the start to be forgotten, so the walk
+	// ends around the level drift and mean reversion balance at.
+	assert.InDelta(t, _testWalk.Target+_testWalk.DriftPerStep/_testWalk.MeanReversion, dm, 2)
+
+	// the draw is clamped like every step is.
+	p := _testWalk
+	p.Min = 10
+	p.Max = 20
+
+	assert.LessOrEqual(t, endpoint(1_000, p, newRand(1, 1)), 20.0)
+	assert.GreaterOrEqual(t, endpoint(-1_000, p, newRand(1, 1)), 10.0)
+}
+
 func Test_replay(t *testing.T) {
 	t.Parallel()
 
-	// no steps is no movement.
-	assert.Equal(t, 100.0, replay(100, _testWalk, newRand(1, 1), 0))
+	// a segment is its start value, every step of it, and the end it
+	// was told to reach.
+	vv := replay(100, 130, _testWalk, newRand(1, 1))
+	require.Len(t, vv, _segment+1)
+	assert.Equal(t, 100.0, vv[0])
+	assert.NotEqual(t, vv[0], vv[1])
+	assert.Equal(t, 130.0, vv[_segment])
 
-	// the same start and stream replay to the same value.
-	assert.Equal(
-		t,
-		replay(100, _testWalk, newRand(1, 1), 50),
-		replay(100, _testWalk, newRand(1, 1), 50),
-	)
+	// the same start, end and stream replay to the same values.
+	assert.Equal(t, vv, replay(100, 130, _testWalk, newRand(1, 1)))
+
+	// every value stays inside the bounds, tilt included.
+	for _, v := range vv {
+		assert.GreaterOrEqual(t, v, _testWalk.Min)
+		assert.LessOrEqual(t, v, _testWalk.Max)
+	}
+}
+
+func Test_step(t *testing.T) {
+	t.Parallel()
+
+	// the same start and stream step to the same value.
+	assert.Equal(t, step(100, _testWalk, newRand(1, 1)), step(100, _testWalk, newRand(1, 1)))
 
 	// every step clamps, so a walk started far outside its bounds is
 	// inside them again after one.
@@ -207,8 +264,27 @@ func Test_replay(t *testing.T) {
 	p.Min = 10
 	p.Max = 20
 
-	assert.LessOrEqual(t, replay(1_000, p, newRand(1, 1), 1), 20.0)
-	assert.GreaterOrEqual(t, replay(-1_000, p, newRand(1, 1), 1), 10.0)
+	assert.LessOrEqual(t, step(1_000, p, newRand(1, 1)), 20.0)
+	assert.GreaterOrEqual(t, step(-1_000, p, newRand(1, 1)), 10.0)
+}
+
+// meanStdDev returns the mean and standard deviation of the given sample.
+func meanStdDev(vv []float64) (float64, float64) {
+	var sum float64
+
+	for _, v := range vv {
+		sum += v
+	}
+
+	mean := sum / float64(len(vv))
+
+	var sq float64
+
+	for _, v := range vv {
+		sq += (v - mean) * (v - mean)
+	}
+
+	return mean, math.Sqrt(sq / float64(len(vv)))
 }
 
 func Test_newWalk(t *testing.T) {
@@ -222,6 +298,7 @@ func Test_newWalk(t *testing.T) {
 
 	// nothing is computed until something is asked for.
 	assert.Empty(t, w.checkpoints)
+	assert.Empty(t, w.segments)
 }
 
 func Test_walk_at(t *testing.T) {
@@ -257,7 +334,29 @@ func Test_walk_at(t *testing.T) {
 
 	// a segment boundary is continuous: the first tick of a segment is
 	// the value the previous segment ended on.
-	assert.Equal(t, a.checkpoint(1), a.at(boundary))
+	assert.Equal(t, a.segment(0)[_segment], a.at(boundary))
+	assert.Equal(t, a.segment(1)[0], a.at(boundary))
+}
+
+func Test_walk_segment(t *testing.T) {
+	t.Parallel()
+
+	w := newWalk(11, _testWalk)
+
+	// reading a segment caches it and the checkpoints leading up to it,
+	// and nothing else.
+	s := w.segment(3)
+	require.Len(t, s, _segment+1)
+	assert.Len(t, w.segments, 1)
+	assert.Len(t, w.checkpoints, 4)
+
+	// a second read is the cached slice.
+	assert.Equal(t, s, w.segment(3))
+	assert.Len(t, w.segments, 1)
+
+	// a segment starts on its checkpoint and ends on the next.
+	assert.Equal(t, w.checkpoints[3], s[0])
+	assert.Equal(t, w.segment(4)[0], s[_segment])
 }
 
 func Test_walk_checkpoint(t *testing.T) {
