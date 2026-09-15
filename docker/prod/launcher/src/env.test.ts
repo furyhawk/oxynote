@@ -528,43 +528,67 @@ describe("loadConfig", () => {
 			const config = loadConfig(completeEnv())
 
 			expect(config.authSecret).toBeUndefined()
-			expect(config.dataSourceEncryptionKey).toBeUndefined()
+			expect(config.dataSourceEncryptionKeys).toBeUndefined()
 		})
 
 		it.for([
-			{ name: "16", input: "0123456789abcdef" },
-			{ name: "24", input: "0123456789abcdef01234567" },
 			{
-				name: "32",
-				input: "0123456789abcdef0123456789abcdef",
+				name: "one key",
+				input: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+			},
+			{
+				name: "two keys",
+				input: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=, ZmVkY2JhOTg3NjU0MzIxMGZlZGNiYTk4NzY1NDMyMTA=",
 			},
 		])(
-			"accepts a $name byte encryption key",
+			"accepts $name as the encryption keys",
 			({ input }, { expect }) => {
 				const config = loadConfig(
 					completeEnv({
-						OXYNOTE_DATA_SOURCE_ENCRYPTION_KEY:
+						OXYNOTE_DATA_SOURCE_ENCRYPTION_KEYS:
 							input,
 					}),
 				)
 
-				expect(config.dataSourceEncryptionKey).toBe(
+				expect(config.dataSourceEncryptionKeys).toBe(
 					input,
 				)
 			},
 		)
 
-		it("rejects an encryption key of any other length", ({
-			expect,
-		}) => {
-			expect(() =>
-				loadConfig(
-					completeEnv({
-						OXYNOTE_DATA_SOURCE_ENCRYPTION_KEY:
-							"tooshort",
-					}),
-				),
-			).toThrow("OXYNOTE_DATA_SOURCE_ENCRYPTION_KEY")
-		})
+		it.for([
+			{
+				name: "a raw 32-byte string",
+				input: "0123456789abcdef0123456789abcdef",
+			},
+			{
+				name: "base64 of 16 bytes",
+				input: "MDEyMzQ1Njc4OWFiY2RlZg==",
+			},
+			{
+				name: "one bad key among good ones",
+				input: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=,tooshort",
+			},
+			{
+				name: "non-canonical base64",
+				input: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWZ=",
+			},
+			{
+				name: "the same key twice",
+				input: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=,MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+			},
+		])(
+			"rejects $name as the encryption keys",
+			({ input }, { expect }) => {
+				expect(() =>
+					loadConfig(
+						completeEnv({
+							OXYNOTE_DATA_SOURCE_ENCRYPTION_KEYS:
+								input,
+						}),
+					),
+				).toThrow("OXYNOTE_DATA_SOURCE_ENCRYPTION_KEYS")
+			},
+		)
 	})
 })

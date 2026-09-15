@@ -286,7 +286,7 @@
 							},
 							"description": "The data source user has write access, but Oxynote only needs read permissions. Please provide a read-only user to continue"
 						},
-						"invalid_signing_secret": {
+						"invalid_encryption_key": {
 							"title": {
 								"creation": "{name} couldn't be connected",
 								"update": "{name} couldn't be updated"

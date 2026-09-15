@@ -84,7 +84,7 @@ export interface Config {
 	crashReportingDisabled: boolean
 	// explicit secret overrides; unset means generate-and-persist.
 	authSecret: string | undefined
-	dataSourceEncryptionKey: string | undefined
+	dataSourceEncryptionKeys: string | undefined
 }
 
 // every URL here is dialed or redirected to, so the scheme is pinned: bare
@@ -266,19 +266,39 @@ const smtpDsn = z
 		}
 	})
 
-// the key encrypts stored data-source credentials with AES, which accepts
-// exactly these lengths; core never validates it and would fail on the
-// first credential save instead.
-const encryptionKey = z
+// the standard base64 encoding of exactly 32 bytes, as core's strict
+// decoder reads it: 43 characters and one pad, and the last character
+// carries two zero padding bits, which leaves it 16 of the alphabet.
+const dataSourceKeyPattern = /^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/
+
+// the keys encrypt stored data-source credentials: a comma-separated list,
+// newest first, each the standard base64 of exactly 32 bytes and none
+// listed twice. Core refuses to boot on anything else, so the check here
+// names the public variable.
+const encryptionKeys = z
 	.string()
 	.optional()
 	.refine(
 		(value) =>
 			value === undefined ||
-			[16, 24, 32].includes(
-				new TextEncoder().encode(value).length,
-			),
-		{ error: "must be exactly 16, 24, or 32 bytes" },
+			value
+				.split(",")
+				.every((key) =>
+					dataSourceKeyPattern.test(key.trim()),
+				),
+		{ error: "every key must be base64 of exactly 32 bytes" },
+	)
+	.refine(
+		(value) => {
+			if (value === undefined) {
+				return true
+			}
+
+			const keys = value.split(",").map((key) => key.trim())
+
+			return new Set(keys).size === keys.length
+		},
+		{ error: "lists the same key twice" },
 	)
 
 // the value core parses with Go's time.ParseDuration.
@@ -384,7 +404,7 @@ const baseSchema = z.object({
 	OXYNOTE_PRIVACY_POLICY_URL: httpUrl().optional(),
 	OXYNOTE_CRASH_REPORTING_DISABLED: flag(),
 	OXYNOTE_AUTH_SECRET: z.string().optional(),
-	OXYNOTE_DATA_SOURCE_ENCRYPTION_KEY: encryptionKey,
+	OXYNOTE_DATA_SOURCE_ENCRYPTION_KEYS: encryptionKeys,
 })
 
 type ParsedValues = z.infer<typeof baseSchema>
@@ -617,7 +637,7 @@ export function loadConfig(source: Record<string, string | undefined>): Config {
 		privacyPolicyUrl: values.OXYNOTE_PRIVACY_POLICY_URL ?? "",
 		crashReportingDisabled: values.OXYNOTE_CRASH_REPORTING_DISABLED,
 		authSecret: values.OXYNOTE_AUTH_SECRET,
-		dataSourceEncryptionKey:
-			values.OXYNOTE_DATA_SOURCE_ENCRYPTION_KEY,
+		dataSourceEncryptionKeys:
+			values.OXYNOTE_DATA_SOURCE_ENCRYPTION_KEYS,
 	}
 }

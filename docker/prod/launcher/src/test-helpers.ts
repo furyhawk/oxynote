@@ -66,7 +66,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
 		privacyPolicyUrl: "",
 		crashReportingDisabled: false,
 		authSecret: undefined,
-		dataSourceEncryptionKey: undefined,
+		dataSourceEncryptionKeys: undefined,
 		...overrides,
 	}
 }
@@ -74,7 +74,8 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
 export function testSecrets(): Secrets {
 	return {
 		authSecret: "test-auth-secret",
-		dataSourceEncryptionKey: "0123456789abcdef0123456789abcdef",
+		dataSourceEncryptionKeys:
+			"MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
 		githubInstallationSigningSecret: "github-installation-secret",
 		slackInstallationSigningSecret: "slack-installation-secret",
 		databasePassword: "test-database-password",

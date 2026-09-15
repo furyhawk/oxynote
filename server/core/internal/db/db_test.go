@@ -20,6 +20,7 @@ import (
 	"github.com/orlangure/gnomock"
 	pgDocker "github.com/orlangure/gnomock/preset/postgres"
 	"github.com/oxynote/oxynote/server/core/internal/tag"
+	"github.com/oxynote/oxynote/server/core/pkg/cryptoutil"
 	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/ioutil"
 	"github.com/oxynote/oxynote/server/core/pkg/metricutil"
@@ -34,11 +35,28 @@ const (
 	_pgUser string = "pgtest"
 	_pgPass string = "pgpass"
 
-	// _dataSourceSecret is the credentials signing secret used by
-	// all temporary test databases. It must be a valid AES key
-	// length (32 bytes).
-	_dataSourceSecret string = "0123456789abcdef0123456789abcdef"
+	// _dataSourceKey is the base64 credentials encryption key every
+	// temporary test database is configured with.
+	_dataSourceKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+
+	// _retiredDataSourceKey is a base64 credentials encryption key no
+	// temporary test database is configured with unless a test says so.
+	_retiredDataSourceKey = "ZmVkY2JhOTg3NjU0MzIxMGZlZGNiYTk4NzY1NDMyMTA="
 )
+
+// _dataSourceKeys is the keyring every temporary test database is
+// configured with.
+var _dataSourceKeys = mustParseKeys(_dataSourceKey)
+
+// mustParseKeys parses a keyring list or panics.
+func mustParseKeys(list string) *cryptoutil.Keyring {
+	keys, err := cryptoutil.ParseKeyring(list)
+	if err != nil {
+		panic("cannot parse test keyring: " + err.Error())
+	}
+
+	return keys
+}
 
 func TestMain(m *testing.M) {
 	container, err := gnomock.Start(pgDocker.Preset(
@@ -281,8 +299,8 @@ func prepTempDB(t *testing.T) *DB {
 	name := uniuri.NewLenChars(10, []byte("abcdefghijklmnopqrstuvwxyz"))
 
 	opts := Options{
-		DSN:                                fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", _pgUser, _pgPass, _pgDSN, name),
-		DataSourceCredentialsSigningSecret: _dataSourceSecret,
+		DSN:                       fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", _pgUser, _pgPass, _pgDSN, name),
+		DataSourceCredentialsKeys: _dataSourceKeys,
 	}
 
 	tmpDB, err := sqlx.Connect(

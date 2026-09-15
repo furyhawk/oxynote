@@ -22,6 +22,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lann/builder"
 	"github.com/oxynote/oxynote/server/core/internal/tag"
+	"github.com/oxynote/oxynote/server/core/pkg/cryptoutil"
 	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/ioutil"
 	"github.com/oxynote/oxynote/server/core/pkg/metricutil"
@@ -103,9 +104,11 @@ type Options struct {
 	// Zero means no age limit.
 	DocumentHistoryRetention time.Duration
 
-	// DataSourceCredentialsSigningSecret is the secret used to sign
-	// data source credentials.
-	DataSourceCredentialsSigningSecret string
+	// DataSourceCredentialsKeys holds the keys data source credentials
+	// are encrypted with. The first key encrypts; every key decrypts.
+	// It must be set: New does not check it, and a nil keyring panics on
+	// the first credential written or read.
+	DataSourceCredentialsKeys *cryptoutil.Keyring
 }
 
 // New creates a fresh instance of database.

@@ -68,7 +68,8 @@ mailpit, since signup needs a verified address.
   undeclared `OXYNOTE_*` variable is a boot error.
 - **Secrets precedence** (`launcher/src/secrets.ts`): explicit env (never
   persisted) → existing volume file → generate and persist 0600. The
-  data-source encryption key cannot be rotated; never weaken this path.
+  data-source override may carry a whole keyring; the generated file holds
+  one key. Never weaken this path.
 - **Sentry DSNs are build-time only** (esbuild `--define` from Dockerfile
   ARGs); `OXYNOTE_CRASH_REPORTING_DISABLED` is the only runtime switch. The
   launcher keeps its own DSN (`bakedLauncherSentryDsn`) to report a child

@@ -4,7 +4,7 @@ import { join } from "node:path"
 
 export interface Secrets {
 	authSecret: string
-	dataSourceEncryptionKey: string
+	dataSourceEncryptionKeys: string
 	githubInstallationSigningSecret: string
 	slackInstallationSigningSecret: string
 	databasePassword: string
@@ -12,7 +12,7 @@ export interface Secrets {
 
 export interface SecretOverrides {
 	authSecret: string | undefined
-	dataSourceEncryptionKey: string | undefined
+	dataSourceEncryptionKeys: string | undefined
 }
 
 export interface SecretReport {
@@ -41,13 +41,23 @@ function readSecret(path: string): string | undefined {
 	}
 }
 
+// generateAscii draws 24 random bytes as base64url, which is exactly the 32
+// ASCII bytes core's installation signing secrets must be.
+function generateAscii(): string {
+	return randomBytes(24).toString("base64url")
+}
+
+// generateDataSourceKey draws the 32 random bytes of one AES-256 key, in
+// the base64 form core's keyring reads.
+function generateDataSourceKey(): string {
+	return randomBytes(32).toString("base64")
+}
+
 // ensureSecrets resolves every internal secret with the precedence the
 // established all-in-one images use: an explicit override wins and is never
 // written to disk, an existing volume file is reused, and only a secret
 // with neither is generated — from the CSPRNG — and persisted with
-// owner-only permissions. Everything generated is 32 ASCII bytes, which
-// satisfies both the AES-256 key length the data-source encryption needs
-// and core's exactly-32-byte installation signing secrets.
+// owner-only permissions.
 export function ensureSecrets(
 	dir: string,
 	overrides: SecretOverrides,
@@ -58,7 +68,11 @@ export function ensureSecrets(
 		fromEnv: [],
 	}
 
-	function resolve(file: string, override?: string): string {
+	function resolve(
+		file: string,
+		generate: () => string,
+		override?: string,
+	): string {
 		if (override !== undefined) {
 			report.fromEnv.push(file)
 
@@ -74,8 +88,7 @@ export function ensureSecrets(
 			return existing
 		}
 
-		// base64url of 24 random bytes is exactly 32 ASCII bytes.
-		const value = randomBytes(24).toString("base64url")
+		const value = generate()
 
 		try {
 			mkdirSync(dir, { recursive: true, mode: 0o700 })
@@ -108,18 +121,25 @@ export function ensureSecrets(
 	}
 
 	const secrets: Secrets = {
-		authSecret: resolve("auth-secret", overrides.authSecret),
-		dataSourceEncryptionKey: resolve(
+		authSecret: resolve(
+			"auth-secret",
+			generateAscii,
+			overrides.authSecret,
+		),
+		dataSourceEncryptionKeys: resolve(
 			"data-source-encryption-key",
-			overrides.dataSourceEncryptionKey,
+			generateDataSourceKey,
+			overrides.dataSourceEncryptionKeys,
 		),
 		githubInstallationSigningSecret: resolve(
 			"github-installation-signing-secret",
+			generateAscii,
 		),
 		slackInstallationSigningSecret: resolve(
 			"slack-installation-signing-secret",
+			generateAscii,
 		),
-		databasePassword: resolve("database-password"),
+		databasePassword: resolve("database-password", generateAscii),
 	}
 
 	return { secrets, report }

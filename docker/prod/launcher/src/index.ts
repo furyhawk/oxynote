@@ -191,7 +191,7 @@ async function main(): Promise<void> {
 
 	const { secrets, report } = ensureSecrets(join(dataDir, "secrets"), {
 		authSecret: config.authSecret,
-		dataSourceEncryptionKey: config.dataSourceEncryptionKey,
+		dataSourceEncryptionKeys: config.dataSourceEncryptionKeys,
 	})
 
 	for (const name of report.generated) {

@@ -78,7 +78,7 @@ func (r *runner) Type() Type {
 // data source in use, which is the observation worth keeping.
 func (r *runner) TestConnection(ctx context.Context) (processor.ConnectionStatus, error) {
 	if !r.ds.Credentials.IsValid() {
-		return processor.ConnectionStatusInvalidSigningSecret, nil
+		return processor.ConnectionStatusInvalidEncryptionKey, nil
 	}
 
 	if err := r.ensurePrepared(); err != nil {
@@ -131,9 +131,9 @@ func connect[C any](ctx context.Context, r *runner, allowed ...Type) (C, error) 
 	// attempting: there is nothing left to authenticate with, and the data
 	// source would answer for the empty login rather than for the reason.
 	if !r.ds.Credentials.IsValid() {
-		r.recordStatus(ctx, processor.ConnectionStatusInvalidSigningSecret)
+		r.recordStatus(ctx, processor.ConnectionStatusInvalidEncryptionKey)
 
-		return zero, processor.ConnectionStatusInvalidSigningSecret.Error()
+		return zero, processor.ConnectionStatusInvalidEncryptionKey.Error()
 	}
 
 	if err := r.ensurePrepared(); err != nil {

@@ -558,14 +558,14 @@ func Test_Handler_TestDataSourceConnection(t *testing.T) {
 		"Credentials that cannot be decrypted are reported": {
 			DB: func() *DBMock {
 				ds := stubDataSource(datasourceCore.TypePrometheus)
-				ds.Status = processor.ConnectionStatusInvalidSigningSecret
+				ds.Status = processor.ConnectionStatusInvalidEncryptionKey
 
 				return stubDB(ds, nil)
 			}(),
-			Clients: &clientMocks{status: processor.ConnectionStatusInvalidSigningSecret, statusErr: nil},
+			Clients: &clientMocks{status: processor.ConnectionStatusInvalidEncryptionKey, statusErr: nil},
 			ID:      _testID.String(),
 			Checks: checks(
-				hasResp(http.StatusOK, `{"status":"invalid_signing_secret"}`),
+				hasResp(http.StatusOK, `{"status":"invalid_encryption_key"}`),
 				// the read already recorded the status, and a write here
 				// would store an encryption of the credentials it could
 				// not read in place of the ones it could not.

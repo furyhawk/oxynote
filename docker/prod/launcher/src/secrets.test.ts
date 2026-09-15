@@ -16,8 +16,11 @@ function tempDir(): string {
 
 const noOverrides = {
 	authSecret: undefined,
-	dataSourceEncryptionKey: undefined,
+	dataSourceEncryptionKeys: undefined,
 }
+
+// a key in the shape ensureSecrets generates.
+const validKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 
 describe("ensureSecrets", () => {
 	it("generates every secret on first boot and persists it", ({
@@ -27,9 +30,19 @@ describe("ensureSecrets", () => {
 
 		const { secrets, report } = ensureSecrets(dir, noOverrides)
 
-		for (const value of Object.values(secrets)) {
+		// 32 random bytes as standard base64, the one key of a fresh
+		// keyring
+		expect(secrets.dataSourceEncryptionKeys).toMatch(
+			/^[A-Za-z0-9+/]{43}=$/,
+		)
+
+		for (const [name, value] of Object.entries(secrets)) {
+			if (name === "dataSourceEncryptionKeys") {
+				continue
+			}
+
 			// 24 random bytes as base64url — 32 ASCII characters,
-			// satisfying the AES-256 and 32-byte signing constraints
+			// satisfying the 32-byte signing constraints
 			expect(value).toMatch(/^[A-Za-z0-9_-]{32}$/)
 		}
 
@@ -92,12 +105,41 @@ describe("ensureSecrets", () => {
 
 		const { secrets, report } = ensureSecrets(dir, {
 			authSecret: "operator-provided",
-			dataSourceEncryptionKey: undefined,
+			dataSourceEncryptionKeys: undefined,
 		})
 
 		expect(secrets.authSecret).toBe("operator-provided")
 		expect(report.fromEnv).toEqual(["auth-secret"])
 		expect(readdirSync(dir)).not.toContain("auth-secret")
+	})
+
+	it("passes an overridden keyring through as it is", ({ expect }) => {
+		const dir = tempDir()
+		const keys = `${validKey},ZmVkY2JhOTg3NjU0MzIxMGZlZGNiYTk4NzY1NDMyMTA=`
+
+		const { secrets, report } = ensureSecrets(dir, {
+			authSecret: undefined,
+			dataSourceEncryptionKeys: keys,
+		})
+
+		expect(secrets.dataSourceEncryptionKeys).toBe(keys)
+		expect(report.fromEnv).toEqual(["data-source-encryption-key"])
+		expect(readdirSync(dir)).not.toContain(
+			"data-source-encryption-key",
+		)
+	})
+
+	it("reuses a stored data-source key of the right shape", ({
+		expect,
+	}) => {
+		const dir = tempDir()
+
+		mkdirSync(dir, { recursive: true })
+		writeFileSync(join(dir, "data-source-encryption-key"), validKey)
+
+		const { secrets } = ensureSecrets(dir, noOverrides)
+
+		expect(secrets.dataSourceEncryptionKeys).toBe(validKey)
 	})
 
 	it("keeps an overridden secret out of the volume across boots", ({
@@ -107,11 +149,11 @@ describe("ensureSecrets", () => {
 
 		ensureSecrets(dir, {
 			authSecret: "operator-provided",
-			dataSourceEncryptionKey: undefined,
+			dataSourceEncryptionKeys: undefined,
 		})
 		const { secrets } = ensureSecrets(dir, {
 			authSecret: "operator-provided",
-			dataSourceEncryptionKey: undefined,
+			dataSourceEncryptionKeys: undefined,
 		})
 
 		expect(secrets.authSecret).toBe("operator-provided")

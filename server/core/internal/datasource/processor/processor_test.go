@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	mysqlDriver "github.com/go-sql-driver/mysql"
 	"github.com/orlangure/gnomock"
 	pgDocker "github.com/orlangure/gnomock/preset/postgres"
+	"github.com/oxynote/oxynote/server/core/pkg/cryptoutil"
 	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/testutil"
 	"github.com/stretchr/testify/assert"
@@ -21,8 +23,18 @@ import (
 	"go.uber.org/goleak"
 )
 
-// _testSigningKey is a 32-byte AES key used by credentials crypto tests.
-const _testSigningKey = "01234567890123456789012345678901"
+// _testKeys is the keyring used by credentials crypto tests.
+var _testKeys = func() *cryptoutil.Keyring {
+	keys, err := cryptoutil.ParseKeyring(base64.StdEncoding.EncodeToString([]byte("01234567890123456789012345678901")))
+	if err != nil {
+		panic("cannot parse test keyring: " + err.Error())
+	}
+
+	return keys
+}()
+
+// _testAAD is the associated data credentials crypto tests seal with.
+var _testAAD = []byte("data-source-id")
 
 const (
 	// _testDB is the database name used in the throwaway containers.
@@ -197,12 +209,12 @@ func Test_ConnectionStatus_Error(t *testing.T) {
 			Status: ConnectionStatusNotReadOnly,
 			Err:    errutil.New(http.StatusBadRequest, "data_source.not_read_only", "The data source connection must be read-only."),
 		},
-		"Invalid signing secret status": {
-			Status: ConnectionStatusInvalidSigningSecret,
+		"Invalid encryption key status": {
+			Status: ConnectionStatusInvalidEncryptionKey,
 			Err: errutil.New(
 				http.StatusBadRequest,
-				"data_source.invalid_signing_secret",
-				"The data source credentials cannot be decrypted and must be entered again.",
+				"data_source.invalid_encryption_key",
+				"The data source credentials cannot be decrypted with the configured keys and must be entered again.",
 			),
 		},
 		"Success status": {
@@ -260,8 +272,8 @@ func Test_Credentials_IsValid(t *testing.T) {
 	assert.True(t, empty.IsValid())
 
 	// only a decrypt that could not make sense of them says otherwise.
-	unreadable := NewCredentials([]byte("not-hex-encoded"))
-	require.Error(t, unreadable.Decrypt(_testSigningKey))
+	unreadable := NewCredentials([]byte("not-sealed"))
+	require.Error(t, unreadable.Decrypt(_testKeys, _testAAD))
 	assert.False(t, unreadable.IsValid())
 }
 
@@ -319,25 +331,21 @@ func Test_Credentials_Encrypt(t *testing.T) {
 
 	c := NewCredentials([]byte(`{"username":"user"}`))
 
-	// error
-	_, err := c.Encrypt("short-key")
-	assert.Error(t, err)
-
 	// success
-	data, err := c.Encrypt(_testSigningKey)
+	data, err := c.Encrypt(_testKeys, _testAAD)
 	require.NoError(t, err)
 	require.NotEmpty(t, data)
 
 	decrypted := NewCredentials(data)
-	require.NoError(t, decrypted.Decrypt(_testSigningKey))
+	require.NoError(t, decrypted.Decrypt(_testKeys, _testAAD))
 	assert.Equal(t, c, decrypted)
 
 	// credentials a decrypt could not read are refused, so the ciphertext
 	// they came from is never overwritten by an encryption of nothing.
-	unreadable := NewCredentials([]byte("not-hex-encoded"))
-	require.Error(t, unreadable.Decrypt(_testSigningKey))
+	unreadable := NewCredentials([]byte("not-sealed"))
+	require.Error(t, unreadable.Decrypt(_testKeys, _testAAD))
 
-	_, err = unreadable.Encrypt(_testSigningKey)
+	_, err = unreadable.Encrypt(_testKeys, _testAAD)
 	assert.Error(t, err)
 }
 
@@ -345,22 +353,27 @@ func Test_Credentials_Decrypt(t *testing.T) {
 	t.Parallel()
 
 	// error
-	c := NewCredentials([]byte("not-hex-encoded"))
-	assert.Error(t, c.Decrypt(_testSigningKey))
+	c := NewCredentials([]byte("not-sealed"))
+	assert.Error(t, c.Decrypt(_testKeys, _testAAD))
 
 	// what it could not read is dropped rather than left as ciphertext
 	// nobody can use, and says so to every later reader.
 	assert.False(t, c.IsValid())
 	assert.Equal(t, Credentials{unreadable: true}, c)
 
-	// success
+	// error - sealed for another row
 	original := NewCredentials([]byte(`{"username":"user"}`))
 
-	data, err := original.Encrypt(_testSigningKey)
+	data, err := original.Encrypt(_testKeys, _testAAD)
 	require.NoError(t, err)
 
 	c = NewCredentials(data)
-	require.NoError(t, c.Decrypt(_testSigningKey))
+	assert.Error(t, c.Decrypt(_testKeys, []byte("other-id")))
+	assert.False(t, c.IsValid())
+
+	// success
+	c = NewCredentials(data)
+	require.NoError(t, c.Decrypt(_testKeys, _testAAD))
 	assert.Equal(t, original, c)
 }
 

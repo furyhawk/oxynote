@@ -26,7 +26,7 @@ export enum DataSourceStatus {
 	Unreachable = "unreachable",
 	VersionNotSupported = "version_not_supported",
 	NotReadOnly = "not_read_only",
-	InvalidSigningSecret = "invalid_signing_secret",
+	InvalidEncryptionKey = "invalid_encryption_key",
 
 	// local-only
 	LocalOptimisticInsert = "local_optimistic_insert", // aka pending
@@ -37,7 +37,7 @@ export const DataSourceErrorStatuses = [
 	DataSourceStatus.Unreachable,
 	DataSourceStatus.VersionNotSupported,
 	DataSourceStatus.NotReadOnly,
-	DataSourceStatus.InvalidSigningSecret,
+	DataSourceStatus.InvalidEncryptionKey,
 ] as const
 
 export interface DataSource {

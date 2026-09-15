@@ -41,6 +41,7 @@ import (
 	"github.com/oxynote/oxynote/server/core/internal/storage"
 	storageFS "github.com/oxynote/oxynote/server/core/internal/storage/fs"
 	storageS3 "github.com/oxynote/oxynote/server/core/internal/storage/s3"
+	"github.com/oxynote/oxynote/server/core/pkg/cryptoutil"
 	"github.com/oxynote/oxynote/server/core/pkg/ioutil"
 	"github.com/oxynote/oxynote/server/core/pkg/logutil"
 	"github.com/oxynote/oxynote/server/core/pkg/metricutil"
@@ -117,13 +118,19 @@ func main() { //nolint:maintidx // main performs linear wiring of all components
 		return
 	}
 
+	dataSourceKeys, err := cryptoutil.ParseKeyring(buildinfo.Getenv("DB_DATA_SOURCE_CREDENTIALS_KEYS"))
+	if err != nil {
+		fail(log, closers, "invalid "+buildinfo.EnvName("DB_DATA_SOURCE_CREDENTIALS_KEYS"), err)
+		return
+	}
+
 	dbc, err := db.New(log, metrics, db.Options{
-		DSN:                                buildinfo.Getenv("DB_DSN"),
-		MaxNotifications:                   _maxNotifications,
-		MaxSlackMessages:                   _maxSlackMessages,
-		MaxDocumentHistoryEntries:          maxDocumentHistoryEntries,
-		DocumentHistoryRetention:           documentHistoryRetention,
-		DataSourceCredentialsSigningSecret: buildinfo.Getenv("DB_DATA_SOURCE_CREDENTIALS_SIGNING_SECRET"),
+		DSN:                       buildinfo.Getenv("DB_DSN"),
+		MaxNotifications:          _maxNotifications,
+		MaxSlackMessages:          _maxSlackMessages,
+		MaxDocumentHistoryEntries: maxDocumentHistoryEntries,
+		DocumentHistoryRetention:  documentHistoryRetention,
+		DataSourceCredentialsKeys: dataSourceKeys,
 	})
 	if err != nil {
 		fail(log, closers, "cannot create a database connection", err)
@@ -131,6 +138,23 @@ func main() { //nolint:maintidx // main performs linear wiring of all components
 	}
 
 	closers = append([]io.Closer{dbc}, closers...)
+
+	// a key prepended to the keyring is only safe to drop once nothing is
+	// sealed under the one it replaced, so every row moves before the
+	// process serves anything.
+	moved, unreadable, err := dbc.ReencryptDataSourceCredentials(context.Background())
+	if err != nil {
+		fail(log, closers, "cannot re-encrypt data source credentials", err)
+		return
+	}
+
+	if moved > 0 {
+		log.Info("moved data source credentials to the newest key", "count", moved)
+	}
+
+	if unreadable > 0 {
+		log.Warn("data source credentials no configured key can read", "count", unreadable)
+	}
 
 	// an empty VALKEY_DSN is a deployment running without valkey at
 	// all. The nil pool is what tells the assistant to keep its

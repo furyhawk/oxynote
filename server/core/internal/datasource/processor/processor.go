@@ -45,9 +45,9 @@ const (
 	// ConnectionStatusNotReadOnly indicates that the connection is not read-only.
 	ConnectionStatusNotReadOnly ConnectionStatus = "not_read_only"
 
-	// ConnectionStatusInvalidSigningSecret indicates that the stored credentials
-	// cannot be decrypted with the configured signing secret.
-	ConnectionStatusInvalidSigningSecret ConnectionStatus = "invalid_signing_secret"
+	// ConnectionStatusInvalidEncryptionKey indicates that the stored
+	// credentials cannot be decrypted with the configured keys.
+	ConnectionStatusInvalidEncryptionKey ConnectionStatus = "invalid_encryption_key"
 )
 
 // Error returns an error corresponding to the ConnectionStatus.
@@ -61,11 +61,11 @@ func (cs ConnectionStatus) Error() error {
 		return errutil.New(http.StatusBadRequest, "data_source.version_not_supported", "The data source version is not supported.")
 	case ConnectionStatusNotReadOnly:
 		return errutil.New(http.StatusBadRequest, "data_source.not_read_only", "The data source connection must be read-only.")
-	case ConnectionStatusInvalidSigningSecret:
+	case ConnectionStatusInvalidEncryptionKey:
 		return errutil.New(
 			http.StatusBadRequest,
-			"data_source.invalid_signing_secret",
-			"The data source credentials cannot be decrypted and must be entered again.",
+			"data_source.invalid_encryption_key",
+			"The data source credentials cannot be decrypted with the configured keys and must be entered again.",
 		)
 	default:
 		return nil
@@ -89,8 +89,8 @@ type Credentials struct {
 	data []byte
 
 	// unreadable indicates that the stored credentials could not be
-	// decrypted, which is what a signing secret rotated since they were
-	// written leaves behind. Only Decrypt can decide it, so credentials
+	// decrypted, which is what a key dropped since they were written
+	// leaves behind. Only Decrypt can decide it, so credentials
 	// carrying it are the ones that came out of a failed read and no
 	// others.
 	unreadable bool
@@ -143,39 +143,42 @@ func (c *Credentials) Scan(src any) error {
 	return nil
 }
 
-// Encrypt encrypts the credentials using the provided signing key.
+// Encrypt encrypts the credentials under the keyring's newest key, bound to
+// the associated data, which is the owning row's id.
 //
 // Credentials that could not be read encrypt to nothing, so writing them back
-// would replace the stored ciphertext — still readable once the right secret
+// would replace the stored ciphertext — still readable once the right key
 // returns — with an encryption of the emptiness left in its place. They are
 // refused instead.
-func (c *Credentials) Encrypt(signingKey string) ([]byte, error) {
+func (c *Credentials) Encrypt(keys *cryptoutil.Keyring, aad []byte) ([]byte, error) {
 	if !c.IsValid() {
 		return nil, errors.New("cannot encrypt credentials that could not be decrypted")
 	}
 
-	state, err := cryptoutil.EncryptText(string(c.data), []byte(signingKey))
+	sealed, err := keys.Encrypt(c.data, aad)
 	if err != nil {
+		// NOCOV: crypto/rand failures cannot be simulated in tests.
 		return nil, fmt.Errorf("failed to encrypt credentials: %w", err)
 	}
 
-	return []byte(state), nil
+	return sealed, nil
 }
 
-// Decrypt decrypts the stored credentials using the provided signing key.
+// Decrypt decrypts the stored credentials with whichever key of the keyring
+// sealed them, given the same associated data Encrypt was handed.
 //
 // Credentials it cannot read are emptied and marked unreadable rather than
 // left holding ciphertext nobody can use, so every later reader is told the
 // same thing the error says here.
-func (c *Credentials) Decrypt(signingKey string) error {
-	decrypted, err := cryptoutil.DecryptText(string(c.data), []byte(signingKey))
+func (c *Credentials) Decrypt(keys *cryptoutil.Keyring, aad []byte) error {
+	decrypted, err := keys.Decrypt(c.data, aad)
 	if err != nil {
 		*c = Credentials{unreadable: true}
 
 		return fmt.Errorf("failed to decrypt credentials: %w", err)
 	}
 
-	*c = Credentials{data: []byte(decrypted)}
+	*c = Credentials{data: decrypted}
 
 	return nil
 }

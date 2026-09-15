@@ -164,8 +164,8 @@ export function buildChildEnvs(
 			config.maxDocumentHistoryEntries,
 		OXYNOTE_CORE_DB_DOCUMENT_HISTORY_RETENTION:
 			config.documentHistoryRetention,
-		OXYNOTE_CORE_DB_DATA_SOURCE_CREDENTIALS_SIGNING_SECRET:
-			secrets.dataSourceEncryptionKey,
+		OXYNOTE_CORE_DB_DATA_SOURCE_CREDENTIALS_KEYS:
+			secrets.dataSourceEncryptionKeys,
 		OXYNOTE_CORE_EMAIL_SMTP_HOST: config.smtp?.host ?? "",
 		OXYNOTE_CORE_EMAIL_SMTP_PORT: config.smtp?.port ?? "",
 		OXYNOTE_CORE_EMAIL_SMTP_USERNAME: config.smtp?.username ?? "",

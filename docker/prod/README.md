@@ -94,12 +94,23 @@ owner-only permissions — keep that volume.
 - Unless an object store is configured, every uploaded image lives there
   too, under `/oxynote/data/object-storage`.
 - **Losing the volume signs everyone out, permanently orphans every stored
-  data-source credential** — the encryption key cannot be rotated — **and
-  takes the uploaded images, and the embedded database, with it.**
+  data-source credential, and takes the uploaded images, and the embedded
+  database, with it.**
 - Two advanced overrides exist for migrating an existing deployment in:
   `OXYNOTE_AUTH_SECRET` (session/token signing) and
-  `OXYNOTE_DATA_SOURCE_ENCRYPTION_KEY` (exactly 16, 24, or 32 bytes). An
-  override always wins and is never written to disk.
+  `OXYNOTE_DATA_SOURCE_ENCRYPTION_KEYS` (comma-separated, newest first,
+  each the standard base64 of exactly 32 bytes). An override always wins
+  and is never written to disk.
+- To rotate the data-source encryption key, read the current key from
+  `secrets/data-source-encryption-key` on the volume (or from your
+  existing override), set `OXYNOTE_DATA_SOURCE_ENCRYPTION_KEYS` to
+  `<new key>,<current key>` and restart: core re-encrypts every stored
+  credential under the new key at boot and logs how many it moved. On a
+  later restart set the override to `<new key>` alone. The override is
+  never written back, so from then on it stays set; to return to the
+  generated file instead, write `<new key>` into
+  `secrets/data-source-encryption-key` before dropping the override, or
+  core boots with only the retired key and reads no credential.
 
 ## Security model
 

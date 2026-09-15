@@ -49,7 +49,7 @@ func prepDataSources(t *testing.T, db *DB, count int, fn func(int, *datasource.D
 
 		res[i] = ds
 
-		safeCredentials, err := ds.Credentials.Encrypt(db.opts.DataSourceCredentialsSigningSecret)
+		safeCredentials, err := ds.Credentials.Encrypt(db.opts.DataSourceCredentialsKeys, ds.ID.Bytes())
 		require.NoError(t, err)
 
 		q, args := db.builder.Insert("data_sources").
@@ -87,19 +87,19 @@ func Test_agent_InsertDataSource(t *testing.T) {
 	}
 
 	type tcase struct {
-		InvalidSecret bool
-		DataSource    *datasource.DataSource
-		Err           error
+		DataSource *datasource.DataSource
+		Err        error
 	}
 
 	cc := map[string]func(*testing.T, *DB) tcase{
-		"Invalid signing secret": func(t *testing.T, db *DB) tcase {
-			org := prepOrganizations(t, db, 1)[0]
+		"Credentials that could not be read are refused": func(t *testing.T, db *DB) tcase {
+			ds := stubDataSource(prepOrganizations(t, db, 1)[0], "Data Source 1")
+			ds.Credentials = processor.NewCredentials([]byte("garbage"))
+			require.Error(t, ds.Credentials.Decrypt(_dataSourceKeys, ds.ID.Bytes()))
 
 			return tcase{
-				InvalidSecret: true,
-				DataSource:    stubDataSource(org, "Data Source 1"),
-				Err:           assert.AnError,
+				DataSource: ds,
+				Err:        assert.AnError,
 			}
 		},
 		"Duplicate name within the organization": func(t *testing.T, db *DB) tcase {
@@ -130,10 +130,6 @@ func Test_agent_InsertDataSource(t *testing.T) {
 			db := prepTempDB(t)
 			c := cfn(t, db)
 
-			if c.InvalidSecret {
-				db.opts.DataSourceCredentialsSigningSecret = "bad"
-			}
-
 			err := db.InsertDataSource(context.Background(), c.DataSource)
 			testutil.RequireEqualError(t, c.Err, err)
 
@@ -150,21 +146,11 @@ func Test_agent_InsertDataSource(t *testing.T) {
 
 func Test_agent_UpdateDataSource(t *testing.T) {
 	type tcase struct {
-		InvalidSecret bool
-		DataSource    *datasource.DataSource
-		Err           error
+		DataSource *datasource.DataSource
+		Err        error
 	}
 
 	cc := map[string]func(*testing.T, *DB) tcase{
-		"Invalid signing secret": func(t *testing.T, db *DB) tcase {
-			ds := prepDataSources(t, db, 1, nil)[0]
-
-			return tcase{
-				InvalidSecret: true,
-				DataSource:    ds,
-				Err:           assert.AnError,
-			}
-		},
 		"Successful update": func(t *testing.T, db *DB) tcase {
 			ds := prepDataSources(t, db, 1, nil)[0]
 			ds.Name = "Updated Data Source"
@@ -185,10 +171,6 @@ func Test_agent_UpdateDataSource(t *testing.T) {
 
 			db := prepTempDB(t)
 			c := cfn(t, db)
-
-			if c.InvalidSecret {
-				db.opts.DataSourceCredentialsSigningSecret = "bad"
-			}
 
 			err := db.UpdateDataSource(context.Background(), c.DataSource)
 			testutil.RequireEqualError(t, c.Err, err)
@@ -269,6 +251,112 @@ func Test_agent_UpdateDataSource(t *testing.T) {
 	})
 }
 
+func Test_agent_ReencryptDataSourceCredentials(t *testing.T) {
+	type tcase struct {
+		CancelledContext bool
+		Moved            int
+		Unreadable       int
+		Err              error
+		// Check inspects the rows the sweep left behind.
+		Check func(t *testing.T, db *DB)
+	}
+
+	cc := map[string]func(*testing.T, *DB) tcase{
+		"Cancelled context": func(t *testing.T, db *DB) tcase {
+			prepDataSources(t, db, 1, nil)
+
+			return tcase{
+				CancelledContext: true,
+				Err:              assert.AnError,
+			}
+		},
+		"No data sources": func(*testing.T, *DB) tcase {
+			return tcase{}
+		},
+		"Rows on the newest key are left alone": func(t *testing.T, db *DB) tcase {
+			sources := prepDataSources(t, db, 2, nil)
+			before := [][]byte{
+				fetchDataSourceCredentials(t, db, sources[0].ID),
+				fetchDataSourceCredentials(t, db, sources[1].ID),
+			}
+
+			return tcase{
+				Check: func(t *testing.T, db *DB) {
+					assert.Equal(t, before[0], fetchDataSourceCredentials(t, db, sources[0].ID))
+					assert.Equal(t, before[1], fetchDataSourceCredentials(t, db, sources[1].ID))
+				},
+			}
+		},
+		"Rows sealed under a retired key are moved": func(t *testing.T, db *DB) tcase {
+			// the rows are written while the retired key was the only
+			// one, then the keyring gains the key that replaces it.
+			db.opts.DataSourceCredentialsKeys = mustParseKeys(_retiredDataSourceKey)
+			retired := prepDataSources(t, db, 1, nil)[0]
+
+			db.opts.DataSourceCredentialsKeys = mustParseKeys(_dataSourceKey + "," + _retiredDataSourceKey)
+			current := prepDataSources(t, db, 1, nil)[0]
+
+			return tcase{
+				Moved: 1,
+				Check: func(t *testing.T, db *DB) {
+					assert.True(t, db.opts.DataSourceCredentialsKeys.IsCurrent(fetchDataSourceCredentials(t, db, retired.ID)))
+					assert.True(t, db.opts.DataSourceCredentialsKeys.IsCurrent(fetchDataSourceCredentials(t, db, current.ID)))
+
+					// only the ciphertext changed: the row still reads as
+					// it was written, and nothing the user sees moved.
+					db.opts.DataSourceCredentialsKeys = _dataSourceKeys
+
+					res, err := db.FetchDataSource(context.Background(), retired.ID, retired.OrganizationID)
+					require.NoError(t, err)
+					testutil.AssertFilterEqual(t, retired, res)
+				},
+			}
+		},
+		"Unreadable rows are skipped": func(t *testing.T, db *DB) tcase {
+			ds := prepDataSources(t, db, 1, nil)[0]
+			poisonDataSourceCredentials(t, db, ds.ID)
+
+			return tcase{
+				Unreadable: 1,
+				Check: func(t *testing.T, db *DB) {
+					assert.Equal(t, []byte("garbage"), fetchDataSourceCredentials(t, db, ds.ID))
+					assert.Equal(t, processor.ConnectionStatusSuccess, fetchDataSourceStatus(t, db, ds.ID))
+				},
+			}
+		},
+	}
+
+	for cn, cfn := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			db := prepTempDB(t)
+			c := cfn(t, db)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			if c.CancelledContext {
+				cancel()
+			}
+
+			moved, unreadable, err := db.ReencryptDataSourceCredentials(ctx)
+			testutil.RequireEqualError(t, c.Err, err)
+
+			if err != nil {
+				return
+			}
+
+			assert.Equal(t, c.Moved, moved)
+			assert.Equal(t, c.Unreadable, unreadable)
+
+			if c.Check != nil {
+				c.Check(t, db)
+			}
+		})
+	}
+}
+
 func Test_agent_DeleteDataSource(t *testing.T) {
 	type tcase struct {
 		CancelledContext bool
@@ -334,8 +422,8 @@ func Test_agent_DeleteDataSource(t *testing.T) {
 }
 
 // poisonDataSourceCredentials overwrites a data source's stored credentials
-// with bytes no signing secret decrypts, which is what a secret rotated since
-// the credentials were written leaves behind.
+// with bytes no key decrypts, which is what a key dropped since the
+// credentials were written leaves behind.
 func poisonDataSourceCredentials(t *testing.T, db *DB, id xid.ID) {
 	t.Helper()
 
@@ -371,24 +459,43 @@ func fetchDataSourceStatus(t *testing.T, db *DB, id xid.ID) processor.Connection
 	return status
 }
 
-// rejectInvalidSigningSecretStatus installs a constraint the status cannot
+// rejectInvalidEncryptionKeyStatus installs a constraint the status cannot
 // satisfy, so the recording of an undecryptable data source fails while the
 // row itself still reads fine. It is dropped again when the test ends.
-func rejectInvalidSigningSecretStatus(t *testing.T, db *DB) {
+func rejectInvalidEncryptionKeyStatus(t *testing.T, db *DB) {
 	t.Helper()
 
 	// NOT VALID leaves the rows already carrying the status alone; the
 	// constraint still refuses every write that arrives after it.
 	_, err := db.sql.Exec(
-		`ALTER TABLE data_sources ADD CONSTRAINT status_not_invalid_signing_secret ` +
-			`CHECK (status <> 'invalid_signing_secret') NOT VALID`,
+		`ALTER TABLE data_sources ADD CONSTRAINT status_not_invalid_encryption_key ` +
+			`CHECK (status <> 'invalid_encryption_key') NOT VALID`,
 	)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		_, err := db.sql.Exec(`ALTER TABLE data_sources DROP CONSTRAINT status_not_invalid_signing_secret`)
+		_, err := db.sql.Exec(`ALTER TABLE data_sources DROP CONSTRAINT status_not_invalid_encryption_key`)
 		require.NoError(t, err)
 	})
+}
+
+// fetchDataSourceCredentials reads a data source's stored ciphertext as it
+// is.
+func fetchDataSourceCredentials(t *testing.T, db *DB, id xid.ID) []byte {
+	t.Helper()
+
+	q, args := db.builder.Select("credentials").
+		From("data_sources").
+		Where(sq.Eq{
+			"id": id,
+		}).
+		MustSql()
+
+	var credentials []byte
+
+	require.NoError(t, db.sql.Get(&credentials, q, args...))
+
+	return credentials
 }
 
 func Test_agent_FetchDataSource(t *testing.T) {
@@ -407,20 +514,20 @@ func Test_agent_FetchDataSource(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.False(t, res.Credentials.IsValid())
-	assert.Equal(t, processor.ConnectionStatusInvalidSigningSecret, res.Status)
-	assert.Equal(t, processor.ConnectionStatusInvalidSigningSecret, fetchDataSourceStatus(t, db, ds.ID))
+	assert.Equal(t, processor.ConnectionStatusInvalidEncryptionKey, res.Status)
+	assert.Equal(t, processor.ConnectionStatusInvalidEncryptionKey, fetchDataSourceStatus(t, db, ds.ID))
 
 	// success - undecryptable credentials already recorded
 	res, err = db.FetchDataSource(context.Background(), ds.ID, ds.OrganizationID)
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.False(t, res.Credentials.IsValid())
-	assert.Equal(t, processor.ConnectionStatusInvalidSigningSecret, res.Status)
+	assert.Equal(t, processor.ConnectionStatusInvalidEncryptionKey, res.Status)
 
 	// error - undecryptable credentials cannot be recorded
 	ds = prepDataSources(t, db, 1, nil)[0]
 	poisonDataSourceCredentials(t, db, ds.ID)
-	rejectInvalidSigningSecretStatus(t, db)
+	rejectInvalidEncryptionKeyStatus(t, db)
 
 	res, err = db.FetchDataSource(context.Background(), ds.ID, ds.OrganizationID)
 	require.Error(t, err)
@@ -465,8 +572,8 @@ func Test_agent_FetchDataSources(t *testing.T) {
 	testutil.AssertFilterEqual(t, *mixed[0], res[0])
 
 	assert.False(t, res[1].Credentials.IsValid())
-	assert.Equal(t, processor.ConnectionStatusInvalidSigningSecret, res[1].Status)
-	assert.Equal(t, processor.ConnectionStatusInvalidSigningSecret, fetchDataSourceStatus(t, db, mixed[1].ID))
+	assert.Equal(t, processor.ConnectionStatusInvalidEncryptionKey, res[1].Status)
+	assert.Equal(t, processor.ConnectionStatusInvalidEncryptionKey, fetchDataSourceStatus(t, db, mixed[1].ID))
 
 	// error - undecryptable credentials cannot be recorded
 	org = prepOrganizations(t, db, 1)[0]
@@ -475,7 +582,7 @@ func Test_agent_FetchDataSources(t *testing.T) {
 	})[0]
 
 	poisonDataSourceCredentials(t, db, ds.ID)
-	rejectInvalidSigningSecretStatus(t, db)
+	rejectInvalidEncryptionKeyStatus(t, db)
 
 	res, err = db.FetchDataSources(context.Background(), org)
 	require.Error(t, err)

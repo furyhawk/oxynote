@@ -166,7 +166,7 @@ func Test_runner_TestConnection(t *testing.T) {
 		"Credentials that cannot be decrypted": {
 			Type:          TypePrometheus,
 			Undecryptable: true,
-			Result:        processor.ConnectionStatusInvalidSigningSecret,
+			Result:        processor.ConnectionStatusInvalidEncryptionKey,
 		},
 		"A connection that answers": {
 			Type:    TypePrometheus,
@@ -355,11 +355,11 @@ func Test_connect(t *testing.T) {
 	r.ds.Credentials = undecryptableCredentials(t)
 
 	_, err = connect[Prometheus](context.Background(), r, TypePrometheus)
-	assert.Equal(t, processor.ConnectionStatusInvalidSigningSecret.Error(), err)
+	assert.Equal(t, processor.ConnectionStatusInvalidEncryptionKey.Error(), err)
 
 	ff = store.UpdateDataSourceStatusCalls()
 	require.Len(t, ff, 1)
-	assert.Equal(t, processor.ConnectionStatusInvalidSigningSecret, ff[0].Status)
+	assert.Equal(t, processor.ConnectionStatusInvalidEncryptionKey, ff[0].Status)
 
 	// the wanted client is not one this data source serves
 	_, err = connect[Prometheus](context.Background(), prepRunner(TypePostgreSQL, "", nil), TypePrometheus)

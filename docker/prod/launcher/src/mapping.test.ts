@@ -195,9 +195,8 @@ describe("buildChildEnvs", () => {
 				.OXYNOTE_AUTH_REALTIME_BETTER_AUTH_SECRET,
 		).toBe("test-auth-secret")
 		expect(
-			envs.core
-				.OXYNOTE_CORE_DB_DATA_SOURCE_CREDENTIALS_SIGNING_SECRET,
-		).toBe("0123456789abcdef0123456789abcdef")
+			envs.core.OXYNOTE_CORE_DB_DATA_SOURCE_CREDENTIALS_KEYS,
+		).toBe("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
 		expect(
 			Object.values(envs.web).includes("test-auth-secret"),
 		).toBe(false)

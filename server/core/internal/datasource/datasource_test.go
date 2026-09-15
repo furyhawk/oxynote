@@ -1,11 +1,13 @@
 package datasource
 
 import (
+	"encoding/base64"
 	"testing"
 	"time"
 
 	"github.com/guregu/null/v5"
 	"github.com/oxynote/oxynote/server/core/internal/datasource/processor"
+	"github.com/oxynote/oxynote/server/core/pkg/cryptoutil"
 	"github.com/oxynote/oxynote/server/core/pkg/testutil"
 	"github.com/oxynote/oxynote/server/core/pkg/timeutil"
 	"github.com/rs/xid"
@@ -23,8 +25,11 @@ func TestMain(m *testing.M) {
 func undecryptableCredentials(t *testing.T) processor.Credentials {
 	t.Helper()
 
+	keys, err := cryptoutil.ParseKeyring(base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")))
+	require.NoError(t, err)
+
 	creds := processor.NewCredentials([]byte("ciphertext"))
-	require.Error(t, creds.Decrypt("0123456789abcdef0123456789abcdef"))
+	require.Error(t, creds.Decrypt(keys, nil))
 
 	return creds
 }
