@@ -14,6 +14,10 @@ const (
 	// verification template.
 	TemplateEmailVerification Template = "email_verification"
 
+	// TemplateEmailChangeConfirmation specifies the template asking the
+	// current address to approve a change of address.
+	TemplateEmailChangeConfirmation Template = "email_change_confirmation"
+
 	// TemplateOrganizationInvitation specifies the organization
 	// invitation template.
 	TemplateOrganizationInvitation Template = "organization_invitation"

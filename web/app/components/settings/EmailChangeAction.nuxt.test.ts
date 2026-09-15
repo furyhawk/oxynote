@@ -7,9 +7,13 @@ import {
 } from "~/composables/api/test-helpers"
 import EmailChangeAction from "./EmailChangeAction.vue"
 import {
+	at,
 	findButtonByText,
 	mockAuthEndpoint,
 	mountWithFrozenClock,
+	raisedToasts,
+	seedAuthAccounts,
+	seedAuthConfig,
 	seedAuthSession,
 	settleActionSubmit,
 	t,
@@ -124,5 +128,110 @@ describe("<EmailChangeAction>", { concurrent: false }, () => {
 
 		expect(calls).toHaveLength(0)
 		expect(wrapper.emitted("close")).toHaveLength(1)
+	})
+
+	describe("when the server sends no email", { concurrent: false }, () => {
+		beforeEach(() => {
+			seedAuthConfig({ emailEnabled: false })
+			seedAuthAccounts(["credential"])
+		})
+
+		async function submitWithPassword(
+			wrapper: Awaited<ReturnType<typeof mountAction>>,
+			password: string,
+		) {
+			const inputs = wrapper.findAll("input")
+			await at(inputs, 0).setValue("new@oxynote.test")
+			await at(inputs, 1).setValue(password)
+			await wrapper.get("form").trigger("submit")
+			await settleActionSubmit()
+		}
+
+		it("asks for the current password instead of promising an email", async ({
+			expect,
+		}) => {
+			const wrapper = await mountAction()
+
+			expect(wrapper.find("input[type='password']").exists()).toBe(true)
+			expect(wrapper.text()).toContain(
+				t("settings.action-modals.email-change.description-without-email"),
+			)
+		})
+
+		it("sends the password along with the new address", async ({ expect }) => {
+			const calls = mockAuthEndpoint("change-email", () => ({ status: true }))
+			const wrapper = await mountAction()
+
+			await submitWithPassword(wrapper, "correct-horse-1!")
+
+			expect(calls).toHaveLength(1)
+			expect(calls[0]?.body).toMatchObject({
+				newEmail: "new@oxynote.test",
+				password: "correct-horse-1!",
+			})
+		})
+
+		it("reports the address as changed and closes", async ({ expect }) => {
+			mockAuthEndpoint("change-email", () => ({ status: true }))
+			const wrapper = await mountAction()
+
+			await submitWithPassword(wrapper, "correct-horse-1!")
+
+			expect(raisedToasts()).toMatchObject([
+				{
+					type: "success",
+					title: t(
+						"settings.action-modals.email-change.success-message-without-email.title",
+					),
+				},
+			])
+			expect(wrapper.emitted("close")).toHaveLength(1)
+		})
+
+		it("points at the password field when the server rejects it", async ({
+			expect,
+		}) => {
+			mockAuthEndpoint("change-email", (_call, event) => {
+				setResponseStatus(event, 400)
+
+				return { code: "INVALID_PASSWORD", message: "Invalid password" }
+			})
+			const wrapper = await mountAction()
+
+			await submitWithPassword(wrapper, "wrong-password")
+
+			expect(wrapper.text()).toContain(
+				t("settings.action-modals.email-change.errors.invalid-password"),
+			)
+			expect(wrapper.emitted("close")).toBeUndefined()
+		})
+
+		it("explains why an account without a password cannot change it", async ({
+			expect,
+		}) => {
+			seedAuthAccounts(["github"])
+			mockAuthEndpoint("change-email", (_call, event) => {
+				setResponseStatus(event, 403)
+
+				return {
+					code: "CREDENTIAL_ACCOUNT_NOT_FOUND",
+					message: "Credential account not found",
+				}
+			})
+			const wrapper = await mountAction()
+
+			await submitEmail(wrapper, "new@oxynote.test")
+
+			expect(wrapper.find("input[type='password']").exists()).toBe(false)
+			expect(raisedToasts()).toMatchObject([
+				{
+					type: "error",
+					description: t(
+						"settings.action-modals.email-change.errors.no-password.description",
+					),
+				},
+			])
+			expect(wrapper.emitted("close")).toBeUndefined()
+		})
 	})
 })

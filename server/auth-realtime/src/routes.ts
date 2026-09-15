@@ -223,11 +223,13 @@ export function createRoutes({
 	})
 
 	// public auth configuration for the login/signup pages: which social
-	// providers are configured (and, later, other signup-related
-	// capability flags). Lives outside the better-auth /auth/**
-	// namespace.
+	// providers are configured, and whether emailed links can arrive at
+	// all. Lives outside the better-auth /auth/** namespace.
 	app.get("/auth-config", (c) => {
-		return c.json({ methods: authMethods(env) })
+		return c.json({
+			methods: authMethods(env),
+			emailEnabled: env.emailEnabled,
+		})
 	})
 
 	app.get("/organizations/stats", async (c) => {

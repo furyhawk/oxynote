@@ -50,6 +50,8 @@ func (h *Handler) SendEmail(w http.ResponseWriter, r *http.Request) {
 	switch req.Template {
 	case emailCore.TemplateEmailVerification:
 		h.sender.SendEmailVerification(req.Data.Email, req.Data.Link)
+	case emailCore.TemplateEmailChangeConfirmation:
+		h.sender.SendEmailChangeConfirmation(req.Data.Email, req.Data.Link)
 	case emailCore.TemplatePasswordReset:
 		h.sender.SendPasswordReset(req.Data.Email, req.Data.Link)
 	case emailCore.TemplateAccountExists:
@@ -75,6 +77,10 @@ type Sender interface {
 	// SendEmailVerification should send a new-email-address
 	// verification email.
 	SendEmailVerification(eml, link string)
+
+	// SendEmailChangeConfirmation should send the email asking the
+	// current address to approve a change of address.
+	SendEmailChangeConfirmation(eml, link string)
 
 	// SendPasswordReset should send a password reset email.
 	SendPasswordReset(eml, link string)

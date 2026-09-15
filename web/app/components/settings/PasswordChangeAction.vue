@@ -114,6 +114,21 @@ async function onSetSubmit() {
 	})) as AuthResponse
 	if (error) {
 		loading.value = false
+
+		if (error.code === "RESET_PASSWORD_DISABLED") {
+			showToastMessage(
+				"error",
+				t(
+					"settings.action-modals.password-change.errors.link-unavailable.title",
+				),
+				t(
+					"settings.action-modals.password-change.errors.link-unavailable.description",
+				),
+			)
+
+			return
+		}
+
 		showToastMessage(
 			"error",
 			t("settings.action-modals.password-change.errors.link-failed.title"),

@@ -7,13 +7,27 @@
 			"email-change": {
 				"title": "Change Email",
 				"description": "Changing your email address will update the address used for notifications and other account-related actions. We'll send a verification email to your new address.",
+				"description-without-email": "Changing your email address will update the address used for notifications and other account-related actions. Confirm the change with your current password.",
 				"new-email-label": "Your new email address",
 				"new-email-placeholder": "New email address",
+				"password-label": "Your current password",
+				"password-placeholder": "Current password",
 				"submit-button": "Change Email",
 				"cancel-button": "Cancel",
 				"success-message": {
 					"title": "Verification email sent",
 					"description": "We've sent a verification link to {email}. Once you click the link, your email address will be updated"
+				},
+				"success-message-without-email": {
+					"title": "Email changed",
+					"description": "Your email address is now {email}"
+				},
+				"errors": {
+					"invalid-password": "Incorrect password",
+					"no-password": {
+						"title": "Email couldn't be changed",
+						"description": "Email sending isn't configured, so the change has to be confirmed with a password, and your account doesn't have one"
+					}
 				}
 			},
 			"password-change": {
@@ -53,13 +67,20 @@
 					"link-failed": {
 						"title": "Link couldn't be sent",
 						"description": "An error occurred while trying to send the password setup link. Please try again"
+					},
+					"link-unavailable": {
+						"title": "Link couldn't be sent",
+						"description": "Email sending isn't configured, so a password can't be set through a link"
 					}
 				}
 			},
 			"account-deletion": {
 				"title": "Delete Account",
 				"description": "This action is irreversible and will permanently delete all your data. A confirmation email will be sent to your registered email address to finalize the account deletion process.",
+				"description-without-email": "This action is irreversible and will permanently delete all your data. Confirm it with your current password.",
 				"description-last-org-member": "You are the last member of this workspace. Deleting your account will also delete the workspace and all its data.",
+				"password-label": "Your current password",
+				"password-placeholder": "Current password",
 				"confirm-button": "Delete Account",
 				"cancel-button": "Cancel",
 				"success-message": {
@@ -76,6 +97,12 @@
 					"deletion-failed": {
 						"title": "Account couldn't be deleted",
 						"description": "An error occurred while trying to delete your account. Please try again"
+					},
+					"password-required": "Please enter your current password",
+					"invalid-password": "Incorrect password",
+					"no-password": {
+						"title": "Account couldn't be deleted",
+						"description": "Email sending isn't configured, so the deletion has to be confirmed with a password, and your account doesn't have one"
 					}
 				}
 			},
@@ -107,6 +134,10 @@
 				"success-message": {
 					"title": "Invitation sent",
 					"description": "An invitation was sent to {email}"
+				},
+				"success-message-without-email": {
+					"title": "Invitation created",
+					"description": "Email sending isn't configured. Copy the invitation link from the member list and send it to {email} yourself"
 				}
 			},
 			"workspace-member-removal": {
@@ -388,7 +419,12 @@
 			"members-option-button-screen-reader-hint": "Manage Member",
 			"joined-label": "Joined",
 			"invited-label": "Invited",
+			"email-disabled-notice": "Email sending isn't configured. Copy invitation links from the member list and send them yourself.",
+			"invitation-link-copied": "Invitation link copied",
 			"member-options": {
+				"copy-link": {
+					"title": "Copy invitation link"
+				},
 				"delete": {
 					"title": "Remove"
 				}

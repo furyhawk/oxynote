@@ -109,6 +109,7 @@ export function testEnv(overrides: Partial<Env> = {}): Env {
 		maxOrganizations: 100,
 		maxOrganizationMembers: 5,
 		rateLimitEnabled: true,
+		emailEnabled: true,
 		logLevel: "INFO",
 		...overrides,
 	}

@@ -11,6 +11,7 @@ import {
 	findButtonByText,
 	mockAuthEndpoint,
 	mountWithFrozenClock,
+	raisedToasts,
 	seedAuthAccounts,
 	seedAuthSession,
 	settleActionSubmit,
@@ -281,6 +282,36 @@ describe("<PasswordChangeAction>", { concurrent: false }, () => {
 			await settleActionSubmit()
 
 			expect(toast.custom).toHaveBeenCalledTimes(1)
+			expect(wrapper.emitted("close")).toBeUndefined()
+		})
+
+		it("explains that a server without email cannot send the link", async ({
+			expect,
+		}) => {
+			mockAuthEndpoint("request-password-reset", (_call, event) => {
+				setResponseStatus(event, 400)
+
+				return {
+					code: "RESET_PASSWORD_DISABLED",
+					message: "Reset password isn't enabled",
+				}
+			})
+			const wrapper = await mountAction()
+
+			await findButtonByText(
+				wrapper,
+				t("settings.action-modals.password-change.send-link-button"),
+			).trigger("click")
+			await settleActionSubmit()
+
+			expect(raisedToasts()).toMatchObject([
+				{
+					type: "error",
+					description: t(
+						"settings.action-modals.password-change.errors.link-unavailable.description",
+					),
+				},
+			])
 			expect(wrapper.emitted("close")).toBeUndefined()
 		})
 

@@ -1,7 +1,7 @@
 # `make prod-run` from the repository root builds the image and runs this
-# file against it, with docker-compose.local.yaml layered on top to add the
-# mail sink a browser trial needs. The full variable reference lives in
-# README.md next to this file.
+# file against it, with docker-compose.local.yaml layered on top to add a
+# mail sink, so the email flows can be tried as well. The full variable
+# reference lives in README.md next to this file.
 
 name: oxynote-prod
 
@@ -10,12 +10,13 @@ services:
     image: ghcr.io/oxynote/oxynote:${OXYNOTE_IMAGE_TAG:-latest}
     ports:
       - "8080:8080"
-    environment:
-      # optional: outgoing email (signup verification, invites). Point it
-      # at a real relay, or uncomment the mailpit service below for a
-      # trial run and use these two lines:
-      - OXYNOTE_SMTP_DSN=smtp://mailpit:1025
-      - OXYNOTE_EMAIL_FROM_ADDRESS=Oxynote <team@example.com>
+    # optional: outgoing email (signup verification, invitations, password
+    # reset). Without it the product runs without email, as README.md
+    # describes. Point it at a real relay, or uncomment the mailpit service
+    # below for a trial run and use these lines:
+    # environment:
+    #   - OXYNOTE_SMTP_DSN=smtp://mailpit:1025
+    #   - OXYNOTE_EMAIL_FROM_ADDRESS=Oxynote <team@example.com>
     volumes:
       # the embedded database, the generated secrets, every uploaded image
       # and the search index live here. Losing this volume loses every
@@ -28,12 +29,14 @@ services:
     stop_grace_period: 60s
     restart: unless-stopped
 
-  # a trial-run mail sink: uncomment it together with the two OXYNOTE_SMTP
-  # variables above and read the delivered mail at http://localhost:8025.
-  mailpit:
-    image: axllent/mailpit:v1.31.0
-    ports:
-      - "8025:8025"
+  # a trial-run mail sink: uncomment it together with the email variables
+  # above and read the delivered mail at http://localhost:8025. It accepts
+  # mail for any address and shows it to anyone who opens it, so it has no
+  # place in a real deployment.
+  # mailpit:
+  #   image: axllent/mailpit:v1.31.0
+  #   ports:
+  #     - "8025:8025"
 
 volumes:
   oxynote_data:

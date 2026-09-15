@@ -11,6 +11,8 @@ import {
 	mockAuthEndpoint,
 	mockAuthOrganization,
 	mountWithFrozenClock,
+	raisedToasts,
+	seedAuthConfig,
 	seedAuthSession,
 	settleActionSubmit,
 	t,
@@ -98,6 +100,27 @@ describe("<WorkspaceInvitationAction>", { concurrent: false }, () => {
 		await submitEmail(wrapper, "new@oxynote.test")
 
 		expect(toast.custom).toHaveBeenCalledTimes(1)
+		expect(wrapper.emitted("close")).toHaveLength(1)
+	})
+
+	it("tells the inviter to hand the link over when the server sends no email", async ({
+		expect,
+	}) => {
+		seedAuthConfig({ emailEnabled: false })
+		seedWorkspace(1)
+		mockAuthEndpoint("organization/invite-member", () => ({ id: "inv-1" }))
+		const wrapper = await mountAction()
+
+		await submitEmail(wrapper, "grace@oxynote.test")
+
+		expect(raisedToasts()).toMatchObject([
+			{
+				type: "success",
+				title: t(
+					"settings.action-modals.workspace-invitation.success-message-without-email.title",
+				),
+			},
+		])
 		expect(wrapper.emitted("close")).toHaveLength(1)
 	})
 

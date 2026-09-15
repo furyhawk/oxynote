@@ -15,8 +15,10 @@ const emit = defineEmits<{
 
 const { fetchOrganization, fetchAuthSession, updateOrganization } =
 	useAuthSession()
+const { isEmailEnabled } = useAuthAPI()
 const { t } = useI18n({ useScope: "global" })
 const { uploadOrganizationLogo } = useOrganizationAPI()
+const config = useRuntimeConfig()
 
 const formSchema = toTypedSchema(
 	z.object({
@@ -39,8 +41,9 @@ const form = useForm({
 	validationSchema: formSchema,
 })
 const members = computed<OrganizationMember[]>(() => {
+	const organization = fetchOrganization.state.value.data?.data
 	const members: OrganizationMember[] =
-		fetchOrganization.state.value.data?.data?.members.map((m) => {
+		organization?.members.map((m) => {
 			return {
 				id: m.id,
 				organizationId: m.organizationId,
@@ -51,13 +54,26 @@ const members = computed<OrganizationMember[]>(() => {
 			}
 		}) ?? []
 	const invs: OrganizationMember[] =
-		fetchOrganization.state.value.data?.data?.invitations
+		organization?.invitations
 			.filter((inv) => inv.status === "pending")
 			.map((inv) => {
 				return {
 					id: inv.id,
 					organizationId: inv.organizationId,
 					invitationPending: true,
+					// an inviter who has since left the workspace is no longer
+					// listed, so whoever hands the link over stands in for them.
+					invitationUrl: acceptInvitationUrl(config.public.appBaseURL, {
+						id: inv.id,
+						email: inv.email,
+						inviter:
+							organization.members.find((m) => m.userId === inv.inviterId)?.user
+								.name ??
+							fetchAuthSession.state.value.data?.data?.user.name ??
+							"",
+						organizationName: organization.name,
+						organizationId: organization.id,
+					}),
 					role: inv.role,
 					user: { name: extractNameFromEmail(inv.email), email: inv.email },
 				}
@@ -169,9 +185,26 @@ function handleAvatarClick() {
 function handleMemberDelete(member: OrganizationMember) {
 	emit("member-removal", member)
 }
+
+async function copyInvitationLink(member: OrganizationMember) {
+	if (!member.invitationUrl) {
+		// NOCOV: the menu item renders only for a row that has a link.
+		return
+	}
+
+	await navigator.clipboard.writeText(member.invitationUrl)
+	showToastMessage("success", t("settings.workspace.invitation-link-copied"))
+}
 </script>
 <template>
 	<form class="flex flex-col" autocomplete="off" @submit.prevent="onSubmit">
+		<div
+			v-if="!isEmailEnabled"
+			class="mb-3.5 flex items-start gap-2 rounded-md border bg-background px-3 py-2 text-2sm text-muted-foreground"
+		>
+			<Icon name="lucide:mail-x" class="mt-0.25 size-3.5 shrink-0" />
+			<p>{{ $t("settings.workspace.email-disabled-notice") }}</p>
+		</div>
 		<ShadcnUiFormField v-slot="{ componentField }" name="logoUrl">
 			<ShadcnUiFormItem class="flex w-full items-center justify-between gap-2">
 				<div class="flex flex-col gap-0.5">
@@ -394,6 +427,19 @@ function handleMemberDelete(member: OrganizationMember) {
 										loop
 										inside-modal
 									>
+										<ShadcnUiDropdownMenuItem
+											v-if="member.invitationUrl"
+											@click="copyInvitationLink(member)"
+										>
+											<Icon name="lucide:link" />
+											<span>
+												{{
+													$t(
+														"settings.workspace.member-options.copy-link.title",
+													)
+												}}
+											</span>
+										</ShadcnUiDropdownMenuItem>
 										<ShadcnUiDropdownMenuItem
 											@click="handleMemberDelete(member)"
 										>

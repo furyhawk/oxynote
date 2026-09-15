@@ -25,7 +25,7 @@ const {
 	requestPasswordReset,
 	setupSignInRedirect,
 } = useAuthSession()
-const { fetchAuthConfig } = useAuthAPI()
+const { fetchAuthConfig, isEmailEnabled } = useAuthAPI()
 
 const route = useRoute()
 const config = useRuntimeConfig()
@@ -136,15 +136,22 @@ async function logInWithProvider(provider: "github" | "google" | "slack") {
 const onEmailPasswordSubmit = emailPasswordForm.handleSubmit(async (values) => {
 	loading.value = "email-password"
 
-	// the callbackURL only matters for the verification email that an
-	// unverified sign-in attempt re-sends — its link drops the user back
-	// here with the confirmation flag. Absolute against the app origin
-	// because a relative path would resolve against the auth server's
-	// origin, which does not serve the frontend in host-dev mode.
+	// the callbackURL does two jobs: the verification link an unverified
+	// sign-in attempt re-sends drops the user there with the confirmation
+	// flag, and a successful sign-in sends the browser there, where the
+	// middleware forwards the signed-in visitor to next. Absolute against
+	// the app origin because a relative path would resolve against the auth
+	// server's origin, which does not serve the frontend in host-dev mode.
+	const nextUrl = route.query.next as string | undefined
+	const callbackQuery = new URLSearchParams({ verified: "true" })
+	if (nextUrl) {
+		callbackQuery.set("next", nextUrl)
+	}
+
 	const res = (await signInEmailPassword({
 		email: values.email,
 		password: values.password,
-		callbackURL: `${config.public.appBaseURL}/login?verified=true`,
+		callbackURL: `${config.public.appBaseURL}/login?${callbackQuery.toString()}`,
 	})) as AuthResponse
 
 	if (res.error) {
@@ -176,20 +183,30 @@ const onEmailPasswordSubmit = emailPasswordForm.handleSubmit(async (values) => {
 		return
 	}
 
-	// the session query still caches the signed-out null within its
-	// staleTime — refetch before navigating or the middleware bounces
-	// straight back to /login
-	await fetchAuthSession.refetch()
-
 	// a full navigation, not a router push: the authorize endpoint
-	// answers with OAuth redirects the SPA router cannot follow.
+	// answers with OAuth redirects the SPA router cannot follow. It
+	// replaces the redirect below.
 	if (oauthContinueUrl.value) {
 		window.location.href = oauthContinueUrl.value
 
 		return
 	}
 
-	const nextUrl = route.query.next as string | undefined
+	// on the web a successful sign-in answers with redirect: true, and
+	// better-auth's fetch plugin sets window.location to the callbackURL. A
+	// router navigation here as well races that full-page load and cancels
+	// it, which leaves the page stuck on /login.
+	if (!__DESKTOP_BUILD__) {
+		return
+	}
+
+	// the desktop bridge signs in from Electron's main process, where no
+	// window follows the redirect, so the renderer navigates itself. The
+	// session query still caches the signed-out null within its staleTime —
+	// refetch before navigating or the middleware bounces straight back to
+	// /login
+	await fetchAuthSession.refetch()
+
 	void navigateTo(nextUrl ? decodeURIComponent(nextUrl) : "/", {
 		replace: true,
 	})
@@ -512,7 +529,7 @@ function methodVariant(method: AuthMethod) {
 				</ShadcnUiButton>
 			</div>
 			<i18n-t
-				v-if="view === 'email-password'"
+				v-if="view === 'email-password' && isEmailEnabled"
 				scope="global"
 				keypath="onboarding.login.forgot-password.main"
 				tag="div"

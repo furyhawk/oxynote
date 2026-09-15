@@ -17,6 +17,30 @@ export function postAuthDocumentUrl(
 	return `${baseUrl || ""}${next ? decodeURIComponent(next) : defaultPath}`
 }
 
+// the accept page renders from these parameters before the invitee has a
+// session. auth-realtime builds the same link for the invitation email
+// (invitationLink in server/auth-realtime/src/auth.ts).
+export function acceptInvitationUrl(
+	baseUrl: string | undefined,
+	invitation: {
+		id: string
+		email: string
+		inviter: string
+		organizationName: string
+		organizationId: string
+	},
+): string {
+	const query = new URLSearchParams({
+		id: invitation.id,
+		email: invitation.email,
+		inviter: invitation.inviter,
+		orgName: invitation.organizationName,
+		orgId: invitation.organizationId,
+	})
+
+	return `${baseUrl || ""}/accept-invite?${query.toString()}`
+}
+
 export function postEmailVerificationUrl(
 	baseUrl: string | undefined,
 	email: string,

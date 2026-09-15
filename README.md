@@ -120,50 +120,9 @@ docker run -d --name oxynote \
 
 Open http://localhost:8080 and sign up.
 
-<details>
-<summary>Want email? This compose file starts Mailpit next to Oxynote</summary>
-
-```yaml
-name: oxynote
-
-services:
-  oxynote:
-    image: ghcr.io/oxynote/oxynote:latest
-    ports:
-      - "8080:8080"
-    environment:
-      # point these at a real relay to have mail delivered; here they go
-      # to the mailpit service below.
-      - OXYNOTE_SMTP_DSN=smtp://mailpit:1025?tls=none
-      - OXYNOTE_EMAIL_FROM_ADDRESS=Oxynote <team@example.com>
-    volumes:
-      - oxynote_data:/oxynote/data
-    depends_on:
-      mailpit:
-        condition: service_started
-    # the image shuts its services down in order, flushing open documents
-    # last; docker's default 10s grace would kill that mid-flush.
-    stop_grace_period: 60s
-    restart: unless-stopped
-
-  # catches every mail Oxynote sends and shows it at
-  # http://localhost:8025.
-  mailpit:
-    image: axllent/mailpit:v1.31.0
-    ports:
-      - "8025:8025"
-    restart: unless-stopped
-
-volumes:
-  oxynote_data:
-```
-
-</details>
-
-Everything else, from email to object storage, the GitHub and Slack
-apps, social login and Rubber Duck, is one variable away and
-listed in [docker/prod/README.md](docker/prod/README.md). To run from
-source, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Everything else is one variable away and listed in
+[docker/prod/README.md](docker/prod/README.md). To run from source, see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## What is in the box
 

@@ -1,3 +1,5 @@
+import { mockNuxtImport } from "@nuxt/test-utils/runtime"
+import { setResponseStatus } from "h3"
 import { afterEach, beforeEach, describe, it, vi } from "vitest"
 import { toast } from "vue-sonner"
 import {
@@ -9,7 +11,11 @@ import {
 	findButtonByText,
 	mockAuthEndpoint,
 	mountUnderDialogRoot,
+	raisedToasts,
+	seedAuthAccounts,
+	seedAuthConfig,
 	seedAuthOrganization,
+	settleActionSubmit,
 	settleMutations,
 	t,
 } from "../test-helpers"
@@ -18,6 +24,9 @@ vi.mock("vue-sonner", () => ({
 	toast: { custom: vi.fn(), dismiss: vi.fn() },
 }))
 
+const navigateToMock = vi.hoisted(() => vi.fn())
+mockNuxtImport("navigateTo", () => navigateToMock)
+
 function mountAction() {
 	return mountUnderDialogRoot(AccountDeletionAction)
 }
@@ -25,12 +34,11 @@ function mountAction() {
 async function confirmDeletion(
 	wrapper: Awaited<ReturnType<typeof mountAction>>,
 ) {
-	await findButtonByText(
-		wrapper,
-		t("settings.action-modals.account-deletion.confirm-button"),
-	).trigger("click")
-	await vi.advanceTimersByTimeAsync(300)
-	await settleMutations()
+	// the confirm button submits the form, which is what lets Enter in the
+	// password field delete the account. happy-dom does not raise a submit
+	// event from a click on a submit button, so the form is submitted here
+	await wrapper.get("form").trigger("submit")
+	await settleActionSubmit()
 }
 
 // the query cache and the vue-sonner module mock are app-wide singletons
@@ -40,6 +48,7 @@ describe("<AccountDeletionAction>", { concurrent: false }, () => {
 	beforeEach(() => {
 		clearQueryCache()
 		vi.mocked(toast.custom).mockReset()
+		navigateToMock.mockReset()
 		vi.useFakeTimers()
 	})
 
@@ -113,11 +122,12 @@ describe("<AccountDeletionAction>", { concurrent: false }, () => {
 		mockAuthEndpoint("delete-user", () => ({ success: true }))
 		const wrapper = await mountAction()
 
-		await findButtonByText(
-			wrapper,
-			t("settings.action-modals.account-deletion.confirm-button"),
-		).trigger("click")
-		await nextTick()
+		await wrapper.get("form").trigger("submit")
+		// vee-validate's scheduler needs a turn of the clock before the
+		// submit handler runs; 100ms leaves the spinner's own delay(300)
+		// pending, which is the state under test
+		await vi.advanceTimersByTimeAsync(100)
+		await settleMutations()
 
 		expect(
 			findButtonByText(
@@ -131,6 +141,21 @@ describe("<AccountDeletionAction>", { concurrent: false }, () => {
 				t("settings.action-modals.account-deletion.cancel-button"),
 			).attributes("disabled"),
 		).toBeDefined()
+	})
+
+	// a submit button is what makes Enter in the password field confirm the
+	// deletion, the way every other dialog in settings behaves
+	it("confirms through a submit button rather than a click handler", async ({
+		expect,
+	}) => {
+		const wrapper = await mountAction()
+
+		expect(
+			findButtonByText(
+				wrapper,
+				t("settings.action-modals.account-deletion.confirm-button"),
+			).attributes("type"),
+		).toBe("submit")
 	})
 
 	it("warns and stays open when the deletion is refused", async ({
@@ -160,5 +185,111 @@ describe("<AccountDeletionAction>", { concurrent: false }, () => {
 
 		expect(calls).toHaveLength(0)
 		expect(wrapper.emitted("close")).toHaveLength(1)
+	})
+
+	describe("when the server sends no email", { concurrent: false }, () => {
+		beforeEach(() => {
+			seedAuthConfig({ emailEnabled: false })
+			seedAuthAccounts(["credential"])
+		})
+
+		it("asks for the current password instead of promising an email", async ({
+			expect,
+		}) => {
+			const wrapper = await mountAction()
+
+			expect(wrapper.find("input[type='password']").exists()).toBe(true)
+			expect(wrapper.text()).toContain(
+				t("settings.action-modals.account-deletion.description-without-email"),
+			)
+		})
+
+		it("deletes the account with the password and lands on signup", async ({
+			expect,
+		}) => {
+			const calls = mockAuthEndpoint("delete-user", () => ({
+				success: true,
+				message: "User deleted",
+			}))
+			const wrapper = await mountAction()
+			await wrapper.get("input[type='password']").setValue("correct-horse-1!")
+
+			await confirmDeletion(wrapper)
+
+			expect(calls).toHaveLength(1)
+			expect(calls[0]?.body).toMatchObject({ password: "correct-horse-1!" })
+			expect(navigateToMock).toHaveBeenCalledTimes(1)
+			expect(navigateToMock).toHaveBeenCalledWith({
+				path: "/signup",
+				query: { deletion: "success" },
+			})
+			expect(toast.custom).not.toHaveBeenCalled()
+			expect(wrapper.emitted("close")).toHaveLength(1)
+		})
+
+		it("asks for the password before deleting anything", async ({ expect }) => {
+			const calls = mockAuthEndpoint("delete-user", () => ({
+				success: true,
+			}))
+			const wrapper = await mountAction()
+
+			await confirmDeletion(wrapper)
+
+			expect(wrapper.text()).toContain(
+				t("settings.action-modals.account-deletion.errors.password-required"),
+			)
+			expect(calls).toHaveLength(0)
+			expect(navigateToMock).not.toHaveBeenCalled()
+			expect(wrapper.emitted("close")).toBeUndefined()
+		})
+
+		it("shows a wrong password under the field and stays open", async ({
+			expect,
+		}) => {
+			mockAuthEndpoint("delete-user", (_call, event) => {
+				setResponseStatus(event, 400)
+
+				return { code: "INVALID_PASSWORD", message: "Invalid password" }
+			})
+			const wrapper = await mountAction()
+			await wrapper.get("input[type='password']").setValue("wrong-password")
+
+			await confirmDeletion(wrapper)
+
+			expect(wrapper.text()).toContain(
+				t("settings.action-modals.account-deletion.errors.invalid-password"),
+			)
+			expect(navigateToMock).not.toHaveBeenCalled()
+			expect(wrapper.emitted("close")).toBeUndefined()
+		})
+
+		it("explains why an account without a password cannot be deleted", async ({
+			expect,
+		}) => {
+			seedAuthAccounts(["github"])
+			mockAuthEndpoint("delete-user", (_call, event) => {
+				setResponseStatus(event, 403)
+
+				return {
+					code: "CREDENTIAL_ACCOUNT_NOT_FOUND",
+					message: "Credential account not found",
+				}
+			})
+			const wrapper = await mountAction()
+
+			await confirmDeletion(wrapper)
+
+			expect(wrapper.find("input[type='password']").exists()).toBe(false)
+			expect(raisedToasts()).toMatchObject([
+				{
+					type: "error",
+					description: t(
+						"settings.action-modals.account-deletion.errors.no-password.description",
+					),
+				},
+			])
+			expect(navigateToMock).not.toHaveBeenCalled()
+			expect(wrapper.emitted("close")).toBeUndefined()
+		})
 	})
 })

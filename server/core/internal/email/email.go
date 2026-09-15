@@ -252,6 +252,19 @@ func (s *Sender) SendEmailVerification(eml, link string) {
 	)
 }
 
+// SendEmailChangeConfirmation sends an email asking the current address to
+// approve a change of address, with the approval link.
+func (s *Sender) SendEmailChangeConfirmation(eml, link string) {
+	s.send(
+		eml,
+		"Approve your email address change",
+		TemplateEmailChangeConfirmation,
+		map[string]string{
+			_linkKey: link,
+		},
+	)
+}
+
 // SendOrganizationInvitation sends an email regarding
 // organization invitation with the token, embedded into a full URL, to the
 // specified email address.

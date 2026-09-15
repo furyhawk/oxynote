@@ -218,6 +218,23 @@ describe("createRoutes", () => {
 			expect(res.status).toBe(200)
 			expect(await res.json()).toEqual({
 				methods: ["email-password", "github"],
+				emailEnabled: true,
+			})
+		})
+
+		it("tells the pages when no email can be delivered", async ({
+			expect,
+		}) => {
+			const { app } = build({
+				env: testEnv({ emailEnabled: false }),
+			})
+
+			const res = await app.request("/auth-config")
+
+			expect(res.status).toBe(200)
+			expect(await res.json()).toEqual({
+				methods: ["email-password"],
+				emailEnabled: false,
 			})
 		})
 	})

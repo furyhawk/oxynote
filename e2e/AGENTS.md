@@ -81,7 +81,8 @@ differing from `docker/docker-compose.dev.yaml` in:
   polls it through the front door, treating any response under 500 as
   ready.
 
-Mailpit makes the auth flows testable: verification is mandatory, so tests
+Mailpit makes the auth flows testable: with an email sender, verification
+is mandatory, so tests
 fetch the real message via mailpit's REST API and follow the link. **Neither
 stack runs valkey or an object store**; that is the configuration most
 installs run. A test that needs either says why.
@@ -90,7 +91,10 @@ installs run. A test that needs either says why.
 
 `docker-compose.prod.yaml` is `docker/prod/docker-compose.example.yaml`
 retuned as a fixture (`:19080`, `:19025`, inlined env, pinned images). It
-sets no `OXYNOTE_DB_DSN`, so the image runs its embedded Postgres.
+sets no `OXYNOTE_DB_DSN`, so the image runs its embedded Postgres. A second
+instance, `oxynote-without-email` (`:19081`), sets no `OXYNOTE_SMTP_DSN`;
+only `prod-without-email.test.ts` drives it, through the origin in
+`helpers/without-email.ts`.
 Compose builds nothing; the image comes from `make prod-build`, tagged
 `:e2e-prod`, and CI's cache reaches it through `PROD_BUILD_EXTRA`. A `probe`
 container (idle alpine on the private network) exists for the

@@ -26,6 +26,27 @@ test.describe("login", () => {
 		await expect(page.getByText(credentials.email)).toBeVisible()
 	})
 
+	test("takes a returning user back to their workspace", async ({
+		page,
+		request,
+		browser,
+	}) => {
+		const { credentials, workspace } = await signUpWithWorkspace(page, request)
+
+		const context = await browser.newContext()
+		const returning = await context.newPage()
+		await submitLoginForm(returning, credentials)
+
+		// the login redirect ends on the workspace's first document, a cold
+		// document load in a browser that has never opened it
+		await expect(returning).toHaveURL(
+			new RegExp(`/${workspace.slug}/.+-[a-z0-9]{20}$`),
+			{ timeout: 30_000 },
+		)
+
+		await context.close()
+	})
+
 	test("rejects an unknown email and password", async ({ page }) => {
 		await submitLoginForm(page, newCredentials())
 

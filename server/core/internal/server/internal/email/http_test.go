@@ -48,6 +48,7 @@ func Test_Handler_SendEmail(t *testing.T) {
 	wasNoSendCalled := func() check {
 		return func(t *testing.T, sender *SenderMock, _ *httptest.ResponseRecorder) {
 			assert.Empty(t, sender.SendEmailVerificationCalls())
+			assert.Empty(t, sender.SendEmailChangeConfirmationCalls())
 			assert.Empty(t, sender.SendPasswordResetCalls())
 			assert.Empty(t, sender.SendAccountExistsCalls())
 			assert.Empty(t, sender.SendSignupVerificationCalls())
@@ -59,6 +60,20 @@ func Test_Handler_SendEmail(t *testing.T) {
 	wasSendEmailVerificationCalled := func(count int, eml, link string) check {
 		return func(t *testing.T, sender *SenderMock, _ *httptest.ResponseRecorder) {
 			ff := sender.SendEmailVerificationCalls()
+			require.Len(t, ff, count)
+
+			if count == 0 {
+				return
+			}
+
+			assert.Equal(t, eml, ff[0].Eml)
+			assert.Equal(t, link, ff[0].Link)
+		}
+	}
+
+	wasSendEmailChangeConfirmationCalled := func(count int, eml, link string) check {
+		return func(t *testing.T, sender *SenderMock, _ *httptest.ResponseRecorder) {
+			ff := sender.SendEmailChangeConfirmationCalls()
 			require.Len(t, ff, count)
 
 			if count == 0 {
@@ -164,6 +179,13 @@ func Test_Handler_SendEmail(t *testing.T) {
 			Checks: checks(
 				hasResp(http.StatusNoContent, ""),
 				wasSendEmailVerificationCalled(1, "user@example.com", "https://example.com/verify"),
+			),
+		},
+		"Email change confirmation sent": {
+			Body: `{"template":"email_change_confirmation","data":{"email":"user@example.com","link":"https://example.com/approve"}}`,
+			Checks: checks(
+				hasResp(http.StatusNoContent, ""),
+				wasSendEmailChangeConfirmationCalled(1, "user@example.com", "https://example.com/approve"),
 			),
 		},
 		"Password reset sent": {

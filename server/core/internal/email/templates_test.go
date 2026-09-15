@@ -28,6 +28,15 @@ func Test_render(t *testing.T) {
 				"https://example.com/verify?t=abc",
 			},
 		},
+		"Email change confirmation": {
+			Template: TemplateEmailChangeConfirmation,
+			Args: map[string]string{
+				"link": "https://example.com/approve?t=abc",
+			},
+			Contains: []string{
+				"https://example.com/approve?t=abc",
+			},
+		},
 		"Organization invitation": {
 			Template: TemplateOrganizationInvitation,
 			Args: map[string]string{

@@ -3,11 +3,11 @@
 # deployment operators copy — docker-compose.example.yaml is that file, and
 # it stays as documented.
 #
-# the one thing a local run cannot do without is mail: signup requires a
-# verified address, so without a relay the verification link is only ever
-# logged. This starts the mail sink the example already describes in a
-# comment and points the image at it; the delivered mail is read at
-# http://localhost:8025.
+# it adds mail. The example runs without an email sender, which switches off
+# signup verification and password reset; this starts the mail sink the
+# example describes in a comment and points the image at it, so a local run
+# goes through the same flows as a deployment with a relay. The delivered
+# mail is read at http://localhost:8025.
 
 name: oxynote-prod
 

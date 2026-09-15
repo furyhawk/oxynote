@@ -6,6 +6,7 @@ import type { AxiosHeaders } from "axios"
 // dropped email.
 export type EmailTemplate =
 	| "email_verification"
+	| "email_change_confirmation"
 	| "password_reset"
 	| "account_exists"
 	| "signup_verification"

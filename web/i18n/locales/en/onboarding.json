@@ -94,6 +94,8 @@
 		"verify-email": {
 			"heading": "Email verified",
 			"sent-heading": "Verify your email",
+			"approved-heading": "One more step",
+			"approved-title": "Thanks for approving the change. We've sent a verification link to {email}. Open it to finish moving your account.",
 			"title": "Thank you for verifying {email} as your email address!",
 			"sent-title": "We've sent a verification link to {email}. Please check your inbox.",
 			"button": "Continue to Oxynote",

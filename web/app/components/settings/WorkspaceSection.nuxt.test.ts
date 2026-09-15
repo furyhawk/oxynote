@@ -8,11 +8,15 @@ import {
 } from "~/composables/api/test-helpers"
 import WorkspaceSection from "./WorkspaceSection.vue"
 import {
+	at,
+	clearTeleportedOverlays,
 	findButtonByText,
 	menuItem,
 	mockAuthEndpoint,
 	mockAuthOrganization,
 	mountUnderTooltipProvider,
+	raisedToasts,
+	seedAuthConfig,
 	seedAuthSession,
 	settleMutations,
 	t,
@@ -31,6 +35,17 @@ function member(id: string, name: string) {
 		role: "member",
 		createdAt: "2026-01-01T00:00:00Z",
 		user: { name: name, email: `${name}@oxynote.test`, image: "" },
+	}
+}
+
+function invitation(inviterId: string) {
+	return {
+		id: "inv-1",
+		organizationId: "org-1",
+		status: "pending",
+		email: "grace@oxynote.test",
+		role: "owner",
+		inviterId: inviterId,
 	}
 }
 
@@ -237,7 +252,56 @@ describe("<WorkspaceSection>", { concurrent: false }, () => {
 		expect(calls).toHaveLength(0)
 	})
 
+	describe("without email", { concurrent: false }, () => {
+		beforeEach(() => {
+			seedAuthConfig({ emailEnabled: false })
+		})
+
+		it("says that invitation links go out by hand", async ({ expect }) => {
+			seedWorkspace()
+
+			const { wrapper } = await mountSection()
+
+			expect(wrapper.text()).toContain(
+				t("settings.workspace.email-disabled-notice"),
+			)
+		})
+	})
+
+	// settings can be opened without the login page having filled the auth
+	// config cache first, so the section has to fetch it itself
+	it("shows the notice once the server's config arrives", async ({
+		expect,
+	}) => {
+		mockEndpoint(
+			"GET",
+			"http://test.local/auth-realtime/api/auth-config",
+			() => ({ methods: ["email-password"], emailEnabled: false }),
+		)
+		seedWorkspace()
+
+		const { wrapper } = await mountSection()
+		await settleMutations()
+
+		expect(wrapper.text()).toContain(
+			t("settings.workspace.email-disabled-notice"),
+		)
+	})
+
+	it("shows no email notice where email is delivered", async ({ expect }) => {
+		seedAuthConfig()
+		seedWorkspace()
+
+		const { wrapper } = await mountSection()
+
+		expect(wrapper.text()).not.toContain(
+			t("settings.workspace.email-disabled-notice"),
+		)
+	})
+
 	describe("member list", { concurrent: false }, () => {
+		beforeEach(clearTeleportedOverlays)
+
 		it("lists the joined members", async ({ expect }) => {
 			seedWorkspace({ members: [member("u1", "ada"), member("u2", "linus")] })
 
@@ -322,6 +386,68 @@ describe("<WorkspaceSection>", { concurrent: false }, () => {
 			expect(section.emitted("member-removal")?.[0]?.[0]).toMatchObject({
 				id: "member-u2",
 			})
+		})
+
+		it("copies a pending invitation's link to hand over", async ({
+			expect,
+		}) => {
+			const writeText = vi
+				.spyOn(navigator.clipboard, "writeText")
+				.mockResolvedValue(undefined)
+			seedWorkspace({
+				members: [member("u1", "ada"), member("u2", "linus")],
+				invitations: [invitation("u2")],
+			})
+			const { wrapper } = await mountSection()
+			await at(
+				wrapper.findAll("[data-slot='dropdown-menu-trigger']"),
+				1,
+			).trigger("click")
+
+			menuItem(t("settings.workspace.member-options.copy-link.title")).click()
+			await settleMutations()
+
+			expect(writeText).toHaveBeenCalledTimes(1)
+			expect(writeText).toHaveBeenCalledWith(
+				"http://test.local/accept-invite?id=inv-1&email=grace%40oxynote.test&inviter=linus&orgName=Acme&orgId=org-1",
+			)
+			expect(raisedToasts()).toMatchObject([
+				{
+					type: "success",
+					title: t("settings.workspace.invitation-link-copied"),
+				},
+			])
+		})
+
+		it("names the signed-in user as inviter once the inviter has left", async ({
+			expect,
+		}) => {
+			const writeText = vi
+				.spyOn(navigator.clipboard, "writeText")
+				.mockResolvedValue(undefined)
+			seedWorkspace({ invitations: [invitation("u9")] })
+			const { wrapper } = await mountSection()
+			await wrapper.get("[data-slot='dropdown-menu-trigger']").trigger("click")
+
+			menuItem(t("settings.workspace.member-options.copy-link.title")).click()
+			await settleMutations()
+
+			expect(writeText).toHaveBeenCalledWith(
+				expect.stringContaining("&inviter=ada&"),
+			)
+		})
+
+		it("offers no link to copy on a joined member's row", async ({
+			expect,
+		}) => {
+			seedWorkspace({ members: [member("u1", "ada"), member("u2", "linus")] })
+			const { wrapper } = await mountSection()
+
+			await wrapper.get("[data-slot='dropdown-menu-trigger']").trigger("click")
+
+			expect(() =>
+				menuItem(t("settings.workspace.member-options.copy-link.title")),
+			).toThrow()
 		})
 	})
 })

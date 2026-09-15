@@ -1,11 +1,16 @@
 import { betterAuth } from "better-auth"
-import { createAuthMiddleware } from "better-auth/api"
+import {
+	APIError,
+	createAuthMiddleware,
+	getSessionFromCtx,
+} from "better-auth/api"
 import { jwt, organization } from "better-auth/plugins"
 import { electron } from "@better-auth/electron"
 import { mcp } from "@better-auth/mcp"
 import type { PostgresDialect } from "kysely"
+import { z } from "zod"
 import type { Store } from "./db.js"
-import type { CoreClient } from "./core.js"
+import type { CoreClient, EmailTemplate } from "./core.js"
 import type { Env, SocialProviderName } from "./env.js"
 import type { Logger, LogLevel } from "./logging.js"
 import { reported } from "./reporting.js"
@@ -67,6 +72,36 @@ export function authMethods(env: Env): AuthMethod[] {
 // the reverse proxy.
 export function toPublicAuthUrl(env: Env, url: string): string {
 	return url.replace(env.authOrigin, env.publicAuthBaseUrl)
+}
+
+// the activation link a signup sends and the link that moves an account to
+// a new address both arrive at sendVerificationEmail, and only the second
+// one's token names the address it switches to. A token that cannot be read
+// is treated as a signup, the flow every account goes through first.
+export function verificationTemplate(token: string): EmailTemplate {
+	const payload = token.split(".")[1]
+	if (!payload) {
+		return "signup_verification"
+	}
+
+	let decoded: unknown
+
+	try {
+		decoded = JSON.parse(
+			Buffer.from(payload, "base64url").toString(),
+		)
+	} catch {
+		return "signup_verification"
+	}
+
+	const updateTo =
+		decoded && typeof decoded === "object"
+			? (decoded as { updateTo?: unknown }).updateTo
+			: undefined
+
+	return typeof updateTo === "string" && updateTo
+		? "email_verification"
+		: "signup_verification"
 }
 
 export interface SocialSignInContext {
@@ -201,6 +236,111 @@ export function createOrganizationHooks({
 	}
 }
 
+// the part of better-auth's endpoint context confirmWithPassword reads.
+// Declared structurally so a test can drive it with plain stubs.
+export interface PasswordConfirmationContext {
+	path: string
+	body?: Record<string, unknown> | null
+	context: {
+		internalAdapter: {
+			findCredentialAccount(
+				userId: string,
+			): Promise<{ password?: string | null } | null>
+			findUserByEmail(email: string): Promise<unknown>
+			updateUser(
+				userId: string,
+				data: { email: string; emailVerified: boolean },
+			): Promise<unknown>
+		}
+		password: {
+			verify(data: {
+				hash: string
+				password: string
+			}): Promise<boolean>
+		}
+	}
+	json(body: { status: boolean }): unknown
+}
+
+export interface SessionUser {
+	id: string
+	email: string
+}
+
+// better-auth confirms an email change or an account deletion through an
+// emailed link. Without email the current password confirms it instead,
+// checked before either endpoint runs; an account without a password
+// (social login only) has nothing to confirm with and is refused. Resolves
+// to the hook's own answer, or undefined to let the endpoint run.
+export async function confirmWithPassword(
+	ctx: PasswordConfirmationContext,
+	currentUser: () => Promise<SessionUser | undefined>,
+): Promise<unknown> {
+	if (ctx.path !== "/change-email" && ctx.path !== "/delete-user") {
+		return undefined
+	}
+
+	// the endpoint's own session check answers a caller without one.
+	const user = await currentUser()
+	if (!user) {
+		return undefined
+	}
+
+	const account = await ctx.context.internalAdapter.findCredentialAccount(
+		user.id,
+	)
+	if (!account?.password) {
+		throw APIError.from("FORBIDDEN", {
+			code: "CREDENTIAL_ACCOUNT_NOT_FOUND",
+			message: "Credential account not found",
+		})
+	}
+
+	const password = ctx.body?.password
+	if (
+		typeof password !== "string" ||
+		!(await ctx.context.password.verify({
+			hash: account.password,
+			password,
+		}))
+	) {
+		throw APIError.from("BAD_REQUEST", {
+			code: "INVALID_PASSWORD",
+			message: "Invalid password",
+		})
+	}
+
+	// with no deletion email configured, better-auth deletes the account
+	// itself.
+	if (ctx.path === "/delete-user") {
+		return undefined
+	}
+
+	// better-auth changes an address without a link only for an
+	// unverified account, so the change is made here, and the new address
+	// is stored unverified because nothing has proven it. A malformed or
+	// unchanged address is left to the endpoint's own validation.
+	const parsed = z.email().safeParse(ctx.body?.newEmail)
+	const newEmail = parsed.success ? parsed.data.toLowerCase() : undefined
+	if (!newEmail || newEmail === user.email) {
+		return undefined
+	}
+
+	if (await ctx.context.internalAdapter.findUserByEmail(newEmail)) {
+		throw APIError.from("UNPROCESSABLE_ENTITY", {
+			code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL",
+			message: "User already exists. Use another email.",
+		})
+	}
+
+	await ctx.context.internalAdapter.updateUser(user.id, {
+		email: newEmail,
+		emailVerified: false,
+	})
+
+	return ctx.json({ status: true })
+}
+
 export function createSecondaryStorage(redis: SecondaryStorageClient) {
 	return {
 		get: (key: string) => reported(() => redis.get(key)),
@@ -306,7 +446,9 @@ export function createAuth({
 		},
 		emailAndPassword: {
 			enabled: true,
-			requireEmailVerification: true,
+			// without email no verification link can arrive, so a new
+			// account is signed in straight away.
+			requireEmailVerification: env.emailEnabled,
 			minPasswordLength: 16,
 			maxPasswordLength: 128,
 			// a reset always happens outside an authenticated session
@@ -316,17 +458,28 @@ export function createAuth({
 			// revokes its other sessions via revokeOtherSessions on
 			// the client call instead.
 			revokeSessionsOnPasswordReset: true,
-			sendResetPassword: async ({ user, url }) => {
-				await reported(() =>
-					core.sendEmail("password_reset", {
-						email: user.email,
-						link: toPublicAuthUrl(env, url),
-					}),
-				)
-			},
-			// duplicate signups get better-auth's synthetic success so
-			// the browser can't probe which emails have accounts. The
-			// real owner is told through their inbox instead.
+			// with no sender better-auth refuses a reset request
+			// (RESET_PASSWORD_DISABLED) instead of promising a link.
+			sendResetPassword: env.emailEnabled
+				? async ({ user, url }) => {
+						await reported(() =>
+							core.sendEmail(
+								"password_reset",
+								{
+									email: user.email,
+									link: toPublicAuthUrl(
+										env,
+										url,
+									),
+								},
+							),
+						)
+					}
+				: undefined,
+			// where verification is required, duplicate signups get
+			// better-auth's synthetic success so the browser can't probe
+			// which emails have accounts. The real owner is told through
+			// their inbox instead.
 			onExistingUserSignUp: async ({ user }) => {
 				await reported(() =>
 					core.sendEmail("account_exists", {
@@ -337,23 +490,35 @@ export function createAuth({
 			},
 		},
 		emailVerification: {
-			sendOnSignUp: true,
+			sendOnSignUp: env.emailEnabled,
 			// re-send the verification link when an unverified user
 			// tries to log in — the login page forwards them to the
 			// check-your-inbox page, which would otherwise lie about
 			// an email being sent.
 			sendOnSignIn: true,
-			// signup/sign-in verification gets its own
-			// account-activation template; the change-email flow
-			// below keeps the "new email address" one.
-			sendVerificationEmail: async ({ user, url }) => {
-				await reported(() =>
-					core.sendEmail("signup_verification", {
-						email: user.email,
-						link: toPublicAuthUrl(env, url),
-					}),
-				)
-			},
+			// signup/sign-in activation and the change-email link both
+			// come through here, so the token decides which wording is
+			// sent. With no sender, better-auth's change-email endpoint
+			// has no link to offer either, and confirmWithPassword takes
+			// the change over.
+			sendVerificationEmail: env.emailEnabled
+				? async ({ user, url, token }) => {
+						await reported(() =>
+							core.sendEmail(
+								verificationTemplate(
+									token,
+								),
+								{
+									email: user.email,
+									link: toPublicAuthUrl(
+										env,
+										url,
+									),
+								},
+							),
+						)
+					}
+				: undefined,
 		},
 		rateLimit: {
 			enabled: env.rateLimitEnabled,
@@ -391,43 +556,48 @@ export function createAuth({
 			},
 			changeEmail: {
 				enabled: true,
-				sendChangeEmailConfirmation: async ({
-					newEmail,
-					url,
-				}) => {
-					await reported(() =>
-						core.sendEmail(
-							"email_verification",
-							{
-								email: newEmail,
-								link: toPublicAuthUrl(
-									env,
-									url,
+				// the first step of a change of address: the current
+				// address approves it, and better-auth then emails the
+				// new one through sendVerificationEmail above. Sending
+				// this to the new address instead would ask it to
+				// approve its own claim.
+				sendChangeEmailConfirmation: env.emailEnabled
+					? async ({ user, url }) => {
+							await reported(() =>
+								core.sendEmail(
+									"email_change_confirmation",
+									{
+										email: user.email,
+										link: toPublicAuthUrl(
+											env,
+											url,
+										),
+									},
 								),
-							},
-						),
-					)
-				},
+							)
+						}
+					: undefined,
 			},
 			deleteUser: {
 				enabled: true,
-				sendDeleteAccountVerification: async ({
-					user,
-					url,
-				}) => {
-					await reported(() =>
-						core.sendEmail(
-							"user_deletion",
-							{
-								email: user.email,
-								link: toPublicAuthUrl(
-									env,
-									url,
+				// with no sender better-auth deletes the account at once,
+				// after confirmWithPassword has checked the password.
+				sendDeleteAccountVerification: env.emailEnabled
+					? async ({ user, url }) => {
+							await reported(() =>
+								core.sendEmail(
+									"user_deletion",
+									{
+										email: user.email,
+										link: toPublicAuthUrl(
+											env,
+											url,
+										),
+									},
 								),
-							},
-						),
-					)
-				},
+							)
+						}
+					: undefined,
 			},
 		},
 		account: {
@@ -694,14 +864,28 @@ export function createAuth({
 			}),
 		],
 		hooks: {
-			before: createAuthMiddleware((ctx) =>
-				Promise.resolve(
-					electronCallbackOverride(
-						ctx,
-						env.frontendUrl,
-					),
-				),
-			),
+			before: createAuthMiddleware(async (ctx) => {
+				if (!env.emailEnabled) {
+					const answer =
+						await confirmWithPassword(
+							ctx,
+							async () =>
+								(
+									await getSessionFromCtx(
+										ctx,
+									)
+								)?.user,
+						)
+					if (answer !== undefined) {
+						return answer
+					}
+				}
+
+				return electronCallbackOverride(
+					ctx,
+					env.frontendUrl,
+				)
+			}),
 		},
 		databaseHooks: {
 			session: {

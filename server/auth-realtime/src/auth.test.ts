@@ -1,6 +1,7 @@
 import { describe, it, vi } from "vitest"
 import {
 	authMethods,
+	confirmWithPassword,
 	createAuth,
 	createOrganizationHooks,
 	createSecondaryStorage,
@@ -8,6 +9,7 @@ import {
 	invitationLink,
 	organizationClaims,
 	toPublicAuthUrl,
+	verificationTemplate,
 	type SecondaryStorageClient,
 } from "./auth.js"
 import { createDatabase, type Store } from "./db.js"
@@ -71,6 +73,16 @@ function buildAuth(
 	return { auth, core, log }
 }
 
+// an email callback is left out when no email can be sent, so its type
+// admits undefined even on an instance built with email enabled.
+function configured<T>(callback: T | undefined): T {
+	if (!callback) {
+		throw new Error("callback is not configured")
+	}
+
+	return callback
+}
+
 describe("authMethods", () => {
 	it("always offers email and password", ({ expect }) => {
 		expect(authMethods(testEnv())).toEqual(["email-password"])
@@ -114,6 +126,51 @@ describe("toPublicAuthUrl", () => {
 
 		expect(url).toBe("http://elsewhere/reset")
 	})
+})
+
+describe("verificationTemplate", () => {
+	// better-auth's verification tokens are JWTs; only the payload is read
+	function token(payload: Record<string, unknown>): string {
+		const body = Buffer.from(JSON.stringify(payload)).toString(
+			"base64url",
+		)
+
+		return `header.${body}.signature`
+	}
+
+	it("sends the new-address wording for a change of address", ({
+		expect,
+	}) => {
+		expect(
+			verificationTemplate(
+				token({
+					email: "old@b.c",
+					updateTo: "new@b.c",
+					requestType:
+						"change-email-verification",
+				}),
+			),
+		).toBe("email_verification")
+	})
+
+	it.for([
+		{
+			name: "a signup token, which names no other address",
+			input: "header.eyJlbWFpbCI6ImFAYi5jIn0.signature",
+		},
+		{ name: "a token with no payload at all", input: "opaque" },
+		{
+			name: "a payload that is not JSON",
+			input: "header.@@@.signature",
+		},
+	])(
+		"sends the activation wording for $name",
+		({ input }, { expect }) => {
+			expect(verificationTemplate(input)).toBe(
+				"signup_verification",
+			)
+		},
+	)
 })
 
 describe("electronCallbackOverride", () => {
@@ -347,6 +404,219 @@ describe("createOrganizationHooks", () => {
 	})
 })
 
+describe("confirmWithPassword", () => {
+	const signedIn = () =>
+		Promise.resolve({ id: "u1", email: "ada@oxynote.test" })
+
+	// an email change by an account whose password checks out, to an
+	// address nobody holds, unless a test says otherwise.
+	function passwordContext(
+		overrides: {
+			path?: string
+			body?: Record<string, unknown>
+			account?: { password?: string | null } | null
+			verifies?: boolean
+			holder?: unknown
+		} = {},
+	) {
+		const internalAdapter = {
+			findCredentialAccount: vi
+				.fn()
+				.mockResolvedValue(
+					overrides.account === undefined
+						? { password: "hash" }
+						: overrides.account,
+				),
+			findUserByEmail: vi
+				.fn()
+				.mockResolvedValue(overrides.holder ?? null),
+			updateUser: vi.fn().mockResolvedValue({}),
+		}
+		const password = {
+			verify: vi
+				.fn()
+				.mockResolvedValue(overrides.verifies ?? true),
+		}
+		const json = vi.fn((body: { status: boolean }) => body)
+
+		return {
+			ctx: {
+				path: overrides.path ?? "/change-email",
+				body: overrides.body ?? {
+					newEmail: "new@oxynote.test",
+					password: "secret",
+				},
+				context: { internalAdapter, password },
+				json,
+			},
+			internalAdapter,
+			password,
+			json,
+		}
+	}
+
+	it("leaves every other endpoint alone", async ({ expect }) => {
+		const { ctx, internalAdapter } = passwordContext({
+			path: "/sign-in/email",
+		})
+		const currentUser = vi.fn(signedIn)
+
+		const answer = await confirmWithPassword(ctx, currentUser)
+
+		expect(answer).toBeUndefined()
+		expect.soft(currentUser).not.toHaveBeenCalled()
+		expect.soft(
+			internalAdapter.findCredentialAccount,
+		).not.toHaveBeenCalled()
+	})
+
+	it("leaves a caller without a session to the endpoint", async ({
+		expect,
+	}) => {
+		const { ctx, internalAdapter } = passwordContext()
+
+		const answer = await confirmWithPassword(ctx, () =>
+			Promise.resolve(undefined),
+		)
+
+		expect(answer).toBeUndefined()
+		expect.soft(
+			internalAdapter.findCredentialAccount,
+		).not.toHaveBeenCalled()
+		expect.soft(internalAdapter.updateUser).not.toHaveBeenCalled()
+	})
+
+	it("refuses an account that has no password", async ({ expect }) => {
+		const { ctx, internalAdapter, password } = passwordContext({
+			account: null,
+		})
+
+		await expect(
+			confirmWithPassword(ctx, signedIn),
+		).rejects.toMatchObject({
+			body: { code: "CREDENTIAL_ACCOUNT_NOT_FOUND" },
+		})
+
+		expect.soft(
+			internalAdapter.findCredentialAccount,
+		).toHaveBeenCalledWith("u1")
+		expect.soft(password.verify).not.toHaveBeenCalled()
+		expect.soft(internalAdapter.updateUser).not.toHaveBeenCalled()
+	})
+
+	it("refuses a request that carries no password", async ({ expect }) => {
+		const { ctx, internalAdapter, password } = passwordContext({
+			body: { newEmail: "new@oxynote.test" },
+		})
+
+		await expect(
+			confirmWithPassword(ctx, signedIn),
+		).rejects.toMatchObject({ body: { code: "INVALID_PASSWORD" } })
+
+		expect.soft(password.verify).not.toHaveBeenCalled()
+		expect.soft(internalAdapter.updateUser).not.toHaveBeenCalled()
+	})
+
+	it("refuses a wrong password", async ({ expect }) => {
+		const { ctx, internalAdapter, password } = passwordContext({
+			verifies: false,
+		})
+
+		await expect(
+			confirmWithPassword(ctx, signedIn),
+		).rejects.toMatchObject({ body: { code: "INVALID_PASSWORD" } })
+
+		expect.soft(password.verify).toHaveBeenCalledWith({
+			hash: "hash",
+			password: "secret",
+		})
+		expect.soft(internalAdapter.updateUser).not.toHaveBeenCalled()
+	})
+
+	it("lets a deletion through to better-auth once the password checks out", async ({
+		expect,
+	}) => {
+		const { ctx, internalAdapter, password, json } =
+			passwordContext({
+				path: "/delete-user",
+				body: { password: "secret" },
+			})
+
+		const answer = await confirmWithPassword(ctx, signedIn)
+
+		expect(answer).toBeUndefined()
+		expect.soft(password.verify).toHaveBeenCalledTimes(1)
+		expect.soft(
+			internalAdapter.findUserByEmail,
+		).not.toHaveBeenCalled()
+		expect.soft(internalAdapter.updateUser).not.toHaveBeenCalled()
+		expect.soft(json).not.toHaveBeenCalled()
+	})
+
+	it("stores the new address unverified once the password checks out", async ({
+		expect,
+	}) => {
+		const { ctx, internalAdapter, password } = passwordContext({
+			body: {
+				newEmail: "New@Oxynote.test",
+				password: "secret",
+			},
+		})
+
+		const answer = await confirmWithPassword(ctx, signedIn)
+
+		expect(answer).toEqual({ status: true })
+		expect.soft(password.verify).toHaveBeenCalledTimes(1)
+		expect.soft(
+			internalAdapter.findUserByEmail,
+		).toHaveBeenCalledWith("new@oxynote.test")
+		expect.soft(internalAdapter.updateUser).toHaveBeenCalledWith(
+			"u1",
+			{
+				email: "new@oxynote.test",
+				emailVerified: false,
+			},
+		)
+	})
+
+	it("refuses an address another account holds", async ({ expect }) => {
+		const { ctx, internalAdapter } = passwordContext({
+			holder: { user: { id: "u2" } },
+		})
+
+		await expect(
+			confirmWithPassword(ctx, signedIn),
+		).rejects.toMatchObject({
+			body: { code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" },
+		})
+
+		expect.soft(internalAdapter.updateUser).not.toHaveBeenCalled()
+	})
+
+	it.for([
+		{ name: "a malformed address", input: "not-an-email" },
+		{ name: "the current address", input: "ada@oxynote.test" },
+	])(
+		"leaves $name to the endpoint's own validation",
+		async ({ input }, { expect }) => {
+			const { ctx, internalAdapter, json } = passwordContext({
+				body: { newEmail: input, password: "secret" },
+			})
+
+			const answer = await confirmWithPassword(ctx, signedIn)
+
+			expect(answer).toBeUndefined()
+			expect.soft(
+				internalAdapter.findUserByEmail,
+			).not.toHaveBeenCalled()
+			expect.soft(
+				internalAdapter.updateUser,
+			).not.toHaveBeenCalled()
+			expect.soft(json).not.toHaveBeenCalled()
+		},
+	)
+})
+
 describe("createSecondaryStorage", () => {
 	it("reads through to the redis client", async ({ expect }) => {
 		const redis = stubRedis()
@@ -575,7 +845,9 @@ describe("createAuth", () => {
 		}) => {
 			const { auth, core } = buildAuth()
 
-			await auth.options.emailAndPassword.sendResetPassword({
+			await configured(
+				auth.options.emailAndPassword.sendResetPassword,
+			)({
 				user: { email: "a@b.c" },
 				url: "http://localhost:8080/api/auth/reset/tok",
 				token: "tok",
@@ -616,13 +888,14 @@ describe("createAuth", () => {
 		}) => {
 			const { auth, core } = buildAuth()
 
-			await auth.options.emailVerification.sendVerificationEmail(
-				{
-					user: { email: "a@b.c" },
-					url: "http://localhost:8080/api/auth/verify/tok",
-					token: "tok",
-				} as never,
-			)
+			await configured(
+				auth.options.emailVerification
+					.sendVerificationEmail,
+			)({
+				user: { email: "a@b.c" },
+				url: "http://localhost:8080/api/auth/verify/tok",
+				token: "tok",
+			} as never)
 
 			expect(core.sendEmail).toHaveBeenCalledWith(
 				"signup_verification",
@@ -633,25 +906,59 @@ describe("createAuth", () => {
 			)
 		})
 
-		it("confirms a change of address at the new address", async ({
+		// the first step of a change of address asks the current
+		// address to approve it; sending this to the new address would
+		// ask it to approve its own claim
+		it("asks the current address to approve a change of address", async ({
 			expect,
 		}) => {
 			const { auth, core } = buildAuth()
 
-			await auth.options.user.changeEmail.sendChangeEmailConfirmation(
+			await configured(
+				auth.options.user.changeEmail
+					.sendChangeEmailConfirmation,
+			)({
+				user: { email: "old@b.c" },
+				newEmail: "new@b.c",
+				url: "http://localhost:8080/api/auth/change/tok",
+				token: "tok",
+			} as never)
+
+			expect(core.sendEmail).toHaveBeenCalledWith(
+				"email_change_confirmation",
 				{
-					user: { email: "old@b.c" },
-					newEmail: "new@b.c",
-					url: "http://localhost:8080/api/auth/change/tok",
-					token: "tok",
-				} as never,
+					email: "old@b.c",
+					link: "http://localhost:8080/auth-realtime/api/auth/change/tok",
+				},
 			)
+		})
+
+		// the second step, which better-auth sends through the same
+		// callback as a signup activation
+		it("asks the new address to verify itself", async ({
+			expect,
+		}) => {
+			const { auth, core } = buildAuth()
+
+			await configured(
+				auth.options.emailVerification
+					.sendVerificationEmail,
+			)({
+				user: { email: "new@b.c" },
+				url: "http://localhost:8080/api/auth/verify/tok",
+				token: `header.${Buffer.from(
+					JSON.stringify({
+						email: "old@b.c",
+						updateTo: "new@b.c",
+					}),
+				).toString("base64url")}.signature`,
+			} as never)
 
 			expect(core.sendEmail).toHaveBeenCalledWith(
 				"email_verification",
 				{
 					email: "new@b.c",
-					link: "http://localhost:8080/auth-realtime/api/auth/change/tok",
+					link: "http://localhost:8080/auth-realtime/api/auth/verify/tok",
 				},
 			)
 		})
@@ -661,13 +968,14 @@ describe("createAuth", () => {
 		}) => {
 			const { auth, core } = buildAuth()
 
-			await auth.options.user.deleteUser.sendDeleteAccountVerification(
-				{
-					user: { email: "a@b.c" },
-					url: "http://localhost:8080/api/auth/delete/tok",
-					token: "tok",
-				} as never,
-			)
+			await configured(
+				auth.options.user.deleteUser
+					.sendDeleteAccountVerification,
+			)({
+				user: { email: "a@b.c" },
+				url: "http://localhost:8080/api/auth/delete/tok",
+				token: "tok",
+			} as never)
 
 			expect(core.sendEmail).toHaveBeenCalledWith(
 				"user_deletion",
@@ -687,14 +995,43 @@ describe("createAuth", () => {
 			const { auth } = buildAuth({ core })
 
 			await expect(
-				auth.options.emailAndPassword.sendResetPassword(
-					{
-						user: { email: "a@b.c" },
-						url: "http://localhost:8080/api/auth/reset/tok",
-						token: "tok",
-					} as never,
-				),
+				configured(
+					auth.options.emailAndPassword
+						.sendResetPassword,
+				)({
+					user: { email: "a@b.c" },
+					url: "http://localhost:8080/api/auth/reset/tok",
+					token: "tok",
+				} as never),
 			).rejects.toBe(failure)
+		})
+
+		// nothing can reach an inbox, so no flow may wait on one
+		it("sends nothing and verifies nothing when email is disabled", ({
+			expect,
+		}) => {
+			const { auth } = buildAuth({
+				env: testEnv({ emailEnabled: false }),
+			})
+
+			expect(
+				auth.options.emailAndPassword
+					.requireEmailVerification,
+			).toBe(false)
+			expect(
+				auth.options.emailVerification.sendOnSignUp,
+			).toBe(false)
+			expect(
+				auth.options.emailVerification
+					.sendVerificationEmail,
+			).toBeUndefined()
+			expect(
+				auth.options.emailAndPassword.sendResetPassword,
+			).toBeUndefined()
+			expect(
+				auth.options.user.deleteUser
+					.sendDeleteAccountVerification,
+			).toBeUndefined()
 		})
 	})
 
@@ -805,6 +1142,82 @@ describe("createAuth", () => {
 					} as never,
 				),
 			).rejects.toThrow("connection terminated")
+		})
+	})
+
+	describe("before hook", () => {
+		// the request context as better-auth hands it to the hook, with the
+		// session already resolved, which is where getSessionFromCtx reads
+		// it from before it would look at any cookie.
+		function changeEmailRequest(updateUser = vi.fn()) {
+			return {
+				path: "/change-email",
+				body: {
+					newEmail: "new@oxynote.test",
+					password: "secret",
+				},
+				context: {
+					session: {
+						user: {
+							id: "u1",
+							email: "ada@oxynote.test",
+						},
+					},
+					internalAdapter: {
+						findCredentialAccount: vi
+							.fn()
+							.mockResolvedValue({
+								password: "hash",
+							}),
+						findUserByEmail: vi
+							.fn()
+							.mockResolvedValue(
+								null,
+							),
+						updateUser,
+					},
+					password: {
+						verify: vi
+							.fn()
+							.mockResolvedValue(
+								true,
+							),
+					},
+				},
+			}
+		}
+
+		it("changes the address itself once the password checks out when email is disabled", async ({
+			expect,
+		}) => {
+			const { auth } = buildAuth({
+				env: testEnv({ emailEnabled: false }),
+			})
+			const updateUser = vi.fn().mockResolvedValue({})
+
+			const answer = await auth.options.hooks.before(
+				changeEmailRequest(updateUser) as never,
+			)
+
+			expect(answer).toEqual({ status: true })
+			expect.soft(updateUser).toHaveBeenCalledWith("u1", {
+				email: "new@oxynote.test",
+				emailVerified: false,
+			})
+		})
+
+		it("leaves an address change to better-auth while email is enabled", async ({
+			expect,
+		}) => {
+			const { auth } = buildAuth()
+			const updateUser = vi.fn().mockResolvedValue({})
+
+			const answer = await auth.options.hooks.before(
+				changeEmailRequest(updateUser) as never,
+			)
+
+			expect(answer).toBeUndefined()
+			expect.soft(updateUser).not.toHaveBeenCalled()
 		})
 	})
 

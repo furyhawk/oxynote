@@ -15,7 +15,7 @@ volume, as does the search index, which core rebuilds from Postgres when
 missing). `docker-compose.example.yaml` is the canonical deployment and
 `README.md` the operator reference. `docker-compose.local.yaml` is the
 override `make prod-run` layers on it to build the image locally and add a
-mailpit, since signup needs a verified address.
+mailpit, since the example runs without email.
 
 - **`make prod-build`** (repo root) builds it. Core's binary must come from
   goreleaser, never `go build`; the target stages it into `.build/` for the

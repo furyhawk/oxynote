@@ -237,6 +237,22 @@ func Test_Sender_SendEmailVerification(t *testing.T) {
 	assert.Contains(t, msgBody(t, msg), "https://example.com/verify")
 }
 
+func Test_Sender_SendEmailChangeConfirmation(t *testing.T) {
+	t.Parallel()
+
+	client := &clientMock{}
+	s := stubSender(client)
+
+	s.SendEmailChangeConfirmation("user@example.com", "https://example.com/approve")
+
+	s.supv.Wait()
+
+	msg := sentMsg(t, client)
+	assert.Equal(t, "user@example.com", msgTo(t, msg))
+	assert.Equal(t, []string{"Approve your email address change"}, msg.GetGenHeader(mail.HeaderSubject))
+	assert.Contains(t, msgBody(t, msg), "https://example.com/approve")
+}
+
 func Test_Sender_SendOrganizationInvitation(t *testing.T) {
 	t.Parallel()
 

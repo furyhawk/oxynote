@@ -21,6 +21,7 @@ const form = useForm({
 })
 const { fetchAuthSession, fetchOrganization, inviteOrganizationMember } =
 	useAuthSession()
+const { isEmailEnabled } = useAuthAPI()
 const { t } = useI18n({ useScope: "global" })
 const loading = ref(false)
 const isMaxMembersReached = computed(() => {
@@ -63,16 +64,30 @@ const onSubmit = form.handleSubmit(async (values) => {
 
 	await fetchOrganization.refetch()
 
-	showToastMessage(
-		"success",
-		t("settings.action-modals.workspace-invitation.success-message.title"),
-		t(
-			"settings.action-modals.workspace-invitation.success-message.description",
-			{
-				email: values.email,
-			},
-		),
-	)
+	if (isEmailEnabled.value) {
+		showToastMessage(
+			"success",
+			t("settings.action-modals.workspace-invitation.success-message.title"),
+			t(
+				"settings.action-modals.workspace-invitation.success-message.description",
+				{
+					email: values.email,
+				},
+			),
+		)
+	} else {
+		showToastMessage(
+			"success",
+			t(
+				"settings.action-modals.workspace-invitation.success-message-without-email.title",
+			),
+			t(
+				"settings.action-modals.workspace-invitation.success-message-without-email.description",
+				{ email: values.email },
+			),
+		)
+	}
+
 	emit("close")
 })
 </script>

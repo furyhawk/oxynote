@@ -5,7 +5,8 @@ import { mountSuspended } from "@nuxt/test-utils/runtime"
 import { flushPromises, type VueWrapper } from "@vue/test-utils"
 import { vi } from "vitest"
 import type { H3Event } from "h3"
-import type { ComponentPublicInstance } from "vue"
+import type { ComponentPublicInstance, VNode } from "vue"
+import { toast } from "vue-sonner"
 import {
 	mockEndpoint,
 	runInApp,
@@ -80,6 +81,26 @@ export function seedCapabilities(capabilities: Partial<Capabilities> = {}) {
 		changeDetection: true,
 		aiAssistant: { status: AssistantStatus.Active, model: "test-model" },
 		...capabilities,
+	})
+}
+
+// email defaults to delivered here, matching what useAuthAPI reports
+// before its request resolves
+export function seedAuthConfig(config: Partial<AuthConfig> = {}) {
+	seedQueryData(["auth", "config"], {
+		methods: ["email-password"],
+		emailEnabled: true,
+		...config,
+	})
+}
+
+// what each toast raised so far says, read off the render function every
+// showToastMessage call hands the module-mocked vue-sonner
+export function raisedToasts(): { type: string; title: string }[] {
+	return vi.mocked(toast.custom).mock.calls.map(([render]) => {
+		const vnode = (render as () => VNode)()
+
+		return vnode.props as { type: string; title: string }
 	})
 }
 

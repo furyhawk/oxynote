@@ -1,5 +1,9 @@
 import { describe, it } from "vitest"
-import { postAuthDocumentUrl, postEmailVerificationUrl } from "./auth"
+import {
+	acceptInvitationUrl,
+	postAuthDocumentUrl,
+	postEmailVerificationUrl,
+} from "./auth"
 
 describe("postAuthDocumentUrl", () => {
 	it.for([
@@ -34,6 +38,22 @@ describe("postAuthDocumentUrl", () => {
 	it("uses a custom default path when given", ({ expect }) => {
 		expect(postAuthDocumentUrl("https://app.test", undefined, "/home")).toBe(
 			"https://app.test/home",
+		)
+	})
+})
+
+describe("acceptInvitationUrl", () => {
+	it("carries everything the accept page renders, encoded", ({ expect }) => {
+		expect(
+			acceptInvitationUrl("https://app.test", {
+				id: "inv-1",
+				email: "a+b@test.io",
+				inviter: "Ada Lovelace",
+				organizationName: "Acme & Co",
+				organizationId: "org-1",
+			}),
+		).toBe(
+			"https://app.test/accept-invite?id=inv-1&email=a%2Bb%40test.io&inviter=Ada+Lovelace&orgName=Acme+%26+Co&orgId=org-1",
 		)
 	})
 })

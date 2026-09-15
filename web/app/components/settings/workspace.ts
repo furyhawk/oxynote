@@ -4,6 +4,7 @@ export interface OrganizationMember {
 	createdAt?: Date
 	userId?: string
 	invitationPending?: boolean
+	invitationUrl?: string
 	role: string
 	user: {
 		name: string

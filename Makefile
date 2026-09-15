@@ -12,6 +12,7 @@ E2E_DEV_COMPOSE := docker compose -f e2e/docker-compose.dev.yaml $(E2E_DEV_COMPO
 E2E_PROD_COMPOSE := docker compose -f e2e/docker-compose.prod.yaml
 PROD_COMPOSE := docker compose -f docker/prod/docker-compose.example.yaml \
 	-f docker/prod/docker-compose.local.yaml
+PROD_NO_EMAIL_COMPOSE := docker compose -f docker/prod/docker-compose.example.yaml
 
 # a tag names the stack an image belongs to. The e2e targets override these
 # to :e2e-dev and :e2e-prod so a run cannot replace the image `make start`
@@ -185,12 +186,19 @@ prod-publish:
 
 # build the image, then run the example deployment against it on
 # http://localhost:8080 (ctrl-c stops it). The local override adds the mail
-# sink the example only describes in a comment: signup requires a verified
-# address, so without it the verification link is only logged. Read the
-# delivered mail at http://localhost:8025.
+# sink the example only describes in a comment, so the product runs with
+# email. Read the delivered mail at http://localhost:8025.
 .PHONY: prod-run
 prod-run: prod-build
 	OXYNOTE_IMAGE_TAG=$(PROD_IMAGE_TAG) $(PROD_COMPOSE) up
+
+# the same without the local override: the example as it stands, which runs
+# the product without email. Both targets share one compose project and its
+# data volume, so prod-stop stops either, and --remove-orphans takes down a
+# mailpit an earlier prod-run left behind.
+.PHONY: prod-run-no-email
+prod-run-no-email: prod-build
+	OXYNOTE_IMAGE_TAG=$(PROD_IMAGE_TAG) $(PROD_NO_EMAIL_COMPOSE) up --remove-orphans
 
 .PHONY: prod-stop
 prod-stop:

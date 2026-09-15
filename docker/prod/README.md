@@ -20,9 +20,10 @@ docker compose -f my-deployment.yaml up -d
 From a repository checkout, `make prod-run` builds the image locally
 (goreleaser builds the core binary first — a bare `docker build` is not
 supported) and runs this example on `http://localhost:8080`, with
-`docker-compose.local.yaml` layered on top so signup mail lands in a mailpit
-at `http://localhost:8025` instead of being logged. `make prod-stop` stops
-it.
+`docker-compose.local.yaml` layered on top to add an email sender: a mailpit
+that shows the delivered mail at `http://localhost:8025`. `make
+prod-run-no-email` runs the example without that override, as a deployment
+without an email sender. `make prod-stop` stops either.
 
 The image serves plain HTTP on port **8080** and assumes it is reached at
 `http://localhost:8080` unless told otherwise, so publish the container as
@@ -56,12 +57,32 @@ cleanly. An incomplete group fails the boot with the missing name.
 | --- | --- |
 | Valkey/Redis | `OXYNOTE_VALKEY_DSN` (`redis[s]://[user:pass@]host:port[/db]`, credentials supported). Without it the assistant keeps its conversations in the core process and sessions are not cached outside Postgres. |
 | Object storage | `OXYNOTE_OBJECT_STORAGE_DSN` — an S3-compatible store as one URL: `http(s)://ACCESS_KEY:SECRET_KEY@host:port/bucket[?region=...]` (the bucket defaults to `oxynote` and is created if missing). Without it uploaded images are kept on the data volume, which is the right choice for a single-node deployment. |
-| Email | `OXYNOTE_SMTP_DSN` (`smtp[s]://[user:pass@]host:port[?tls=none\|starttls\|tls]`), `OXYNOTE_EMAIL_FROM_ADDRESS`. Without email, verification mails are logged instead of sent. |
+| Email | `OXYNOTE_SMTP_DSN` (`smtp[s]://[user:pass@]host:port[?tls=none\|starttls\|tls]`), `OXYNOTE_EMAIL_FROM_ADDRESS`. Without it the product runs without email, as described below. |
 | GitHub App | `OXYNOTE_GITHUB_APP_ID`, `OXYNOTE_GITHUB_APP_SLUG`, `OXYNOTE_GITHUB_APP_SIGNATURE_SECRET`; mount the app's private key at `/oxynote/github/private-key.pem` |
 | Slack app | `OXYNOTE_SLACK_APP_CLIENT_ID`, `OXYNOTE_SLACK_APP_CLIENT_SECRET`, `OXYNOTE_SLACK_APP_SIGNATURE_SECRET` |
 | Social login | `OXYNOTE_SOCIAL_LOGIN_{GITHUB,GOOGLE,SLACK}_CLIENT_ID` + `_CLIENT_SECRET` (both halves per provider) |
 | AI assistant | `OXYNOTE_AI_ASSISTANT_PROVIDER` (`anthropic`, `openai`, `google`, `ollama`, `openrouter`) plus the vendor's credentials, detailed in [docs/ai.md](../../docs/ai.md): `OXYNOTE_AI_ASSISTANT_API_KEY`, `_MODEL`, `_BASE_URL`, `_MAX_TOKENS`, `_REQUEST_TIMEOUT`, `_SUMMARY_MODEL`, `_AZURE_API_VERSION`, `_BEDROCK_{REGION,ACCESS_KEY,SECRET_ACCESS_KEY,SESSION_TOKEN}`, `_VERTEX_{PROJECT_ID,REGION,SERVICE_ACCOUNT_JSON}` |
 | URL watching | `OXYNOTE_CHANGE_DETECTION_URL`, `OXYNOTE_CHANGE_DETECTION_API_KEY` (a changedetection.io instance) |
+
+### Without an email sender
+
+Without `OXYNOTE_SMTP_DSN` nothing is emailed, and the flows that would wait
+for a link work without one:
+
+- Signup skips email verification and goes straight to workspace creation.
+- Invitations are still created, but their links have to be passed on by
+  hand. Workspace settings offer **Copy invitation link** on each pending
+  invitation, and show a notice about it.
+- Changing the email address or deleting the account asks for the current
+  password. Accounts that sign in only through a social login have no
+  password, so they can do neither.
+- Password reset is switched off, and there is no other way to recover a
+  forgotten password. The login page tells users to contact their
+  administrator.
+
+Setting `OXYNOTE_SMTP_DSN` later brings the email flows back after a
+restart. Accounts created in the meantime have unverified addresses, so
+their next login sends a verification link first.
 
 ### Tuning
 

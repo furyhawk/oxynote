@@ -36,4 +36,35 @@ describe("useAuthAPI", { concurrent: false }, () => {
 			expect(configCalls).toHaveLength(1)
 		})
 	})
+
+	describe("isEmailEnabled", () => {
+		it("assumes email is delivered until the config arrives", async ({
+			expect,
+		}) => {
+			mockEndpoint(
+				"GET",
+				"http://test.local/auth-realtime/api/auth-config",
+				() => ({ methods: ["email-password"], emailEnabled: false }),
+			)
+			const api = makeAuthAPI()
+
+			expect(api.isEmailEnabled.value).toBe(true)
+
+			// drains the eager load so it cannot land in the next test
+			await api.fetchAuthConfig.refresh()
+		})
+
+		it("follows the server's answer once it arrives", async ({ expect }) => {
+			mockEndpoint(
+				"GET",
+				"http://test.local/auth-realtime/api/auth-config",
+				() => ({ methods: ["email-password"], emailEnabled: false }),
+			)
+			const api = makeAuthAPI()
+
+			await api.fetchAuthConfig.refresh()
+
+			expect(api.isEmailEnabled.value).toBe(false)
+		})
+	})
 })

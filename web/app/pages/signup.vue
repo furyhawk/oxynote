@@ -17,9 +17,13 @@ useHead({
 	title: () => t("general.signup-page-title"),
 })
 
-const { signInSocial, signUpEmailPassword, setupSignInRedirect } =
-	useAuthSession()
-const { fetchAuthConfig } = useAuthAPI()
+const {
+	fetchAuthSession,
+	signInSocial,
+	signUpEmailPassword,
+	setupSignInRedirect,
+} = useAuthSession()
+const { fetchAuthConfig, isEmailEnabled } = useAuthAPI()
 
 const { fetchOrganizationStats } = useOrganizationAPI()
 const { currentUrl } = useCurrentUrl()
@@ -159,13 +163,28 @@ const onEmailPasswordSubmit = emailPasswordForm.handleSubmit(async (values) => {
 		name: values.email.split("@")[0] || values.email,
 		callbackURL: `${config.public.appBaseURL}/login?verified=true`,
 	})) as AuthResponse
-	// no duplicate-email branch on purpose: better-auth answers duplicate
-	// signups with a synthetic success so the browser can't probe which
-	// emails have accounts. The existing owner is notified through their
-	// inbox instead (onExistingUserSignUp in auth-realtime).
+	// no duplicate-email branch on purpose: where email is sent,
+	// better-auth answers duplicate signups with a synthetic success so the
+	// browser can't probe which emails have accounts. The existing owner is
+	// notified through their inbox instead (onExistingUserSignUp in
+	// auth-realtime).
 	if (res.error) {
 		loading.value = null
 		showToastMessage("error", t("onboarding.signup.errors.signup-failed"))
+
+		return
+	}
+
+	// without email better-auth signs the new account in at once, so there
+	// is no inbox to wait on. The session query still caches the signed-out
+	// null, so it is refetched before the middleware reads it.
+	if (!isEmailEnabled.value) {
+		await fetchAuthSession.refetch()
+
+		const nextUrl = route.query.next as string | undefined
+		void navigateTo(nextUrl ? decodeURIComponent(nextUrl) : "/", {
+			replace: true,
+		})
 
 		return
 	}

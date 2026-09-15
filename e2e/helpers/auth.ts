@@ -39,12 +39,14 @@ async function revealForm(button: Locator, field: Locator): Promise<void> {
 }
 
 // submitSignupForm walks the email-password branch of the signup page and
-// leaves the browser wherever the app sends it.
+// leaves the browser wherever the app sends it. The origin is the stack's
+// front door unless a test drives another instance.
 export async function submitSignupForm(
 	page: Page,
 	credentials: Credentials,
+	origin = BASE_URL,
 ): Promise<void> {
-	await visit(page, "/signup")
+	await visit(page, `${origin}/signup`)
 
 	const email = page.getByPlaceholder(
 		t("onboarding.signup.email-password-form.email-placeholder"),
@@ -71,12 +73,14 @@ export async function submitSignupForm(
 }
 
 // submitLoginForm walks the email-password branch of the login page and
-// leaves the browser wherever the app sends it.
+// leaves the browser wherever the app sends it. The origin is the stack's
+// front door unless a test drives another instance.
 export async function submitLoginForm(
 	page: Page,
 	credentials: Credentials,
+	origin = BASE_URL,
 ): Promise<void> {
-	await visit(page, "/login")
+	await visit(page, `${origin}/login`)
 
 	const email = page.getByPlaceholder(
 		t("onboarding.login.email-password-form.email-placeholder"),

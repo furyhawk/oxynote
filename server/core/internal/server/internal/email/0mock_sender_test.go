@@ -20,6 +20,9 @@ var _ Sender = &SenderMock{}
 //			SendAccountExistsFunc: func(eml string, link string)  {
 //				panic("mock out the SendAccountExists method")
 //			},
+//			SendEmailChangeConfirmationFunc: func(eml string, link string)  {
+//				panic("mock out the SendEmailChangeConfirmation method")
+//			},
 //			SendEmailVerificationFunc: func(eml string, link string)  {
 //				panic("mock out the SendEmailVerification method")
 //			},
@@ -45,6 +48,9 @@ type SenderMock struct {
 	// SendAccountExistsFunc mocks the SendAccountExists method.
 	SendAccountExistsFunc func(eml string, link string)
 
+	// SendEmailChangeConfirmationFunc mocks the SendEmailChangeConfirmation method.
+	SendEmailChangeConfirmationFunc func(eml string, link string)
+
 	// SendEmailVerificationFunc mocks the SendEmailVerification method.
 	SendEmailVerificationFunc func(eml string, link string)
 
@@ -64,6 +70,13 @@ type SenderMock struct {
 	calls struct {
 		// SendAccountExists holds details about calls to the SendAccountExists method.
 		SendAccountExists []struct {
+			// Eml is the eml argument value.
+			Eml string
+			// Link is the link argument value.
+			Link string
+		}
+		// SendEmailChangeConfirmation holds details about calls to the SendEmailChangeConfirmation method.
+		SendEmailChangeConfirmation []struct {
 			// Eml is the eml argument value.
 			Eml string
 			// Link is the link argument value.
@@ -108,6 +121,7 @@ type SenderMock struct {
 		}
 	}
 	lockSendAccountExists            sync.RWMutex
+	lockSendEmailChangeConfirmation  sync.RWMutex
 	lockSendEmailVerification        sync.RWMutex
 	lockSendOrganizationInvitation   sync.RWMutex
 	lockSendPasswordReset            sync.RWMutex
@@ -148,6 +162,42 @@ func (mock *SenderMock) SendAccountExistsCalls() []struct {
 	mock.lockSendAccountExists.RLock()
 	calls = mock.calls.SendAccountExists
 	mock.lockSendAccountExists.RUnlock()
+	return calls
+}
+
+// SendEmailChangeConfirmation calls SendEmailChangeConfirmationFunc.
+func (mock *SenderMock) SendEmailChangeConfirmation(eml string, link string) {
+	callInfo := struct {
+		Eml  string
+		Link string
+	}{
+		Eml:  eml,
+		Link: link,
+	}
+	mock.lockSendEmailChangeConfirmation.Lock()
+	mock.calls.SendEmailChangeConfirmation = append(mock.calls.SendEmailChangeConfirmation, callInfo)
+	mock.lockSendEmailChangeConfirmation.Unlock()
+	if mock.SendEmailChangeConfirmationFunc == nil {
+		return
+	}
+	mock.SendEmailChangeConfirmationFunc(eml, link)
+}
+
+// SendEmailChangeConfirmationCalls gets all the calls that were made to SendEmailChangeConfirmation.
+// Check the length with:
+//
+//	len(mockedSender.SendEmailChangeConfirmationCalls())
+func (mock *SenderMock) SendEmailChangeConfirmationCalls() []struct {
+	Eml  string
+	Link string
+} {
+	var calls []struct {
+		Eml  string
+		Link string
+	}
+	mock.lockSendEmailChangeConfirmation.RLock()
+	calls = mock.calls.SendEmailChangeConfirmation
+	mock.lockSendEmailChangeConfirmation.RUnlock()
 	return calls
 }
 

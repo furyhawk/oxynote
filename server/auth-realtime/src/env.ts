@@ -41,6 +41,9 @@ export interface Env {
 	maxOrganizations: number
 	maxOrganizationMembers: number
 	rateLimitEnabled: boolean
+	// false on a deployment with no email relay, where no link better-auth
+	// sends can reach an inbox.
+	emailEnabled: boolean
 	logLevel: LogLevel
 }
 
@@ -155,6 +158,11 @@ const schema = z
 		// does not pass the original IP through — so it can be
 		// switched off and left to whatever sits in front.
 		OXYNOTE_AUTH_REALTIME_RATE_LIMIT_DISABLED: flag(false),
+		// core logs what it cannot send, so this is set where core has no
+		// SMTP relay: signup then skips verification, password reset is
+		// refused, and email changes and account deletions are confirmed
+		// with the password instead of a link.
+		OXYNOTE_AUTH_REALTIME_EMAIL_DISABLED: flag(false),
 		// the floor for better-auth's and hocuspocus's output too.
 		OXYNOTE_AUTH_REALTIME_LOG_LEVEL: z
 			.enum(["DEBUG", "INFO", "WARN", "ERROR"])
@@ -280,6 +288,7 @@ export function loadEnv(source: Record<string, string | undefined>): Env {
 			values.OXYNOTE_AUTH_REALTIME_MAX_ORGANIZATION_MEMBERS,
 		rateLimitEnabled:
 			!values.OXYNOTE_AUTH_REALTIME_RATE_LIMIT_DISABLED,
+		emailEnabled: !values.OXYNOTE_AUTH_REALTIME_EMAIL_DISABLED,
 		logLevel: values.OXYNOTE_AUTH_REALTIME_LOG_LEVEL,
 	}
 }

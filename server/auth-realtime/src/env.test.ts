@@ -249,6 +249,26 @@ describe("loadEnv", () => {
 		})
 	})
 
+	describe("email", () => {
+		it.for([
+			{ name: "unset", input: undefined, expected: true },
+			{ name: '"false"', input: "false", expected: true },
+			{ name: '"true"', input: "true", expected: false },
+		])(
+			"is enabled=$expected when the disable flag is $name",
+			({ input, expected }, { expect }) => {
+				const env = loadEnv(
+					completeEnv({
+						OXYNOTE_AUTH_REALTIME_EMAIL_DISABLED:
+							input,
+					}),
+				)
+
+				expect(env.emailEnabled).toBe(expected)
+			},
+		)
+	})
+
 	describe("trusted origins", () => {
 		it("splits the list on commas", ({ expect }) => {
 			const env = loadEnv(completeEnv())

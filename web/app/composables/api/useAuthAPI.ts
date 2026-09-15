@@ -18,5 +18,11 @@ export default function () {
 		staleTime: 5 * 60 * 1000, // 5 mins
 	})
 
-	return { fetchAuthConfig }
+	// until the config arrives email is assumed to be delivered, so a page
+	// renders the flows every configured server supports.
+	const isEmailEnabled = computed(
+		() => fetchAuthConfig.state.value.data?.emailEnabled ?? true,
+	)
+
+	return { fetchAuthConfig, isEmailEnabled }
 }

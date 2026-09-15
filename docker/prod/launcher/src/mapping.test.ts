@@ -289,6 +289,9 @@ describe("buildChildEnvs", () => {
 		const envs = build()
 
 		expect(envs.core.OXYNOTE_CORE_EMAIL_SMTP_HOST).toBe("")
+		expect(
+			envs.authRealtime.OXYNOTE_AUTH_REALTIME_EMAIL_DISABLED,
+		).toBe("true")
 		expect(envs.core.OXYNOTE_CORE_GITHUB_APP_ID).toBe("")
 		expect(envs.core.OXYNOTE_CORE_SLACK_CLIENT_ID).toBe("")
 		expect(envs.core.OXYNOTE_CORE_ASSISTANT_PROVIDER).toBe("")
@@ -344,6 +347,9 @@ describe("buildChildEnvs", () => {
 		expect(envs.core.OXYNOTE_CORE_EMAIL_FROM_ADDRESS).toBe(
 			"Oxynote <team@example.com>",
 		)
+		expect(
+			envs.authRealtime.OXYNOTE_AUTH_REALTIME_EMAIL_DISABLED,
+		).toBe("false")
 		expect(envs.core.OXYNOTE_CORE_GITHUB_APP_ID).toBe("123")
 		expect(envs.core.OXYNOTE_CORE_GITHUB_PRIVATE_KEY_PATH).toBe(
 			"/oxynote/github/private-key.pem",
