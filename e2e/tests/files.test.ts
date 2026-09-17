@@ -62,14 +62,14 @@ test.describe("file attachments", () => {
 		})
 
 		await expect(fileCard(page)).toContainText("notes.zip")
-		await expect(fileCard(page)).toContainText("2.0 KB")
+		await expect(fileCard(page)).toContainText("2 KB")
 		await documentPersisted(page)
 
 		await visit(page, url)
 
 		await waitForEditor(page)
 		await expect(fileCard(page)).toContainText("notes.zip")
-		await expect(fileCard(page)).toContainText("2.0 KB")
+		await expect(fileCard(page)).toContainText("2 KB")
 
 		// an archive is not something a browser shows, so the click is a
 		// download under the original name carrying the original bytes
