@@ -380,7 +380,7 @@ async function executeReviewableAction() {
 	>
 		<div
 			v-show="hookStatus === 'stale'"
-			class="pointer-events-none absolute top-1/2 -left-5 h-full w-1.25 -translate-y-1/2 rounded-r-lg bg-hook-decoration lg:-left-12.5 lg:h-[calc(100%+2rem)]"
+			class="pointer-events-none absolute top-1/2 -left-5 h-full w-1.25 -translate-y-1/2 rounded-r-lg bg-hook-decoration in-data-compact-view:rounded-full lg:-left-12.5 lg:h-[calc(100%+2rem)]"
 		/>
 		<div
 			class="flex flex-col-reverse items-start gap-2 sm:flex-row sm:justify-between"

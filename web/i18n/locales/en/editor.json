@@ -75,6 +75,10 @@
 				}
 			},
 			"document-options": {
+				"view": {
+					"full-title": "Full View",
+					"compact-title": "Compact View"
+				},
 				"review-workflow": {
 					"enable-title": "Make Reviewable",
 					"disable-title": "Make Non Reviewable"

@@ -41,7 +41,7 @@ const { useFetchDocumentBranchesByDocId } = useDocumentAPI()
 const fetchBranches = useFetchDocumentBranchesByDocId(
 	() => editorStore.activeDocumentId,
 )
-const { isEditable } = useEditorMeta()
+const { isEditable, isCompactView } = useEditorMeta()
 const route = useRoute()
 const nuxtApp = useNuxtApp()
 const fetchDocumentHooks = documentHookAPI.useFetchDocumentHooksByDocID(
@@ -370,9 +370,11 @@ function showSettings(target: "github") {
 		-->
 		<div
 			:key="editorStore.activeBranchId"
+			:data-compact-view="isCompactView ? '' : undefined"
 			:class="[
 				SCROLL_HIGHLIGHT_EDITOR_CLASS,
 				'relative flex h-full w-full flex-col items-center transition-opacity duration-300',
+				isCompactView && 'mx-auto max-w-320',
 				readyToReveal ? 'opacity-100' : 'pointer-events-none opacity-0',
 			]"
 			@transitionend.self="emit('fade-in-complete')"

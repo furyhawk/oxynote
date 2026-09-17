@@ -74,4 +74,20 @@ describe("useEditorMeta", { concurrent: false }, () => {
 
 		expect(isReadonly(meta.isEditable)).toBe(true)
 	})
+
+	it("starts in compact view", ({ expect }) => {
+		const meta = useEditorMeta()
+
+		expect(meta.isCompactView.value).toBe(true)
+	})
+
+	it("switches to full view and back", ({ expect }) => {
+		const meta = useEditorMeta()
+
+		meta.toggleCompactView()
+		expect(meta.isCompactView.value).toBe(false)
+
+		meta.toggleCompactView()
+		expect(meta.isCompactView.value).toBe(true)
+	})
 })

@@ -12,7 +12,13 @@ const emit = defineEmits<{
 	(e: "delete-document" | "duplicate-document"): void
 }>()
 
-const { isEditable, isBranchProtected, toggleIsEditable } = useEditorMeta()
+const {
+	isEditable,
+	isBranchProtected,
+	toggleIsEditable,
+	isCompactView,
+	toggleCompactView,
+} = useEditorMeta()
 const editorStore = useEditorStore()
 const { isAssistantEnabled } = useCapabilitiesAPI()
 const { useFetchDocumentBranchesByDocId } = useDocumentAPI()
@@ -20,7 +26,10 @@ const fetchBranches = useFetchDocumentBranchesByDocId(
 	() => editorStore.activeDocumentId,
 )
 const header = useTemplateRef("header")
-const { height } = useElementSize(header)
+const { height, width } = useElementSize(header)
+const viewToggleVisible = computed(
+	() => width.value > EDITOR_COMPACT_MAX_WIDTH_PX,
+)
 const { t } = useI18n({ useScope: "global" })
 const { updateDocumentBranch, createDocumentBranch, deleteDocumentBranch } =
 	useDocumentAPI()
@@ -335,6 +344,25 @@ function activateBranch(branch: "default" | "draft") {
 								</ShadcnUiButton>
 							</ShadcnUiDropdownMenuTrigger>
 							<ShadcnUiDropdownMenuContent side="bottom" align="end" loop>
+								<ShadcnUiDropdownMenuItem
+									v-if="viewToggleVisible"
+									@click="toggleCompactView"
+								>
+									<Icon
+										:name="
+											isCompactView ? 'lucide:maximize-2' : 'lucide:minimize-2'
+										"
+									/>
+									<span>
+										{{
+											isCompactView
+												? $t("editor.navbar.document-options.view.full-title")
+												: $t(
+														"editor.navbar.document-options.view.compact-title",
+													)
+										}}
+									</span>
+								</ShadcnUiDropdownMenuItem>
 								<ShadcnUiDropdownMenuItem @click="toggleReviewability">
 									<Icon
 										:name="

@@ -146,6 +146,9 @@ function buildDecorations(
 					el.className = cn(
 						"pointer-events-none absolute top-0",
 						"w-1.25 bg-hook-decoration block rounded-r-lg",
+						// the bar hugs the page edge in full view; in compact view the
+						// column floats, so it becomes a pill
+						"in-data-compact-view:rounded-full",
 						placeOutside && "m-0!",
 					)
 					el.ignoreMutation = true

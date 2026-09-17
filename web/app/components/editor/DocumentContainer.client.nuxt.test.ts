@@ -13,6 +13,7 @@ import {
 	at,
 	emitFrom,
 	seedAuthSession,
+	seedPersistentState,
 	settleMutations,
 	WAIT_FOR_OPTIONS,
 } from "~/components/test-helpers"
@@ -185,6 +186,7 @@ describe("<DocumentContainer>", { concurrent: false }, () => {
 		redirectToLogin.mockReset()
 		clearQueryCache()
 		useEditorMeta().setEditable(true)
+		seedPersistentState("editor-compact-view", true)
 		useEditorStore().updateActiveDocumentId(DOCUMENT_ID)
 		useEditorStore().updateActiveBranchId(BRANCH_ID)
 		useEditorStore().updateTargetBranchId(null)
@@ -516,6 +518,33 @@ describe("<DocumentContainer>", { concurrent: false }, () => {
 		await nextTick()
 
 		expect(useEditorMeta().isEditable.value).toBe(false)
+	})
+
+	it("caps and centers the editor column in compact view", async ({
+		expect,
+	}) => {
+		const wrapper = await mountContainer()
+
+		await sync(BRANCH_ID)
+
+		const column = wrapper.find(".editor-scroll-highlight-container")
+		expect(column.classes()).toContain("max-w-320")
+		expect(column.classes()).toContain("mx-auto")
+		expect(column.attributes("data-compact-view")).toBe("")
+	})
+
+	it("lets the editor column fill the page in full view", async ({
+		expect,
+	}) => {
+		useEditorMeta().toggleCompactView()
+		const wrapper = await mountContainer()
+
+		await sync(BRANCH_ID)
+
+		const column = wrapper.find(".editor-scroll-highlight-container")
+		expect(column.classes()).not.toContain("max-w-320")
+		expect(column.classes()).not.toContain("mx-auto")
+		expect(column.attributes("data-compact-view")).toBeUndefined()
 	})
 
 	it("passes the content editor on once it is ready", async ({ expect }) => {

@@ -9,10 +9,12 @@ import {
 import DocumentHeader from "./DocumentHeader.vue"
 import {
 	at,
+	clearTeleportedOverlays,
 	findButtonByText,
 	menuItem,
 	mountUnderSidebarProvider,
 	seedCapabilities,
+	seedPersistentState,
 	settleMutations,
 	t,
 } from "./test-helpers"
@@ -72,6 +74,43 @@ async function openOptionsMenu(
 	await at(triggers, triggers.length - 1).trigger("click")
 }
 
+function menuItemTexts() {
+	return Array.from(
+		document.body.querySelectorAll<HTMLElement>("[role^='menuitem']"),
+	).map((el) => el.textContent.trim())
+}
+
+// happy-dom lays nothing out, so useElementSize reports 0 until a resize
+// observer hands it a size; this one answers every observe with the given
+// width. Restored by hand: vi.unstubAllGlobals would also undo the globals
+// the nuxt runtime stubbed for the whole suite
+const realResizeObserver = window.ResizeObserver
+
+function stubMainWidth(width: number) {
+	window.ResizeObserver = class {
+		constructor(private callback: ResizeObserverCallback) {}
+
+		observe(target: Element) {
+			const size = { inlineSize: width, blockSize: 40 }
+			this.callback(
+				[
+					{
+						target,
+						contentRect: { width, height: 40 },
+						contentBoxSize: [size],
+						borderBoxSize: [size],
+					} as unknown as ResizeObserverEntry,
+				],
+				this,
+			)
+		}
+
+		unobserve = vi.fn()
+
+		disconnect = vi.fn()
+	}
+}
+
 // the editor store, the query cache and the vue-sonner module mock are all
 // app-wide singletons every mount in the file shares, and the menus are
 // teleported into the shared <body>
@@ -88,10 +127,17 @@ describe("<DocumentHeader>", { concurrent: false }, () => {
 		editorStore.mappedDefaultBranchId = MAIN_BRANCH
 		editorStore.aiAssistantOpen = false
 		useEditorMeta().setEditable(true)
+		seedPersistentState("editor-compact-view", true)
 		editorStore.setActiveBranchProtected(false)
 	})
 
-	afterEach(disposeMockEndpoints)
+	afterEach(() => {
+		disposeMockEndpoints()
+		window.ResizeObserver = realResizeObserver
+		// the options menus teleport into the shared <body> and their ids
+		// repeat across mounts, so a leftover would answer the next lookup
+		clearTeleportedOverlays()
+	})
 
 	it("stays blank until the initial sections have loaded", async ({
 		expect,
@@ -271,6 +317,63 @@ describe("<DocumentHeader>", { concurrent: false }, () => {
 
 		expect(editorStore.activeBranchId).toBe(MAIN_BRANCH)
 		expect(editorStore.targetBranchId).toBeNull()
+	})
+
+	it("hides the view toggle while the main area is no wider than the compact column", async ({
+		expect,
+	}) => {
+		mainOnly()
+		const wrapper = await mountHeader()
+
+		await openOptionsMenu(wrapper)
+
+		expect(menuItemTexts()).not.toContain(
+			t("editor.navbar.document-options.view.full-title"),
+		)
+		expect(menuItemTexts()).not.toContain(
+			t("editor.navbar.document-options.view.compact-title"),
+		)
+	})
+
+	it("offers the full view first once the main area is wider than the compact column", async ({
+		expect,
+	}) => {
+		stubMainWidth(1400)
+		mainOnly()
+		const wrapper = await mountHeader()
+
+		await openOptionsMenu(wrapper)
+
+		expect(at(menuItemTexts(), 0)).toBe(
+			t("editor.navbar.document-options.view.full-title"),
+		)
+	})
+
+	it("switches to the full view from the options menu", async ({ expect }) => {
+		stubMainWidth(1400)
+		mainOnly()
+		const wrapper = await mountHeader()
+		await openOptionsMenu(wrapper)
+
+		menuItem(t("editor.navbar.document-options.view.full-title")).click()
+		await nextTick()
+
+		expect(useEditorMeta().isCompactView.value).toBe(false)
+	})
+
+	it("offers the compact view while the full view is active", async ({
+		expect,
+	}) => {
+		stubMainWidth(1400)
+		mainOnly()
+		useEditorMeta().toggleCompactView()
+		const wrapper = await mountHeader()
+
+		await openOptionsMenu(wrapper)
+
+		expect(at(menuItemTexts(), 0)).toBe(
+			t("editor.navbar.document-options.view.compact-title"),
+		)
 	})
 
 	it("asks to duplicate the document from the options menu", async ({
