@@ -16,8 +16,38 @@ export function buildDocumentFileSrc(
 	return `${coreAPIBaseHttpURL}/api/documents/${documentId}/files/${blockId}-${encodeURIComponent(name)}`
 }
 
+// isDocumentFileSrc reports whether src points at a document attachment
+// core serves: "<base>/api/documents/<id>/files/<name>". Document content
+// is untrusted, so a file card links nothing else.
+export function isDocumentFileSrc(
+	src: string,
+	coreAPIBaseHttpURL: string,
+): boolean {
+	const prefix = `${coreAPIBaseHttpURL}/api/documents/`
+
+	// compared as text, so the base, host included, must appear verbatim
+	if (!src.startsWith(prefix)) {
+		return false
+	}
+
+	// new URL() needs a base to parse a relative path. This placeholder is
+	// never requested; only the parsed path is read.
+	const base = "http://relative.invalid"
+
+	// parsing resolves "..", backslashes and encoded dots, so a path that
+	// passed the text check can still turn out to leave the prefix
+	const expected = new URL(prefix, base).pathname
+	const { pathname } = new URL(src, base)
+
+	return (
+		pathname.startsWith(expected) &&
+		// exactly "<id>/files/<name>", nothing nested deeper
+		/^[^/]+\/files\/[^/]+$/.test(pathname.slice(expected.length))
+	)
+}
+
 export default function () {
-	const { $coreAPIClient } = useNuxtApp()
+	const { $coreAPIClient, $host } = useNuxtApp()
 
 	const uploadDocumentFile = useMutation({
 		mutation: async ({
@@ -57,7 +87,28 @@ export default function () {
 		},
 	})
 
+	// desktop only: the system browser holds no session, so main saves the
+	// file itself, streaming it to where the user picks
+	const downloadDocumentFile = useMutation({
+		mutation: ({
+			src,
+			name,
+			onProgress,
+		}: {
+			src: string
+			name: string
+			onProgress: (received: number, total: number) => void
+		}) => {
+			if (!$host) {
+				throw new Error("desktop host bridge missing")
+			}
+
+			return $host.files.download(src, name, onProgress)
+		},
+	})
+
 	return {
 		uploadDocumentFile,
+		downloadDocumentFile,
 	}
 }

@@ -44,6 +44,16 @@ declare module "#app" {
 		$host?: {
 			osType: HostOsType
 			openExternal(url: string): Promise<void>
+			// resolves once the file is saved, or with "cancelled" when the
+			// save dialog is dismissed; progress reports bytes received and
+			// the total, 0 when the response does not say
+			files: {
+				download(
+					url: string,
+					name: string,
+					onProgress: (received: number, total: number) => void,
+				): Promise<"completed" | "cancelled">
+			}
 			// Auth IPC bridge — every call round-trips to the main process's
 			// `authClient` (electron/auth-client.ts) which has the
 			// electron-store-backed session. The renderer never sees cookies

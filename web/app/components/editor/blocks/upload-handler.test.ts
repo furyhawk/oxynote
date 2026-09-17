@@ -24,10 +24,9 @@ vi.mock("~/components/toast", () => ({
 	},
 }))
 
-// the composable is pulled in through a nuxt auto-import, so the module
-// itself is the only seam: the real one reaches for the nuxt app
+// buildDocumentFileSrc is pulled in through a nuxt auto-import, so the
+// module itself is the only seam: the real one reaches for the nuxt app
 vi.mock("~/composables/api/useDocumentFileAPI", () => ({
-	default: () => ({ uploadDocumentFile: { mutateAsync: uploadDocumentFile } }),
 	buildDocumentFileSrc: (documentId: string, blockId: string, name: string) =>
 		`/files/${documentId}/${blockId}-${name}`,
 }))
@@ -56,8 +55,13 @@ interface FileCallbacks {
 	onDrop: (editor: TiptapEditor, files: File[], pos: number) => boolean
 }
 
-function fileCallbacks(options: UploadFileHandlerOptions): FileCallbacks {
-	return createUploadFileHandler(options).options as unknown as FileCallbacks
+function fileCallbacks(
+	options: Omit<UploadFileHandlerOptions, "uploadDocumentFile">,
+): FileCallbacks {
+	return createUploadFileHandler({
+		...options,
+		uploadDocumentFile: { mutateAsync: uploadDocumentFile },
+	}).options as unknown as FileCallbacks
 }
 
 function makeEditor(content: JSONContent[], withBlocks = true): Editor {

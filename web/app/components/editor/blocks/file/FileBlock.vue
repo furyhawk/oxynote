@@ -1,7 +1,8 @@
 <script lang="ts" setup>
 import { nodeViewProps, NodeViewWrapper } from "@tiptap/vue-3"
 import { nanoid } from "nanoid"
-import { showToastMessage } from "~/components/toast"
+import { showProgressToast, showToastMessage } from "~/components/toast"
+import type { ProgressToast } from "~/components/toast"
 import { cn } from "~/lib/utils"
 import { DiffStatus } from "~/components/editor/diff/position-map"
 import {
@@ -14,10 +15,10 @@ import {
 const props = defineProps(nodeViewProps)
 
 const { t } = useI18n({ useScope: "global" })
+const { coreAPIBaseHttpURL } = useRuntimeConfig().public
 const { isEditable } = useEditorMeta()
 const editorStore = useEditorStore()
-const { uploadDocumentFile } = useDocumentFileAPI()
-const { $coreAPIClient } = useNuxtApp()
+const { uploadDocumentFile, downloadDocumentFile } = useDocumentFileAPI()
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
@@ -36,13 +37,7 @@ const isEditingDisabled = computed(() => {
 const src = computed(() => {
 	const value = (props.node.attrs.src as string) || ""
 
-	try {
-		const { protocol } = new URL(value, "http://relative.invalid")
-
-		return protocol === "http:" || protocol === "https:" ? value : ""
-	} catch {
-		return ""
-	}
+	return isDocumentFileSrc(value, coreAPIBaseHttpURL) ? value : ""
 })
 const name = computed(() => (props.node.attrs.name as string) || "")
 const contentType = computed(
@@ -142,20 +137,38 @@ async function handleFileChange(event: Event) {
 
 async function downloadOnDesktop() {
 	// NOCOV: the desktop branch is compiled out of the web bundle.
-	try {
-		const blob = await $coreAPIClient<Blob, "blob">(src.value, {
-			responseType: "blob",
-		})
-		const url = URL.createObjectURL(blob)
-		const anchor = document.createElement("a")
+	if (downloadDocumentFile.asyncStatus.value === "loading") {
+		return
+	}
 
-		anchor.href = url
-		anchor.download = name.value
-		anchor.click()
-		URL.revokeObjectURL(url)
+	const fileName = name.value
+
+	// the toast opens with the first progress report rather than on
+	// click, so it never sits behind the save dialog
+	let progressToast: ProgressToast | undefined
+	const openToast = () => {
+		progressToast ??= showProgressToast(
+			t("editor.file.downloading", { name: fileName }),
+		)
+
+		return progressToast
+	}
+
+	try {
+		const result = await downloadDocumentFile.mutateAsync({
+			src: src.value,
+			name: fileName,
+			onProgress: (received, total) => {
+				openToast().update(total > 0 ? received / total : null)
+			},
+		})
+
+		if (result === "completed") {
+			openToast().succeed(t("editor.file.downloaded", { name: fileName }))
+		}
 	} catch (error) {
 		console.error("Failed to download file:", error)
-		showToastMessage("error", t("editor.file.errors.download-failed"))
+		openToast().fail(t("editor.file.errors.download-failed"))
 	}
 }
 </script>
@@ -196,8 +209,20 @@ async function downloadOnDesktop() {
 				:class="
 					cn(
 						'flex size-9 shrink-0 items-center justify-center rounded-md',
-						kindStyle.accentClass,
+						kindStyle.tint
+							? 'bg-(--kind-bg) text-(--kind-fg) dark:bg-(--kind-dark-bg) dark:text-(--kind-dark-fg)'
+							: 'bg-muted text-muted-foreground',
 					)
+				"
+				:style="
+					kindStyle.tint
+						? {
+								'--kind-bg': kindStyle.tint.lightBg,
+								'--kind-fg': kindStyle.tint.lightFg,
+								'--kind-dark-bg': kindStyle.tint.darkBg,
+								'--kind-dark-fg': kindStyle.tint.darkFg,
+							}
+						: undefined
 				"
 			>
 				<Icon :name="kindStyle.icon" class="size-5" />
@@ -224,7 +249,7 @@ async function downloadOnDesktop() {
 			"
 			@click="openFilePicker"
 		>
-			<Icon name="lucide:paperclip" class="size-4.5 text-foreground" />
+			<Icon name="mingcute:attachment-line" class="size-4 text-foreground" />
 			<div class="mt-0.25 text-2sm text-muted-foreground">
 				{{
 					uploading

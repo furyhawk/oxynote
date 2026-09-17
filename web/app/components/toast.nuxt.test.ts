@@ -1,7 +1,8 @@
-import { beforeEach, describe, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, it, vi } from "vitest"
 import { toast } from "vue-sonner"
 import ToastMessage from "./ToastMessage.vue"
-import { showToastMessage } from "./toast"
+import ToastProgress from "./ToastProgress.vue"
+import { showProgressToast, showToastMessage } from "./toast"
 
 vi.mock("vue-sonner", () => ({
 	toast: {
@@ -73,3 +74,126 @@ describe("showToastMessage", { concurrent: false }, () => {
 		expect(toast.dismiss).toHaveBeenCalledExactlyOnceWith("toast-1")
 	})
 })
+
+// vue-sonner is a module mock and settling is timed, so the calls and the
+// fake clock are shared by the whole describe
+describe("showProgressToast", { concurrent: false }, () => {
+	beforeEach(() => {
+		vi.mocked(toast.custom).mockReset()
+		vi.mocked(toast.dismiss).mockReset()
+		vi.mocked(toast.custom).mockReturnValue("toast-1")
+		vi.useFakeTimers()
+	})
+
+	afterEach(() => {
+		vi.useRealTimers()
+	})
+
+	it("pushes one toast that stays until the work settles", ({ expect }) => {
+		showProgressToast("Downloading notes.zip")
+
+		expect(toast.custom).toHaveBeenCalledExactlyOnceWith(expect.any(Function), {
+			duration: Number.POSITIVE_INFINITY,
+		})
+		expect(toast.dismiss).toHaveBeenCalledTimes(0)
+	})
+
+	it("renders a ToastProgress starting at no progress", ({ expect }) => {
+		showProgressToast("Downloading notes.zip")
+
+		const body = renderProgressBody()
+
+		expect(body.type).toBe(ToastProgress)
+		expect(body.props).toMatchObject({
+			status: "progress",
+			title: "Downloading notes.zip",
+			progress: 0,
+		})
+	})
+
+	it.for([
+		{ name: "renders the latest progress", input: 0.42 },
+		{ name: "renders an unknown total", input: null },
+	])("$name", ({ input }, { expect }) => {
+		const handle = showProgressToast("Downloading notes.zip")
+
+		handle.update(input)
+
+		expect(renderProgressBody().props.progress).toBe(input)
+		expect(toast.custom).toHaveBeenCalledTimes(1)
+	})
+
+	it.for([
+		{ method: "succeed", expected: "success" },
+		{ method: "fail", expected: "error" },
+	] as const)(
+		"shows the outcome in place when told to $method",
+		({ method, expected }, { expect }) => {
+			const handle = showProgressToast("Downloading notes.zip")
+
+			handle[method]("Done")
+
+			expect(renderProgressBody().props).toMatchObject({
+				status: expected,
+				title: "Done",
+			})
+			expect(toast.custom).toHaveBeenCalledTimes(1)
+			expect(toast.dismiss).toHaveBeenCalledTimes(0)
+		},
+	)
+
+	it("leaves on its own once settled", ({ expect }) => {
+		const handle = showProgressToast("Downloading notes.zip")
+		handle.succeed("Downloaded notes.zip")
+
+		vi.advanceTimersByTime(4999)
+		expect(toast.dismiss).toHaveBeenCalledTimes(0)
+
+		vi.advanceTimersByTime(1)
+
+		expect(toast.dismiss).toHaveBeenCalledExactlyOnceWith("toast-1")
+	})
+
+	it("stays while the work is still running", ({ expect }) => {
+		const handle = showProgressToast("Downloading notes.zip")
+		handle.update(0.5)
+
+		vi.advanceTimersByTime(60_000)
+
+		expect(toast.dismiss).toHaveBeenCalledTimes(0)
+	})
+
+	it("dismisses its toast when asked", ({ expect }) => {
+		const handle = showProgressToast("Downloading notes.zip")
+
+		handle.dismiss()
+
+		expect(toast.dismiss).toHaveBeenCalledExactlyOnceWith("toast-1")
+	})
+
+	it("dismisses its toast when the rendered toast asks to close", ({
+		expect,
+	}) => {
+		showProgressToast("Downloading notes.zip")
+
+		renderProgressBody().props.onClose()
+
+		expect(toast.dismiss).toHaveBeenCalledExactlyOnceWith("toast-1")
+	})
+})
+
+// renders the progress toast's body as vue-sonner would on its next
+// render: the render function reads the toast's current state
+function renderProgressBody() {
+	const render = vi.mocked(toast.custom).mock.calls[0]?.[0] as
+		| (() => {
+				type: unknown
+				props: Record<string, unknown> & { onClose: () => void }
+		  })
+		| undefined
+	if (typeof render !== "function") {
+		throw new Error("toast.custom was not called with a render function")
+	}
+
+	return render()
+}

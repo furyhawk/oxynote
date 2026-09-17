@@ -386,7 +386,7 @@ export const allItems: CommandItem[] = [
 		titleI18nKey: "editor.slash-commands.items.file.title",
 		descriptionI18nKey: "editor.slash-commands.items.file.description",
 		nodeType: FileBlock.name,
-		icon: "lucide:paperclip",
+		icon: "mingcute:attachment-line",
 		group: CommandGroup.BasicBlock,
 		command: ({ editor, range }: CommandData) => {
 			replaceParagraphWithEmptyBlock(editor, range, FileBlock.name)

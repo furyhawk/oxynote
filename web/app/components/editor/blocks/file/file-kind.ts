@@ -8,12 +8,25 @@ export type FileKind =
 	| "archive"
 	| "text"
 	| "code"
-	| "office"
+	| "document"
+	| "spreadsheet"
+	| "presentation"
 	| "generic"
+
+// FileKindTint is how a kind's colour lands on the card's icon badge.
+// Light and dark each tint it differently, so both are derived together
+// and handed to css as custom properties.
+interface FileKindTint {
+	lightBg: string
+	lightFg: string
+	darkBg: string
+	darkFg: string
+}
 
 export interface FileKindStyle {
 	icon: string
-	accentClass: string
+	// the generic kind carries no tint and stays neutral
+	tint?: FileKindTint
 }
 
 const EXTENSION_KINDS: Record<string, FileKind> = {
@@ -82,18 +95,18 @@ const EXTENSION_KINDS: Record<string, FileKind> = {
 	css: "code",
 	sql: "code",
 	csv: "code",
-	doc: "office",
-	docx: "office",
-	xls: "office",
-	xlsx: "office",
-	ppt: "office",
-	pptx: "office",
-	odt: "office",
-	ods: "office",
-	odp: "office",
-	key: "office",
-	pages: "office",
-	numbers: "office",
+	doc: "document",
+	docx: "document",
+	odt: "document",
+	pages: "document",
+	xls: "spreadsheet",
+	xlsx: "spreadsheet",
+	ods: "spreadsheet",
+	numbers: "spreadsheet",
+	ppt: "presentation",
+	pptx: "presentation",
+	odp: "presentation",
+	key: "presentation",
 }
 
 const CONTENT_TYPE_KINDS: Record<string, FileKind> = {
@@ -115,45 +128,34 @@ const CONTENT_TYPE_KINDS: Record<string, FileKind> = {
 	"application/xml": "code",
 	"application/javascript": "code",
 	"text/javascript": "code",
-	"application/msword": "office",
-	"application/vnd.ms-excel": "office",
-	"application/vnd.ms-powerpoint": "office",
+	"application/msword": "document",
+}
+
+// tint takes one of the theme's selectable colours by its slot: 13%
+// behind darkened text in light mode, 18% behind lightened text in dark
+function tint(slot: number): FileKindTint {
+	const color = `var(--selectable-color-${slot})`
+
+	return {
+		lightBg: `color-mix(in srgb, ${color} 13%, transparent)`,
+		lightFg: `color-mix(in srgb, ${color} 80%, black)`,
+		darkBg: `color-mix(in srgb, ${color} 18%, transparent)`,
+		darkFg: `color-mix(in srgb, ${color} 60%, white)`,
+	}
 }
 
 const FILE_KIND_STYLES: Record<FileKind, FileKindStyle> = {
-	pdf: { icon: "lucide:file-text", accentClass: "bg-red-500/10 text-red-500" },
-	video: {
-		icon: "lucide:file-video-camera",
-		accentClass: "bg-purple-500/10 text-purple-500",
-	},
-	audio: {
-		icon: "lucide:file-music",
-		accentClass: "bg-pink-500/10 text-pink-500",
-	},
-	image: {
-		icon: "lucide:file-image",
-		accentClass: "bg-emerald-500/10 text-emerald-500",
-	},
-	archive: {
-		icon: "lucide:file-archive",
-		accentClass: "bg-amber-500/10 text-amber-500",
-	},
-	text: {
-		icon: "lucide:file-type",
-		accentClass: "bg-slate-500/10 text-slate-500",
-	},
-	code: {
-		icon: "lucide:file-code",
-		accentClass: "bg-sky-500/10 text-sky-500",
-	},
-	office: {
-		icon: "lucide:file-box",
-		accentClass: "bg-blue-500/10 text-blue-500",
-	},
-	generic: {
-		icon: "lucide:file",
-		accentClass: "bg-muted text-muted-foreground",
-	},
+	pdf: { icon: "mingcute:pdf-fill", tint: tint(1) },
+	video: { icon: "mingcute:video-fill", tint: tint(14) },
+	audio: { icon: "mingcute:file-music-fill", tint: tint(16) },
+	image: { icon: "mingcute:pic-fill", tint: tint(5) },
+	archive: { icon: "mingcute:file-zip-fill", tint: tint(4) },
+	text: { icon: "mingcute:document-fill", tint: tint(9) },
+	code: { icon: "mingcute:file-code-fill", tint: tint(12) },
+	document: { icon: "mingcute:doc-fill", tint: tint(11) },
+	spreadsheet: { icon: "mingcute:xls-fill", tint: tint(7) },
+	presentation: { icon: "mingcute:ppt-fill", tint: tint(2) },
+	generic: { icon: "mingcute:file-fill" },
 }
 
 // the types a browser renders rather than runs, mirrored from the
@@ -216,12 +218,30 @@ export function fileKind(
 		return "code"
 	}
 
+	// the office families by their OOXML, OpenDocument and legacy
+	// Microsoft types, templates and macro-enabled variants included
 	if (
-		type.includes("officedocument") ||
-		type.includes("opendocument") ||
-		type.startsWith("application/vnd.ms-")
+		type.includes("wordprocessingml") ||
+		type.includes("opendocument.text") ||
+		type.startsWith("application/vnd.ms-word")
 	) {
-		return "office"
+		return "document"
+	}
+
+	if (
+		type.includes("spreadsheetml") ||
+		type.includes("opendocument.spreadsheet") ||
+		type.startsWith("application/vnd.ms-excel")
+	) {
+		return "spreadsheet"
+	}
+
+	if (
+		type.includes("presentationml") ||
+		type.includes("opendocument.presentation") ||
+		type.startsWith("application/vnd.ms-powerpoint")
+	) {
+		return "presentation"
 	}
 
 	return "generic"
@@ -241,6 +261,11 @@ export function isViewable(contentType: string | null | undefined): boolean {
 	)
 }
 
+// one decimal, dropped when it is zero: "2 KB" rather than "2.0 KB"
+function oneDecimal(value: number): string {
+	return value.toFixed(1).replace(/\.0$/, "")
+}
+
 export function formatFileSize(bytes: number | null | undefined): string {
 	if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) {
 		return ""
@@ -253,8 +278,8 @@ export function formatFileSize(bytes: number | null | undefined): string {
 	const kb = bytes / 1024
 
 	if (kb < 1024) {
-		return `${kb.toFixed(1)} KB`
+		return `${oneDecimal(kb)} KB`
 	}
 
-	return `${(kb / 1024).toFixed(1)} MB`
+	return `${oneDecimal(kb / 1024)} MB`
 }

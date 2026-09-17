@@ -5,6 +5,13 @@
 interface HostBridge {
 	osType: "macOS" | "windows" | "linux" | "other"
 	openExternal: (url: string) => Promise<void>
+	files: {
+		download: (
+			url: string,
+			name: string,
+			onProgress: (received: number, total: number) => void,
+		) => Promise<"completed" | "cancelled">
+	}
 	auth: Record<string, (args?: unknown) => Promise<any>>
 }
 

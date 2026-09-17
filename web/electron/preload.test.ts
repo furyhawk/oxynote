@@ -1,16 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { exposeInMainWorldMock, invokeMock, setupRendererMock } = vi.hoisted(
-	() => ({
-		exposeInMainWorldMock: vi.fn(),
-		invokeMock: vi.fn(),
-		setupRendererMock: vi.fn(),
-	}),
-)
+const {
+	exposeInMainWorldMock,
+	invokeMock,
+	onMock,
+	removeListenerMock,
+	setupRendererMock,
+} = vi.hoisted(() => ({
+	exposeInMainWorldMock: vi.fn(),
+	invokeMock: vi.fn(),
+	onMock: vi.fn(),
+	removeListenerMock: vi.fn(),
+	setupRendererMock: vi.fn(),
+}))
 
 vi.mock("electron", () => ({
 	contextBridge: { exposeInMainWorld: exposeInMainWorldMock },
-	ipcRenderer: { invoke: invokeMock },
+	ipcRenderer: {
+		invoke: invokeMock,
+		on: onMock,
+		removeListener: removeListenerMock,
+	},
 }))
 vi.mock("@better-auth/electron/preload", () => ({
 	setupRenderer: setupRendererMock,
@@ -42,7 +52,31 @@ const authKeys = [
 interface Host {
 	osType: string
 	openExternal: (url: string) => Promise<unknown>
+	files: {
+		download: (
+			url: string,
+			name: string,
+			onProgress: (received: number, total: number) => void,
+		) => Promise<unknown>
+	}
 	auth: Record<string, (args?: unknown) => Promise<unknown>>
+}
+
+type ProgressListener = (
+	event: unknown,
+	id: number,
+	received: number,
+	total: number,
+) => void
+
+function progressListener(): ProgressListener {
+	const call = onMock.mock.calls[0] as [string, ProgressListener] | undefined
+
+	if (!call) {
+		throw new Error("no progress listener was registered")
+	}
+
+	return call[1]
 }
 
 // the unit's act is its module evaluation, so each test re-imports it
@@ -94,6 +128,8 @@ describe("preload", { concurrent: false }, () => {
 	beforeEach(() => {
 		exposeInMainWorldMock.mockClear()
 		invokeMock.mockReset()
+		onMock.mockReset()
+		removeListenerMock.mockReset()
 		setupRendererMock.mockClear()
 	})
 
@@ -143,6 +179,87 @@ describe("preload", { concurrent: false }, () => {
 			"shell:openExternal",
 			"https://example.com",
 		)
+	})
+
+	describe("files.download", () => {
+		const FILE_URL = "http://test.local/core/api/documents/d1/files/f1-a.zip"
+
+		it("asks main to download under a fresh id and resolves with its result", async () => {
+			await importPreload()
+			invokeMock.mockResolvedValue("completed")
+			const onProgress = vi.fn()
+
+			await expect(
+				exposedHost().files.download(FILE_URL, "a.zip", onProgress),
+			).resolves.toBe("completed")
+
+			expect(invokeMock).toHaveBeenCalledExactlyOnceWith("file:download", {
+				id: 1,
+				url: FILE_URL,
+				name: "a.zip",
+			})
+			expect(onMock).toHaveBeenCalledExactlyOnceWith(
+				"file:download-progress",
+				expect.any(Function),
+			)
+			expect(removeListenerMock).toHaveBeenCalledExactlyOnceWith(
+				"file:download-progress",
+				progressListener(),
+			)
+			expect(onProgress).toHaveBeenCalledTimes(0)
+		})
+
+		it("numbers each download separately", async () => {
+			await importPreload()
+			invokeMock.mockResolvedValue("completed")
+
+			await exposedHost().files.download(FILE_URL, "a.zip", vi.fn())
+			await exposedHost().files.download(FILE_URL, "a.zip", vi.fn())
+
+			expect(
+				invokeMock.mock.calls.map(
+					([, request]) => (request as { id: number }).id,
+				),
+			).toEqual([1, 2])
+		})
+
+		it("passes on progress of its own download only", async () => {
+			await importPreload()
+			const onProgress = vi.fn()
+			let finish: (value: unknown) => void = () => undefined
+			invokeMock.mockReturnValue(
+				new Promise((resolve) => {
+					finish = resolve
+				}),
+			)
+
+			const download = exposedHost().files.download(
+				FILE_URL,
+				"a.zip",
+				onProgress,
+			)
+			progressListener()({}, 1, 3, 6)
+			progressListener()({}, 2, 5, 9)
+			finish("completed")
+			await download
+
+			expect(onProgress).toHaveBeenCalledExactlyOnceWith(3, 6)
+		})
+
+		it("stops listening when the download fails", async () => {
+			await importPreload()
+			const failure = new Error("boom")
+			invokeMock.mockRejectedValue(failure)
+
+			await expect(
+				exposedHost().files.download(FILE_URL, "a.zip", vi.fn()),
+			).rejects.toBe(failure)
+
+			expect(removeListenerMock).toHaveBeenCalledExactlyOnceWith(
+				"file:download-progress",
+				progressListener(),
+			)
+		})
 	})
 
 	it("exposes exactly the whitelisted auth operations", async () => {

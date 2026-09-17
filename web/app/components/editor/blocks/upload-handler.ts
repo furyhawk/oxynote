@@ -6,6 +6,13 @@ import { FILE_BLOCK_NAME, IMAGE_BLOCK_NAME } from "./node-names"
 
 export interface UploadFileHandlerOptions {
 	documentId?: string | null | undefined
+	// created in the editor's setup: a mutation made inside a paste or drop
+	// callback has no scope to release it, so its cache entry, File
+	// included, would outlive the upload
+	uploadDocumentFile: Pick<
+		ReturnType<typeof useDocumentFileAPI>["uploadDocumentFile"],
+		"mutateAsync"
+	>
 }
 
 // the image types the image block renders and the server admits as
@@ -23,7 +30,13 @@ export function createUploadFileHandler(options: UploadFileHandlerOptions) {
 			}
 
 			for (const file of files) {
-				insertBlockWithUpload(editor, file, options.documentId, undefined)
+				insertBlockWithUpload(
+					editor,
+					file,
+					options.documentId,
+					options.uploadDocumentFile,
+					undefined,
+				)
 			}
 
 			return true
@@ -34,7 +47,13 @@ export function createUploadFileHandler(options: UploadFileHandlerOptions) {
 			}
 
 			for (const file of files) {
-				insertBlockWithUpload(editor, file, options.documentId, pos)
+				insertBlockWithUpload(
+					editor,
+					file,
+					options.documentId,
+					options.uploadDocumentFile,
+					pos,
+				)
 			}
 
 			return true
@@ -53,6 +72,7 @@ function insertBlockWithUpload(
 	editor: Editor,
 	file: File,
 	documentId: string,
+	uploadDocumentFile: UploadFileHandlerOptions["uploadDocumentFile"],
 	pos?: number,
 ) {
 	const isImage = IMAGE_MIME_TYPES.has(file.type)
@@ -86,7 +106,14 @@ function insertBlockWithUpload(
 
 	view.dispatch(tr)
 
-	uploadFile(documentId, blockId, isImage, file)
+	uploadDocumentFile
+		.mutateAsync({
+			documentId,
+			id: blockId,
+			loc: DocumentFileLocation.Document,
+			kind: isImage ? DocumentFileKind.Image : DocumentFileKind.File,
+			file,
+		})
 		.then((uploaded) => {
 			const src = buildDocumentFileSrc(documentId, blockId, uploaded.name)
 
@@ -120,23 +147,6 @@ function insertBlockWithUpload(
 				),
 			)
 		})
-}
-
-async function uploadFile(
-	documentId: string,
-	blockId: string,
-	isImage: boolean,
-	file: File,
-): Promise<UploadedDocumentFile> {
-	const { uploadDocumentFile } = useDocumentFileAPI()
-
-	return await uploadDocumentFile.mutateAsync({
-		documentId,
-		id: blockId,
-		loc: DocumentFileLocation.Document,
-		kind: isImage ? DocumentFileKind.Image : DocumentFileKind.File,
-		file,
-	})
 }
 
 function updateAttrsByUid(

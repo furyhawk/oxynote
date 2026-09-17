@@ -64,6 +64,7 @@ const containerElem = useTemplateRef("editor-container")
 const commentRendererElem = useTemplateRef("comment-renderer")
 const linkBubbleMenuElem = useTemplateRef("link-bubble-menu")
 const editorStore = useEditorStore()
+const { uploadDocumentFile } = useDocumentFileAPI()
 const suppressNextSelectionScroll = ref(false)
 const { isEditable } = useEditorMeta()
 const isEditingDisabled = computed(() => {
@@ -209,7 +210,10 @@ const contentEditor = useEditor({
 				props.nameEditor?.chain().focus("end").run()
 			},
 		}),
-		createUploadFileHandler({ documentId: editorStore.activeDocumentId }),
+		createUploadFileHandler({
+			documentId: editorStore.activeDocumentId,
+			uploadDocumentFile,
+		}),
 		createFigmaLinkHandler(),
 	],
 	onCreate: ({ editor }) => {

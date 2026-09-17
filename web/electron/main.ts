@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url"
 import squirrelStartup from "electron-squirrel-startup"
 import { authClient } from "./auth-client"
 import { registerAuthIpcHandlers } from "./auth-ipc"
+import { registerFileDownloadIpcHandler } from "./file-download"
 
 if (squirrelStartup) {
 	app.quit()
@@ -127,6 +128,8 @@ void app.whenReady().then(() => {
 	// auth endpoints (those must keep going through main's IPC bridge).
 	const apiOrigin = new URL(__API_BASE_URL__).origin
 	const apiWsOrigin = apiOrigin.replace(/^http/, "ws")
+
+	registerFileDownloadIpcHandler(apiOrigin)
 
 	// CSP for the renderer. The plugin's default (disabled in setupMain
 	// above) only covers the HTTP API origin, which blocks the API

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron"
+import type { IpcRendererEvent } from "electron"
 import { setupRenderer } from "@better-auth/electron/preload"
 
 // Exposes Better Auth's renderer bridges (window.requestAuth, window.signOut,
@@ -30,9 +31,46 @@ const platformToOsType = (p: NodeJS.Platform): OsType => {
 const invokeAuth = (channel: string) => (args?: unknown) =>
 	ipcRenderer.invoke(channel, args)
 
+// progress events of every download share one channel, so each request
+// carries an id its listener filters on
+let nextDownloadId = 0
+
+async function downloadFile(
+	url: string,
+	name: string,
+	onProgress: (received: number, total: number) => void,
+): Promise<unknown> {
+	nextDownloadId++
+	const id = nextDownloadId
+
+	const listener = (
+		_event: IpcRendererEvent,
+		downloadId: number,
+		received: number,
+		total: number,
+	) => {
+		if (downloadId === id) {
+			onProgress(received, total)
+		}
+	}
+
+	ipcRenderer.on("file:download-progress", listener)
+
+	try {
+		return await ipcRenderer.invoke("file:download", { id, url, name })
+	} finally {
+		ipcRenderer.removeListener("file:download-progress", listener)
+	}
+}
+
 contextBridge.exposeInMainWorld("__host", {
 	osType: platformToOsType(process.platform),
 	openExternal: (url: string) => ipcRenderer.invoke("shell:openExternal", url),
+	// main asks where to save and streams the file there, so the renderer
+	// never holds its bytes. See electron/file-download.ts.
+	files: {
+		download: downloadFile,
+	},
 	// Auth ops the renderer is allowed to invoke. Every key here matches an
 	// ipcMain.handle registration in electron/auth-ipc.ts. The renderer can
 	// never touch the session cookie directly — it only sees results.

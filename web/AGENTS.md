@@ -77,6 +77,10 @@ headers (captured eagerly at plugin setup; the H3 context is lost inside
 are set, SSR fetches use them (needed inside a container where the public
 origin is unreachable).
 
+Only API composables and plugins touch the clients. A component, store or
+util that needs a request calls a composable, adding a query or mutation
+there when none exists.
+
 ## Data, editor, routing
 
 - **Pinia Colada** (`useQuery`/`useMutation`) is the data primitive.

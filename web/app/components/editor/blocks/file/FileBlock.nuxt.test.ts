@@ -22,6 +22,10 @@ vi.mock("vue-sonner", () => ({
 
 const DOCUMENT_ID = makeXid("doc")
 
+// where core serves the stored attachment; the test runtime config leaves
+// the api base empty, so the address is origin-relative
+const STORED_SRC = `/api/documents/${DOCUMENT_ID}/files/file-1-notes.zip`
+
 const useRouteMock = vi.hoisted(() => vi.fn())
 mockNuxtImport("useRoute", () => useRouteMock)
 
@@ -44,12 +48,23 @@ function mountFile(
 // an uploaded attachment as the node stores it
 function storedZip(attrs: Record<string, unknown> = {}) {
 	return {
-		src: "https://cdn.test/notes.zip",
+		src: STORED_SRC,
 		name: "notes.zip",
 		size: 2_516_582,
 		contentType: "application/zip",
 		...attrs,
 	}
+}
+
+// the span wrapping the kind icon
+function iconBadge(wrapper: VueWrapper): Element {
+	const badge = wrapper.get("a .iconify").element.parentElement
+
+	if (!badge) {
+		throw new Error("no icon badge")
+	}
+
+	return badge
 }
 
 function fileInput(wrapper: VueWrapper): HTMLInputElement {
@@ -211,27 +226,32 @@ describe("<FileBlock>", { concurrent: false }, () => {
 		{
 			name: "report.pdf",
 			contentType: "application/pdf",
-			expected: "lucide:file-text",
+			expected: "mingcute:pdf-fill",
 		},
 		{
 			name: "clip.mp4",
 			contentType: "video/mp4",
-			expected: "lucide:file-video-camera",
+			expected: "mingcute:video-fill",
 		},
 		{
 			name: "notes.zip",
 			contentType: "application/zip",
-			expected: "lucide:file-archive",
+			expected: "mingcute:file-zip-fill",
 		},
 		{
 			name: "main.go",
 			contentType: "text/plain",
-			expected: "lucide:file-code",
+			expected: "mingcute:file-code-fill",
+		},
+		{
+			name: "budget.ods",
+			contentType: "application/vnd.oasis.opendocument.spreadsheet",
+			expected: "mingcute:xls-fill",
 		},
 		{
 			name: "thing.bin",
 			contentType: "application/octet-stream",
-			expected: "lucide:file",
+			expected: "mingcute:file-fill",
 		},
 	])(
 		"shows the $expected icon for $name",
@@ -241,6 +261,41 @@ describe("<FileBlock>", { concurrent: false }, () => {
 			expect(wrapper.get("a .iconify").classes()).toContain(`i-${expected}`)
 		},
 	)
+
+	// the two modes are pure css, which happy-dom loads none of, so the
+	// custom properties the variants read are the only trace a test can
+	// follow
+	it("tints the icon badge with the kind's selectable colour", async ({
+		expect,
+	}) => {
+		const wrapper = await mountFile(storedZip())
+		const style = iconBadge(wrapper).getAttribute("style") ?? ""
+
+		expect(style).toContain(
+			"--kind-bg: color-mix(in srgb, var(--selectable-color-4) 13%, transparent)",
+		)
+		expect(style).toContain(
+			"--kind-fg: color-mix(in srgb, var(--selectable-color-4) 80%, black)",
+		)
+		expect(style).toContain(
+			"--kind-dark-bg: color-mix(in srgb, var(--selectable-color-4) 18%, transparent)",
+		)
+		expect(style).toContain(
+			"--kind-dark-fg: color-mix(in srgb, var(--selectable-color-4) 60%, white)",
+		)
+	})
+
+	it("leaves the icon badge neutral for an unknown kind", async ({
+		expect,
+	}) => {
+		const wrapper = await mountFile(
+			storedZip({ name: "thing.bin", contentType: "application/octet-stream" }),
+		)
+		const badge = iconBadge(wrapper)
+
+		expect(badge.getAttribute("style")).toBeNull()
+		expect(badge.classList.contains("bg-muted")).toBe(true)
+	})
 
 	it.for([
 		{ name: "a PDF", contentType: "application/pdf" },
@@ -253,7 +308,7 @@ describe("<FileBlock>", { concurrent: false }, () => {
 
 		const card = wrapper.get("a")
 
-		expect(card.attributes("href")).toBe("https://cdn.test/notes.zip")
+		expect(card.attributes("href")).toBe(STORED_SRC)
 		expect(card.attributes("target")).toBe("_blank")
 		expect(card.attributes("rel")).toBe("noopener")
 	})
@@ -268,7 +323,7 @@ describe("<FileBlock>", { concurrent: false }, () => {
 
 		const card = wrapper.get("a")
 
-		expect(card.attributes("href")).toBe("https://cdn.test/notes.zip")
+		expect(card.attributes("href")).toBe(STORED_SRC)
 		expect(card.attributes("target")).toBeUndefined()
 		expect(card.attributes("rel")).toBe("noopener")
 	})
@@ -280,6 +335,14 @@ describe("<FileBlock>", { concurrent: false }, () => {
 			src: "data:text/html,<script>alert(1)</script>",
 		},
 		{ name: "an unparsable address", src: "http://[" },
+		{
+			name: "an attachment path on another host",
+			src: `https://files.example.net/api/documents/${DOCUMENT_ID}/files/file-1-q3.exe`,
+		},
+		{
+			name: "a path climbing out of the attachment",
+			src: `/api/documents/${DOCUMENT_ID}/files/../../../users/me`,
+		},
 	])("treats $name as no file", async ({ src }, { expect }) => {
 		const wrapper = await mountFile(storedZip({ src }))
 
@@ -292,9 +355,7 @@ describe("<FileBlock>", { concurrent: false }, () => {
 
 		const wrapper = await mountFile(storedZip())
 
-		expect(wrapper.get("a").attributes("href")).toBe(
-			"https://cdn.test/notes.zip",
-		)
+		expect(wrapper.get("a").attributes("href")).toBe(STORED_SRC)
 	})
 
 	it.for([

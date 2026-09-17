@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => {
 	const setupMainMock = vi.fn()
 	const getCookieMock = vi.fn(() => "; ")
 	const registerAuthIpcHandlersMock = vi.fn()
+	const registerFileDownloadIpcHandlerMock = vi.fn()
 	const existsSyncMock = vi.fn(() => false)
 
 	class BrowserWindowMock {
@@ -78,6 +79,7 @@ const mocks = vi.hoisted(() => {
 		setupMainMock,
 		getCookieMock,
 		registerAuthIpcHandlersMock,
+		registerFileDownloadIpcHandlerMock,
 		existsSyncMock,
 		BrowserWindowMock,
 	}
@@ -128,6 +130,10 @@ vi.mock("./auth-client", () => ({
 
 vi.mock("./auth-ipc", () => ({
 	registerAuthIpcHandlers: mocks.registerAuthIpcHandlersMock,
+}))
+
+vi.mock("./file-download", () => ({
+	registerFileDownloadIpcHandler: mocks.registerFileDownloadIpcHandlerMock,
 }))
 
 vi.mock("node:fs", () => ({
@@ -263,11 +269,17 @@ describe("main", { concurrent: false }, () => {
 
 		expect(mocks.ipcHandleMock).toHaveBeenCalledTimes(0)
 		expect(mocks.registerAuthIpcHandlersMock).toHaveBeenCalledTimes(0)
+		expect(mocks.registerFileDownloadIpcHandlerMock).toHaveBeenCalledTimes(0)
 
 		state.resolveWhenReady?.()
 		await Promise.resolve()
 
 		expect(mocks.registerAuthIpcHandlersMock).toHaveBeenCalledTimes(1)
+		// downloads carry the session cookie, so they are held to the origin
+		// the cookie is injected for
+		expect(
+			mocks.registerFileDownloadIpcHandlerMock,
+		).toHaveBeenCalledExactlyOnceWith("http://test.local")
 		expect(mocks.ipcHandleMock).toHaveBeenCalledTimes(1)
 
 		const openExternal = registeredListener(

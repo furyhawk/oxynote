@@ -111,7 +111,7 @@ function resultIcon(type: string) {
 		case "heading":
 			return "lucide:heading"
 		case "fileBlock":
-			return "lucide:paperclip"
+			return "mingcute:attachment-line"
 		default:
 			return "lucide:text"
 	}

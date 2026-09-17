@@ -22,9 +22,13 @@ describe("fileKind", () => {
 		{ name: "main.go", contentType: null, expected: "code" },
 		{ name: "config.yaml", contentType: null, expected: "code" },
 		{ name: "data.csv", contentType: null, expected: "code" },
-		{ name: "deck.pptx", contentType: null, expected: "office" },
-		{ name: "sheet.xlsx", contentType: null, expected: "office" },
-		{ name: "letter.doc", contentType: null, expected: "office" },
+		{ name: "letter.doc", contentType: null, expected: "document" },
+		{ name: "letter.odt", contentType: null, expected: "document" },
+		{ name: "sheet.xlsx", contentType: null, expected: "spreadsheet" },
+		{ name: "budget.ods", contentType: null, expected: "spreadsheet" },
+		{ name: "deck.pptx", contentType: null, expected: "presentation" },
+		{ name: "slides.odp", contentType: null, expected: "presentation" },
+		{ name: "talk.key", contentType: null, expected: "presentation" },
 		{ name: "thing.unknown", contentType: null, expected: "generic" },
 		{ name: "noextension", contentType: null, expected: "generic" },
 		{ name: ".gitignore", contentType: null, expected: "generic" },
@@ -47,16 +51,44 @@ describe("fileKind", () => {
 		{ contentType: "text/markdown", expected: "text" },
 		{ contentType: "application/json", expected: "code" },
 		{ contentType: "text/html; charset=utf-8", expected: "code" },
+		{ contentType: "application/msword", expected: "document" },
 		{
 			contentType:
 				"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-			expected: "office",
+			expected: "document",
+		},
+		{
+			contentType: "application/vnd.ms-word.document.macroEnabled.12",
+			expected: "document",
 		},
 		{
 			contentType: "application/vnd.oasis.opendocument.text",
-			expected: "office",
+			expected: "document",
 		},
-		{ contentType: "application/vnd.ms-excel", expected: "office" },
+		{ contentType: "application/vnd.ms-excel", expected: "spreadsheet" },
+		{
+			contentType:
+				"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+			expected: "spreadsheet",
+		},
+		{
+			contentType: "application/vnd.oasis.opendocument.spreadsheet-template",
+			expected: "spreadsheet",
+		},
+		{ contentType: "application/vnd.ms-powerpoint", expected: "presentation" },
+		{
+			contentType:
+				"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+			expected: "presentation",
+		},
+		{
+			contentType: "application/vnd.oasis.opendocument.presentation",
+			expected: "presentation",
+		},
+		{
+			contentType: "application/vnd.oasis.opendocument.graphics",
+			expected: "generic",
+		},
 		{ contentType: "application/octet-stream", expected: "generic" },
 		{ contentType: "", expected: "generic" },
 		{ contentType: null, expected: "generic" },
@@ -77,7 +109,7 @@ describe("fileKind", () => {
 })
 
 describe("fileKindStyle", () => {
-	it("gives every kind its own icon and accent", ({ expect }) => {
+	it("gives every kind its own icon and selectable colour", ({ expect }) => {
 		const kinds = [
 			"pdf",
 			"video",
@@ -86,20 +118,36 @@ describe("fileKindStyle", () => {
 			"archive",
 			"text",
 			"code",
-			"office",
+			"document",
+			"spreadsheet",
+			"presentation",
 			"generic",
 		] as const
 		const styles = kinds.map((kind) => fileKindStyle(kind))
+		const tints = styles.flatMap((style) => style.tint ?? [])
 
 		expect(new Set(styles.map((style) => style.icon)).size).toBe(kinds.length)
-		expect(new Set(styles.map((style) => style.accentClass)).size).toBe(
-			kinds.length,
+		expect(styles.every((style) => style.icon.startsWith("mingcute:"))).toBe(
+			true,
 		)
-		expect(styles.every((style) => style.icon.startsWith("lucide:"))).toBe(true)
+		expect(tints).toHaveLength(kinds.length - 1)
+		expect(new Set(tints.map((tint) => tint.lightBg)).size).toBe(tints.length)
+		expect(
+			tints.every((tint) => tint.lightBg.includes("var(--selectable-color-")),
+		).toBe(true)
 	})
 
-	it("styles the generic kind as a plain file", ({ expect }) => {
-		expect(fileKindStyle("generic").icon).toBe("lucide:file")
+	it("tints a kind's colour for both modes", ({ expect }) => {
+		expect(fileKindStyle("pdf").tint).toEqual({
+			lightBg: "color-mix(in srgb, var(--selectable-color-1) 13%, transparent)",
+			lightFg: "color-mix(in srgb, var(--selectable-color-1) 80%, black)",
+			darkBg: "color-mix(in srgb, var(--selectable-color-1) 18%, transparent)",
+			darkFg: "color-mix(in srgb, var(--selectable-color-1) 60%, white)",
+		})
+	})
+
+	it("styles the generic kind as a plain, uncoloured file", ({ expect }) => {
+		expect(fileKindStyle("generic")).toEqual({ icon: "mingcute:file-fill" })
 	})
 })
 
@@ -133,10 +181,11 @@ describe("formatFileSize", () => {
 		{ input: 0, expected: "0 B" },
 		{ input: 512, expected: "512 B" },
 		{ input: 1023, expected: "1023 B" },
-		{ input: 1024, expected: "1.0 KB" },
+		{ input: 1024, expected: "1 KB" },
 		{ input: 1536, expected: "1.5 KB" },
 		{ input: 2_516_582, expected: "2.4 MB" },
-		{ input: 26_214_400, expected: "25.0 MB" },
+		{ input: 26_214_400, expected: "25 MB" },
+		{ input: 1_048_576, expected: "1 MB" },
 	])("formats $input bytes as $expected", ({ input, expected }, { expect }) => {
 		expect(formatFileSize(input)).toBe(expected)
 	})

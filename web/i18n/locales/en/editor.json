@@ -152,6 +152,8 @@
 			"empty": "File not uploaded",
 			"uploading": "Uploading...",
 			"upload-unavailable": "Upload unavailable",
+			"downloading": "Downloading {name}",
+			"downloaded": "Downloaded {name}",
 			"errors": {
 				"upload-failed": "Failed to upload the selected file. Please try again",
 				"download-failed": "Failed to download the file. Please try again"
