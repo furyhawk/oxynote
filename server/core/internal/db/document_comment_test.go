@@ -65,6 +65,7 @@ func prepDocumentComments(t *testing.T, db *DB, count int, fn func(int, *comment
 				"fk_branch_id":          c.BranchID,
 				"resolved":              c.Resolved,
 				"fk_resolved_by":        c.ResolvedBy,
+				"resolved_at":           c.ResolvedAt,
 				"anchor_block_id":       c.AnchorBlockID,
 				"content":               c.Content,
 				"diff_deletion_context": c.DiffDeletionContext,
@@ -350,6 +351,7 @@ func Test_agent_UpdateDocumentComment(t *testing.T) {
 			}
 			c.Resolved = true
 			c.ResolvedBy = null.StringFrom(users[0])
+			c.ResolvedAt = null.TimeFrom(timeutil.Now().Truncate(time.Second))
 			c.AnchorBlockID = null.StringFrom("block-2")
 			c.UpdatedAt = null.TimeFrom(timeutil.Now().Truncate(time.Second))
 			c.Replies = []comment.Reply{}
@@ -628,7 +630,7 @@ func Test_agent_FetchDocumentCommentsByBranchID(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		res, err := db.FetchDocumentCommentsByBranchID(ctx, xid.New(), "org-id")
+		res, err := db.FetchDocumentCommentsByBranchID(ctx, xid.New(), "org-id", false)
 		require.Error(t, err)
 		assert.Nil(t, res)
 	})
@@ -645,7 +647,7 @@ func Test_agent_FetchDocumentCommentsByBranchID(t *testing.T) {
 		mock.ExpectQuery("SELECT .* FROM document_comment_replies").
 			WillReturnError(assert.AnError)
 
-		res, err := a.FetchDocumentCommentsByBranchID(context.Background(), xid.New(), "org-id")
+		res, err := a.FetchDocumentCommentsByBranchID(context.Background(), xid.New(), "org-id", false)
 		assert.Equal(t, assert.AnError, err)
 		assert.Nil(t, res)
 	})
@@ -656,15 +658,24 @@ func Test_agent_FetchDocumentCommentsByBranchID(t *testing.T) {
 		db := prepTempDB(t)
 
 		// success - no comments
-		res, err := db.FetchDocumentCommentsByBranchID(context.Background(), xid.New(), "non-existent-org-id")
+		res, err := db.FetchDocumentCommentsByBranchID(context.Background(), xid.New(), "non-existent-org-id", false)
 		require.NoError(t, err)
 		assert.Empty(t, res)
 
 		// success - newest comment first, replies in creation order and
 		// attached to the comment they belong to rather than the first
 		// one; a comment with no replies carries an empty slice, not
-		// nil, matching FetchDocumentComment
+		// nil, matching FetchDocumentComment; a resolved comment of the
+		// same branch is left out
 		comments := prepDocumentComments(t, db, 3, nil)
+		resolved := prepDocumentComments(t, db, 1, func(_ int, c *comment.Comment) {
+			c.BranchID = comments[0].BranchID
+			c.DocumentID = comments[0].DocumentID
+			c.OrganizationID = comments[0].OrganizationID
+			c.Resolved = true
+			c.ResolvedAt = null.TimeFrom(timeutil.Now().Truncate(time.Second))
+			c.Replies = make([]comment.Reply, 0)
+		})
 		comments[0].Replies = prepDocumentCommentReplies(t, db, 2, func(_ int, r *comment.Reply) {
 			r.CommentID = comments[0].ID
 			r.OrganizationID = comments[0].OrganizationID
@@ -675,9 +686,14 @@ func Test_agent_FetchDocumentCommentsByBranchID(t *testing.T) {
 		})
 		comments[2].Replies = make([]comment.Reply, 0)
 
-		res, err = db.FetchDocumentCommentsByBranchID(context.Background(), comments[0].BranchID, comments[0].OrganizationID)
+		res, err = db.FetchDocumentCommentsByBranchID(context.Background(), comments[0].BranchID, comments[0].OrganizationID, false)
 		assert.NoError(t, err)
 		testutil.AssertFilterEqual(t, comments, res)
+
+		// success - only the resolved comment
+		res, err = db.FetchDocumentCommentsByBranchID(context.Background(), comments[0].BranchID, comments[0].OrganizationID, true)
+		assert.NoError(t, err)
+		testutil.AssertFilterEqual(t, resolved, res)
 	})
 }
 
@@ -726,7 +742,7 @@ func Test_agent_DeleteDocumentCommentsByBranchID(t *testing.T) {
 				return
 			}
 
-			res, err := db.FetchDocumentCommentsByBranchID(context.Background(), c.Comments[0].BranchID, c.Comments[0].OrganizationID)
+			res, err := db.FetchDocumentCommentsByBranchID(context.Background(), c.Comments[0].BranchID, c.Comments[0].OrganizationID, false)
 			require.NoError(t, err)
 			assert.Empty(t, res)
 		})

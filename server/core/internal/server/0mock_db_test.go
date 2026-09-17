@@ -130,7 +130,7 @@ var _ DB = &DBMock{}
 //			FetchDocumentCommentReplyFunc: func(ctx context.Context, id xid.ID, commentID xid.ID, organizationID string) (*comment.Reply, error) {
 //				panic("mock out the FetchDocumentCommentReply method")
 //			},
-//			FetchDocumentCommentsByBranchIDFunc: func(ctx context.Context, branchID xid.ID, organizationID string) ([]comment.Comment, error) {
+//			FetchDocumentCommentsByBranchIDFunc: func(ctx context.Context, branchID xid.ID, organizationID string, resolved bool) ([]comment.Comment, error) {
 //				panic("mock out the FetchDocumentCommentsByBranchID method")
 //			},
 //			FetchDocumentFileFunc: func(ctx context.Context, id string, organizationID string) (*file.File, error) {
@@ -417,7 +417,7 @@ type DBMock struct {
 	FetchDocumentCommentReplyFunc func(ctx context.Context, id xid.ID, commentID xid.ID, organizationID string) (*comment.Reply, error)
 
 	// FetchDocumentCommentsByBranchIDFunc mocks the FetchDocumentCommentsByBranchID method.
-	FetchDocumentCommentsByBranchIDFunc func(ctx context.Context, branchID xid.ID, organizationID string) ([]comment.Comment, error)
+	FetchDocumentCommentsByBranchIDFunc func(ctx context.Context, branchID xid.ID, organizationID string, resolved bool) ([]comment.Comment, error)
 
 	// FetchDocumentFileFunc mocks the FetchDocumentFile method.
 	FetchDocumentFileFunc func(ctx context.Context, id string, organizationID string) (*file.File, error)
@@ -909,6 +909,8 @@ type DBMock struct {
 			BranchID xid.ID
 			// OrganizationID is the organizationID argument value.
 			OrganizationID string
+			// Resolved is the resolved argument value.
+			Resolved bool
 		}
 		// FetchDocumentFile holds details about calls to the FetchDocumentFile method.
 		FetchDocumentFile []struct {
@@ -2932,15 +2934,17 @@ func (mock *DBMock) FetchDocumentCommentReplyCalls() []struct {
 }
 
 // FetchDocumentCommentsByBranchID calls FetchDocumentCommentsByBranchIDFunc.
-func (mock *DBMock) FetchDocumentCommentsByBranchID(ctx context.Context, branchID xid.ID, organizationID string) ([]comment.Comment, error) {
+func (mock *DBMock) FetchDocumentCommentsByBranchID(ctx context.Context, branchID xid.ID, organizationID string, resolved bool) ([]comment.Comment, error) {
 	callInfo := struct {
 		Ctx            context.Context
 		BranchID       xid.ID
 		OrganizationID string
+		Resolved       bool
 	}{
 		Ctx:            ctx,
 		BranchID:       branchID,
 		OrganizationID: organizationID,
+		Resolved:       resolved,
 	}
 	mock.lockFetchDocumentCommentsByBranchID.Lock()
 	mock.calls.FetchDocumentCommentsByBranchID = append(mock.calls.FetchDocumentCommentsByBranchID, callInfo)
@@ -2952,7 +2956,7 @@ func (mock *DBMock) FetchDocumentCommentsByBranchID(ctx context.Context, branchI
 		)
 		return commentsOut, errOut
 	}
-	return mock.FetchDocumentCommentsByBranchIDFunc(ctx, branchID, organizationID)
+	return mock.FetchDocumentCommentsByBranchIDFunc(ctx, branchID, organizationID, resolved)
 }
 
 // FetchDocumentCommentsByBranchIDCalls gets all the calls that were made to FetchDocumentCommentsByBranchID.
@@ -2963,11 +2967,13 @@ func (mock *DBMock) FetchDocumentCommentsByBranchIDCalls() []struct {
 	Ctx            context.Context
 	BranchID       xid.ID
 	OrganizationID string
+	Resolved       bool
 } {
 	var calls []struct {
 		Ctx            context.Context
 		BranchID       xid.ID
 		OrganizationID string
+		Resolved       bool
 	}
 	mock.lockFetchDocumentCommentsByBranchID.RLock()
 	calls = mock.calls.FetchDocumentCommentsByBranchID

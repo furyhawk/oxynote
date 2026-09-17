@@ -14,8 +14,13 @@ import (
 	"github.com/rs/xid"
 )
 
-// ErrMissingContent is returned when a comment or reply carries no content.
-var ErrMissingContent = errutil.New(http.StatusBadRequest, "comment.missing_content", "comment content is required")
+var (
+	// ErrMissingContent is returned when a comment or reply carries no content.
+	ErrMissingContent = errutil.New(http.StatusBadRequest, "comment.missing_content", "comment content is required")
+
+	// ErrMissingStatus is returned when a status update carries no resolved flag.
+	ErrMissingStatus = errutil.New(http.StatusBadRequest, "comment.missing_status", "comment resolved status is required")
+)
 
 // Comment represents a comment on a document.
 type Comment struct {
@@ -42,6 +47,9 @@ type Comment struct {
 
 	// ResolvedBy is the identifier for the user who resolved this comment.
 	ResolvedBy null.String `json:"resolvedBy" db:"fk_resolved_by"`
+
+	// ResolvedAt is the timestamp when the comment was resolved.
+	ResolvedAt null.Time `json:"resolvedAt" db:"resolved_at"`
 
 	// Content is the content of the comment.
 	Content Content `json:"content" db:"content"`
@@ -159,6 +167,7 @@ func (c Comment) Resolve(resolvedBy string) Comment {
 	nc := c
 	nc.Resolved = true
 	nc.ResolvedBy = null.StringFrom(resolvedBy)
+	nc.ResolvedAt = null.TimeFrom(timeutil.Now())
 
 	return nc
 }
@@ -168,6 +177,7 @@ func (c Comment) Unresolve() Comment {
 	nc := c
 	nc.Resolved = false
 	nc.ResolvedBy = null.String{}
+	nc.ResolvedAt = null.Time{}
 
 	return nc
 }
@@ -237,6 +247,21 @@ type Input struct {
 func (inp Input) Validate() error {
 	if len(inp.Content) == 0 {
 		return ErrMissingContent
+	}
+
+	return nil
+}
+
+// StatusInput is the input structure for a comment status change.
+type StatusInput struct {
+	// Resolved is the resolved state to store.
+	Resolved null.Bool `json:"resolved"`
+}
+
+// Validate checks whether the input carries the resolved flag.
+func (inp StatusInput) Validate() error {
+	if !inp.Resolved.Valid {
+		return ErrMissingStatus
 	}
 
 	return nil

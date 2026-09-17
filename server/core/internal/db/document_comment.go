@@ -20,6 +20,7 @@ func (a *agent) InsertDocumentComment(ctx context.Context, c comment.Comment) er
 			"fk_branch_id":          c.BranchID,
 			"resolved":              c.Resolved,
 			"fk_resolved_by":        c.ResolvedBy,
+			"resolved_at":           c.ResolvedAt,
 			"anchor_block_id":       c.AnchorBlockID,
 			"content":               c.Content,
 			"diff_deletion_context": c.DiffDeletionContext,
@@ -112,6 +113,7 @@ func (a *agent) UpdateDocumentComment(ctx context.Context, c comment.Comment) er
 			"content":         c.Content,
 			"resolved":        c.Resolved,
 			"fk_resolved_by":  c.ResolvedBy,
+			"resolved_at":     c.ResolvedAt,
 			"anchor_block_id": c.AnchorBlockID,
 			"updated_at":      c.UpdatedAt,
 		}).
@@ -193,12 +195,14 @@ func (a *agent) ReplaceDocumentComment(ctx context.Context, c comment.Comment) e
 	return err
 }
 
-// FetchDocumentCommentsByBranchID retrieves all comments for a specific branch along with their replies.
-func (a *agent) FetchDocumentCommentsByBranchID(ctx context.Context, branchID xid.ID, organizationID string) ([]comment.Comment, error) {
+// FetchDocumentCommentsByBranchID retrieves the comments of a specific branch
+// in the given resolved state along with their replies.
+func (a *agent) FetchDocumentCommentsByBranchID(ctx context.Context, branchID xid.ID, organizationID string, resolved bool) ([]comment.Comment, error) {
 	q, args := a.selectDocumentComment(a.builder.Select()).
 		Where(sq.Eq{
 			"document_comments.fk_branch_id":       branchID,
 			"document_comments.fk_organization_id": organizationID,
+			"document_comments.resolved":           resolved,
 		}).
 		OrderBy("document_comments.created_at DESC").
 		MustSql()
@@ -278,6 +282,7 @@ func (a *agent) selectDocumentComment(b sq.SelectBuilder) sq.SelectBuilder {
 		`document_comments.fk_organization_id AS "fk_organization_id"`,
 		`document_comments.fk_branch_id AS "fk_branch_id"`,
 		`document_comments.fk_resolved_by AS "fk_resolved_by"`,
+		`document_comments.resolved_at AS "resolved_at"`,
 		`document_comments.resolved AS "resolved"`,
 		`document_comments.anchor_block_id AS "anchor_block_id"`,
 		`document_comments.content AS "content"`,

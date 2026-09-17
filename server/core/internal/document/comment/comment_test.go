@@ -88,6 +88,7 @@ func Test_Comment_Resolve(t *testing.T) {
 	resolved := c.Resolve("resolver")
 	assert.True(t, resolved.Resolved)
 	assert.Equal(t, null.StringFrom("resolver"), resolved.ResolvedBy)
+	assert.True(t, resolved.ResolvedAt.Valid)
 	assert.Equal(t, c.BranchID, resolved.BranchID)
 	assert.Equal(t, c.Content, resolved.Content)
 	assert.Equal(t, c.DiffDeletionContext, resolved.DiffDeletionContext)
@@ -101,6 +102,7 @@ func Test_Comment_Unresolve(t *testing.T) {
 	unresolved := c.Resolve("resolver").Unresolve()
 	assert.False(t, unresolved.Resolved)
 	assert.False(t, unresolved.ResolvedBy.Valid)
+	assert.False(t, unresolved.ResolvedAt.Valid)
 	assert.Equal(t, c.BranchID, unresolved.BranchID)
 	assert.Equal(t, c.Content, unresolved.Content)
 }
@@ -164,6 +166,34 @@ func Test_Reply_ApplyUpdate(t *testing.T) {
 	assert.Equal(t, Content{"text": "edited"}, nr.Content)
 	assert.Equal(t, r.CreatedAt, nr.CreatedAt)
 	assert.True(t, nr.UpdatedAt.Valid)
+}
+
+func Test_StatusInput_Validate(t *testing.T) {
+	t.Parallel()
+
+	cc := map[string]struct {
+		Input StatusInput
+		Err   error
+	}{
+		"Missing resolved flag": {
+			Input: StatusInput{},
+			Err:   ErrMissingStatus,
+		},
+		"Resolved": {
+			Input: StatusInput{Resolved: null.BoolFrom(true)},
+		},
+		"Unresolved": {
+			Input: StatusInput{Resolved: null.BoolFrom(false)},
+		},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, c.Err, c.Input.Validate())
+		})
+	}
 }
 
 func Test_Content_Scan(t *testing.T) {

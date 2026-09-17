@@ -35,7 +35,7 @@ const COMMENTS_KEY = ["documents", DOC_ID, "comments", BRANCH_ID] as const
 
 const COMMENTS_URL = `/api/documents/${DOC_ID}/comments`
 const COMMENT_URL = `${COMMENTS_URL}/${COMMENT_ID}`
-const RESOLVE_URL = `${COMMENT_URL}/resolve`
+const STATUS_URL = `${COMMENT_URL}/status`
 const REPLIES_URL = `${COMMENT_URL}/replies`
 const REPLY_URL = `${REPLIES_URL}/${REPLY_ID}`
 
@@ -182,14 +182,15 @@ describe("useDocumentCommentAPI", { concurrent: false }, () => {
 				}),
 		},
 		{
-			name: "updateDocumentCommentResolveByCommentId",
+			name: "updateDocumentCommentStatusByCommentId",
 			method: "PUT",
-			url: `/api/documents/${NON_XID_ID}/comments/${COMMENT_ID}/resolve`,
+			url: `/api/documents/${NON_XID_ID}/comments/${COMMENT_ID}/status`,
 			invoke: (api: DocumentCommentAPI) =>
-				api.updateDocumentCommentResolveByCommentId.mutateAsync({
+				api.updateDocumentCommentStatusByCommentId.mutateAsync({
 					docId: NON_XID_ID,
 					branchId: BRANCH_ID,
 					commentId: COMMENT_ID,
+					req: { resolved: true },
 				}),
 		},
 		{
@@ -573,7 +574,7 @@ describe("useDocumentCommentAPI", { concurrent: false }, () => {
 		})
 	})
 
-	describe("updateDocumentCommentResolveByCommentId", () => {
+	describe("updateDocumentCommentStatusByCommentId", () => {
 		it("removes the resolved comment optimistically and refetches once the resolve succeeds", async ({
 			expect,
 		}) => {
@@ -584,7 +585,7 @@ describe("useDocumentCommentAPI", { concurrent: false }, () => {
 			const serverComments = [makeComment(COMMENT_ID_2)]
 			const getCalls = mockEndpoint("GET", COMMENTS_URL, () => serverComments)
 			let commentsAtRequest: DocumentCommentsResponse | undefined
-			const putCalls = mockEndpoint("PUT", RESOLVE_URL, () => {
+			const putCalls = mockEndpoint("PUT", STATUS_URL, () => {
 				commentsAtRequest = readComments()
 
 				return {}
@@ -592,13 +593,44 @@ describe("useDocumentCommentAPI", { concurrent: false }, () => {
 			const api = makeCommentAPI()
 			runInApp(() => api.useFetchDocumentCommentsByDocId(DOC_ID, BRANCH_ID))
 
-			await api.updateDocumentCommentResolveByCommentId.mutateAsync({
+			await api.updateDocumentCommentStatusByCommentId.mutateAsync({
 				docId: DOC_ID,
 				branchId: BRANCH_ID,
 				commentId: COMMENT_ID,
+				req: { resolved: true },
 			})
 
 			expect(putCalls).toHaveLength(1)
+			expect(putCalls[0]?.body).toEqual({ resolved: true })
+			expect(commentsAtRequest).toEqual([other])
+			expect(getCalls).toHaveLength(1)
+			expect(readComments()).toEqual(serverComments)
+		})
+
+		it("keeps the cached list when unresolving", async ({ expect }) => {
+			seedAuth()
+			const other = makeComment(COMMENT_ID_2)
+			seedComments([other])
+			const serverComments = [makeComment(COMMENT_ID), other]
+			const getCalls = mockEndpoint("GET", COMMENTS_URL, () => serverComments)
+			let commentsAtRequest: DocumentCommentsResponse | undefined
+			const putCalls = mockEndpoint("PUT", STATUS_URL, () => {
+				commentsAtRequest = readComments()
+
+				return {}
+			})
+			const api = makeCommentAPI()
+			runInApp(() => api.useFetchDocumentCommentsByDocId(DOC_ID, BRANCH_ID))
+
+			await api.updateDocumentCommentStatusByCommentId.mutateAsync({
+				docId: DOC_ID,
+				branchId: BRANCH_ID,
+				commentId: COMMENT_ID,
+				req: { resolved: false },
+			})
+
+			expect(putCalls).toHaveLength(1)
+			expect(putCalls[0]?.body).toEqual({ resolved: false })
 			expect(commentsAtRequest).toEqual([other])
 			expect(getCalls).toHaveLength(1)
 			expect(readComments()).toEqual(serverComments)
@@ -611,17 +643,18 @@ describe("useDocumentCommentAPI", { concurrent: false }, () => {
 			const target = makeComment(COMMENT_ID)
 			seedComments([target])
 			const getCalls = mockEndpoint("GET", COMMENTS_URL, () => [])
-			const putCalls = mockEndpoint("PUT", RESOLVE_URL, () => {
+			const putCalls = mockEndpoint("PUT", STATUS_URL, () => {
 				throw createError({ statusCode: 500 })
 			})
 			const api = makeCommentAPI()
 			runInApp(() => api.useFetchDocumentCommentsByDocId(DOC_ID, BRANCH_ID))
 
 			await expect(
-				api.updateDocumentCommentResolveByCommentId.mutateAsync({
+				api.updateDocumentCommentStatusByCommentId.mutateAsync({
 					docId: DOC_ID,
 					branchId: BRANCH_ID,
 					commentId: COMMENT_ID,
+					req: { resolved: true },
 				}),
 			).rejects.toThrow()
 
@@ -642,7 +675,7 @@ describe("useDocumentCommentAPI", { concurrent: false }, () => {
 			seedAuth()
 			seedComments([makeComment(COMMENT_ID), makeComment(COMMENT_ID_2)])
 			const getCalls = mockEndpoint("GET", COMMENTS_URL, () => [])
-			const putCalls = mockEndpoint("PUT", RESOLVE_URL, () => {
+			const putCalls = mockEndpoint("PUT", STATUS_URL, () => {
 				putReached()
 
 				return new Promise((_resolve, reject) => {
@@ -652,10 +685,11 @@ describe("useDocumentCommentAPI", { concurrent: false }, () => {
 			const api = makeCommentAPI()
 			runInApp(() => api.useFetchDocumentCommentsByDocId(DOC_ID, BRANCH_ID))
 
-			const pending = api.updateDocumentCommentResolveByCommentId.mutateAsync({
+			const pending = api.updateDocumentCommentStatusByCommentId.mutateAsync({
 				docId: DOC_ID,
 				branchId: BRANCH_ID,
 				commentId: COMMENT_ID,
+				req: { resolved: true },
 			})
 			await putReachedSignal
 

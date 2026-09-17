@@ -13,6 +13,7 @@ export interface DocumentComment {
 	userId: string
 	resolved: boolean
 	resolvedBy?: string | null
+	resolvedAt?: Date | string | null
 	content: Record<string, any>
 	createdAt: Date | string
 	updatedAt?: Date | string | null
@@ -119,6 +120,10 @@ export interface DocumentCommentReplyCreateRequest {
 export type DocumentCommentReplyCreateResponse = DocumentCommentReply
 
 export type DocumentCommentUpdateRequest = DocumentCommentCreateRequest
+
+export interface DocumentCommentStatusUpdateRequest {
+	resolved: boolean
+}
 
 export type DocumentCommentReplyUpdateRequest =
 	DocumentCommentReplyCreateRequest

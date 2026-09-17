@@ -367,7 +367,7 @@ describe("<CommentRenderer>", { concurrent: false }, () => {
 		seedComments([serverComment()])
 		const calls = mockEndpoint(
 			"PUT",
-			`/api/documents/${DOCUMENT_ID}/comments/${COMMENT_ID}/resolve`,
+			`/api/documents/${DOCUMENT_ID}/comments/${COMMENT_ID}/status`,
 			() => null,
 		)
 		const wrapper = await mountRenderer(editor)
@@ -382,6 +382,7 @@ describe("<CommentRenderer>", { concurrent: false }, () => {
 		await vi.waitFor(() => {
 			expect(calls).toHaveLength(1)
 		}, WAIT_FOR_OPTIONS)
+		expect(calls[0]?.body).toEqual({ resolved: true })
 		expect(popoverOpen(wrapper)).toBe(false)
 	})
 
@@ -391,7 +392,7 @@ describe("<CommentRenderer>", { concurrent: false }, () => {
 		seedComments([serverComment()])
 		mockEndpoint(
 			"PUT",
-			`/api/documents/${DOCUMENT_ID}/comments/${COMMENT_ID}/resolve`,
+			`/api/documents/${DOCUMENT_ID}/comments/${COMMENT_ID}/status`,
 			(_c, event) => {
 				setResponseStatus(event, 500)
 

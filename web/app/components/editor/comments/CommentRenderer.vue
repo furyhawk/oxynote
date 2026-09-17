@@ -997,10 +997,11 @@ async function resolveComment() {
 	closePopover()
 
 	try {
-		await commentAPI.updateDocumentCommentResolveByCommentId.mutateAsync({
+		await commentAPI.updateDocumentCommentStatusByCommentId.mutateAsync({
 			docId: editorStore.activeDocumentId,
 			branchId: editorStore.activeBranchId,
 			commentId: commentId,
+			req: { resolved: true },
 		})
 	} catch {
 		showToastMessage("error", t("editor.comment-thread.errors.delete-failed"))

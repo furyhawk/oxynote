@@ -43,7 +43,7 @@ var _ Tx = &TxMock{}
 //			FetchDocumentCommentReplyFunc: func(ctx context.Context, id xid.ID, commentID xid.ID, organizationID string) (*commentCore.Reply, error) {
 //				panic("mock out the FetchDocumentCommentReply method")
 //			},
-//			FetchDocumentCommentsByBranchIDFunc: func(ctx context.Context, branchID xid.ID, organizationID string) ([]commentCore.Comment, error) {
+//			FetchDocumentCommentsByBranchIDFunc: func(ctx context.Context, branchID xid.ID, organizationID string, resolved bool) ([]commentCore.Comment, error) {
 //				panic("mock out the FetchDocumentCommentsByBranchID method")
 //			},
 //			FetchDocumentMaintainersFunc: func(ctx context.Context, documentID xid.ID, organizationID string) ([]string, error) {
@@ -96,7 +96,7 @@ type TxMock struct {
 	FetchDocumentCommentReplyFunc func(ctx context.Context, id xid.ID, commentID xid.ID, organizationID string) (*commentCore.Reply, error)
 
 	// FetchDocumentCommentsByBranchIDFunc mocks the FetchDocumentCommentsByBranchID method.
-	FetchDocumentCommentsByBranchIDFunc func(ctx context.Context, branchID xid.ID, organizationID string) ([]commentCore.Comment, error)
+	FetchDocumentCommentsByBranchIDFunc func(ctx context.Context, branchID xid.ID, organizationID string, resolved bool) ([]commentCore.Comment, error)
 
 	// FetchDocumentMaintainersFunc mocks the FetchDocumentMaintainers method.
 	FetchDocumentMaintainersFunc func(ctx context.Context, documentID xid.ID, organizationID string) ([]string, error)
@@ -194,6 +194,8 @@ type TxMock struct {
 			BranchID xid.ID
 			// OrganizationID is the organizationID argument value.
 			OrganizationID string
+			// Resolved is the resolved argument value.
+			Resolved bool
 		}
 		// FetchDocumentMaintainers holds details about calls to the FetchDocumentMaintainers method.
 		FetchDocumentMaintainers []struct {
@@ -568,15 +570,17 @@ func (mock *TxMock) FetchDocumentCommentReplyCalls() []struct {
 }
 
 // FetchDocumentCommentsByBranchID calls FetchDocumentCommentsByBranchIDFunc.
-func (mock *TxMock) FetchDocumentCommentsByBranchID(ctx context.Context, branchID xid.ID, organizationID string) ([]commentCore.Comment, error) {
+func (mock *TxMock) FetchDocumentCommentsByBranchID(ctx context.Context, branchID xid.ID, organizationID string, resolved bool) ([]commentCore.Comment, error) {
 	callInfo := struct {
 		Ctx            context.Context
 		BranchID       xid.ID
 		OrganizationID string
+		Resolved       bool
 	}{
 		Ctx:            ctx,
 		BranchID:       branchID,
 		OrganizationID: organizationID,
+		Resolved:       resolved,
 	}
 	mock.lockFetchDocumentCommentsByBranchID.Lock()
 	mock.calls.FetchDocumentCommentsByBranchID = append(mock.calls.FetchDocumentCommentsByBranchID, callInfo)
@@ -588,7 +592,7 @@ func (mock *TxMock) FetchDocumentCommentsByBranchID(ctx context.Context, branchI
 		)
 		return commentsOut, errOut
 	}
-	return mock.FetchDocumentCommentsByBranchIDFunc(ctx, branchID, organizationID)
+	return mock.FetchDocumentCommentsByBranchIDFunc(ctx, branchID, organizationID, resolved)
 }
 
 // FetchDocumentCommentsByBranchIDCalls gets all the calls that were made to FetchDocumentCommentsByBranchID.
@@ -599,11 +603,13 @@ func (mock *TxMock) FetchDocumentCommentsByBranchIDCalls() []struct {
 	Ctx            context.Context
 	BranchID       xid.ID
 	OrganizationID string
+	Resolved       bool
 } {
 	var calls []struct {
 		Ctx            context.Context
 		BranchID       xid.ID
 		OrganizationID string
+		Resolved       bool
 	}
 	mock.lockFetchDocumentCommentsByBranchID.RLock()
 	calls = mock.calls.FetchDocumentCommentsByBranchID

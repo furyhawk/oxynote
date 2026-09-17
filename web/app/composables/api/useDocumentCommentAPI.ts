@@ -82,6 +82,7 @@ export default function () {
 				userId: userId,
 				resolved: false,
 				resolvedBy: null,
+				resolvedAt: null,
 				content: req.content,
 				createdAt: new Date(),
 				updatedAt: null,
@@ -227,15 +228,17 @@ export default function () {
 		},
 	})
 
-	const updateDocumentCommentResolveByCommentId = useMutation({
+	const updateDocumentCommentStatusByCommentId = useMutation({
 		onMutate: ({
 			docId,
 			branchId,
 			commentId,
+			req,
 		}: {
 			docId: string
 			branchId: string
 			commentId: string
+			req: DocumentCommentStatusUpdateRequest
 		}) => {
 			if (!isXid(docId) || !isXid(branchId) || !isXid(commentId)) {
 				// optimisticInserts use nanoid
@@ -248,9 +251,13 @@ export default function () {
 			)
 			const newComments = clone(oldComments) ?? []
 
-			const index = newComments.findIndex((h) => h.id === commentId)
-			if (index !== -1) {
-				newComments.splice(index, 1)
+			// the cached list holds open comments only, so a resolved one
+			// leaves it and an unresolved one is not in it to begin with
+			if (req.resolved) {
+				const index = newComments.findIndex((h) => h.id === commentId)
+				if (index !== -1) {
+					newComments.splice(index, 1)
+				}
 			}
 
 			queryCache.setQueryData(key, newComments)
@@ -262,10 +269,12 @@ export default function () {
 			docId,
 			branchId,
 			commentId,
+			req,
 		}: {
 			docId: string
 			branchId: string
 			commentId: string
+			req: DocumentCommentStatusUpdateRequest
 		}) => {
 			if (!isXid(docId) || !isXid(branchId) || !isXid(commentId)) {
 				// optimisticInserts use nanoid
@@ -273,9 +282,10 @@ export default function () {
 			}
 
 			await $coreAPIClient(
-				`/api/documents/${docId}/comments/${commentId}/resolve`,
+				`/api/documents/${docId}/comments/${commentId}/status`,
 				{
 					method: "PUT",
+					body: req,
 				},
 			)
 		},
@@ -747,7 +757,7 @@ export default function () {
 		useFetchDocumentCommentsByDocId,
 		createDocumentCommentByDocId,
 		updateDocumentCommentByCommentId,
-		updateDocumentCommentResolveByCommentId,
+		updateDocumentCommentStatusByCommentId,
 		deleteDocumentCommentByCommentId,
 		createDocumentCommentReplyByCommentId,
 		updateDocumentCommentReplyByReplyId,

@@ -18,9 +18,15 @@ import (
 	"github.com/rs/xid"
 )
 
-// ErrBranchMismatch is returned when the requested branch does not belong to
-// the document identified by the request path.
-var ErrBranchMismatch = errutil.New(http.StatusNotFound, "document.branch_mismatch", "branch does not belong to the document")
+var (
+	// ErrBranchMismatch is returned when the requested branch does not belong to
+	// the document identified by the request path.
+	ErrBranchMismatch = errutil.New(http.StatusNotFound, "document.branch_mismatch", "branch does not belong to the document")
+
+	// ErrInvalidResolvedFilter is returned when the resolved query parameter
+	// is neither "true" nor "false".
+	ErrInvalidResolvedFilter = errutil.New(http.StatusBadRequest, "comment.invalid_resolved_filter", "resolved must be true or false")
+)
 
 // Handler holds dependencies required for document comment operations.
 type Handler struct {
@@ -283,8 +289,10 @@ func (h *Handler) FetchDocumentComment(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-// FetchDocumentComments handles the retrieval of all comments for a document branch.
-// Requires a "branchId" query parameter to identify which branch's comments to return.
+// FetchDocumentComments handles the retrieval of the comments of a document
+// branch. Requires a "branchId" query parameter to identify which branch's
+// comments to return; the optional "resolved" parameter selects resolved
+// comments instead of the open ones returned by default.
 func (h *Handler) FetchDocumentComments(w http.ResponseWriter, r *http.Request) {
 	session, ok := auth.RequireSession(h.log, w, r)
 	if !ok {
@@ -303,6 +311,17 @@ func (h *Handler) FetchDocumentComments(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	var resolved bool
+
+	switch r.URL.Query().Get("resolved") {
+	case "", "false":
+	case "true":
+		resolved = true
+	default:
+		httpserver.RespondError(h.log, w, ErrInvalidResolvedFilter)
+		return
+	}
+
 	branchDoc, err := h.db.FetchDocumentByBranchID(r.Context(), branchID, session.ActiveOrganizationID)
 	if err != nil {
 		httpserver.RespondError(h.log, w, err)
@@ -314,7 +333,7 @@ func (h *Handler) FetchDocumentComments(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	comments, err := h.db.FetchDocumentCommentsByBranchID(r.Context(), branchID, session.ActiveOrganizationID)
+	comments, err := h.db.FetchDocumentCommentsByBranchID(r.Context(), branchID, session.ActiveOrganizationID, resolved)
 	if err != nil {
 		httpserver.RespondError(h.log, w, err)
 		return
@@ -476,8 +495,9 @@ func (h *Handler) UpdateDocumentCommentReply(w http.ResponseWriter, r *http.Requ
 	)
 }
 
-// ResolveDocumentComment handles marking a comment as resolved.
-func (h *Handler) ResolveDocumentComment(w http.ResponseWriter, r *http.Request) {
+// UpdateDocumentCommentStatus handles marking a comment as resolved or
+// unresolved.
+func (h *Handler) UpdateDocumentCommentStatus(w http.ResponseWriter, r *http.Request) {
 	session, ok := auth.RequireSession(h.log, w, r)
 	if !ok {
 		return
@@ -501,25 +521,45 @@ func (h *Handler) ResolveDocumentComment(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// resolving currently destroys the comment and its replies, so it needs
-	// the same ownership guard the delete route applies.
-	if !c.UserID.Valid || c.UserID.String != session.UserID {
-		httpserver.RespondError(h.log, w, httpserver.ErrNotPermitted)
-		return
-	}
+	var si commentCore.StatusInput
 
-	if err := h.db.DeleteDocumentComment(r.Context(), commentID, documentID, session.ActiveOrganizationID); err != nil {
+	if err := httpserver.DecodeJSON(r, &si); err != nil {
 		httpserver.RespondError(h.log, w, err)
 		return
 	}
 
-	// TODO: Once comment history is implemented, soft delete (resolve) the
-	// comment via c.Resolve and publish an update message instead of
-	// removing it.
+	if err := si.Validate(); err != nil {
+		httpserver.RespondError(h.log, w, err)
+		return
+	}
+
+	if c.Resolved == si.Resolved.Bool {
+		httpserver.Respond(
+			h.log,
+			w,
+			c,
+			http.StatusOK,
+		)
+
+		return
+	}
+
+	var nc commentCore.Comment
+
+	if si.Resolved.Bool {
+		nc = c.Resolve(session.UserID)
+	} else {
+		nc = c.Unresolve()
+	}
+
+	if err := h.db.UpdateDocumentComment(r.Context(), nc); err != nil {
+		httpserver.RespondError(h.log, w, err)
+		return
+	}
 
 	if h.comments.changeCallback != nil {
 		h.comments.changeCallback(session.ActiveOrganizationID, documentID, ChangeMessage{
-			Type:      ChangeTypeDeleted,
+			Type:      ChangeTypeUpdated,
 			CommentID: commentID,
 		})
 	}
@@ -527,59 +567,10 @@ func (h *Handler) ResolveDocumentComment(w http.ResponseWriter, r *http.Request)
 	httpserver.Respond(
 		h.log,
 		w,
-		c,
+		nc,
 		http.StatusOK,
 	)
 }
-
-// TODO: Uncomment once comment history is implemented.
-// UnresolveDocumentComment handles marking a comment as unresolved.
-// func (h *Handler) UnresolveDocumentComment(w http.ResponseWriter, r *http.Request) {
-//	session, err := auth.ExtractSessionFromContext(r.Context())
-//	if err != nil {
-//		httpserver.RespondError(h.log, w, err)
-//		return
-//	}
-//
-//	documentID, err := httpserver.ExtractNamedID(r, "documentId")
-//	if err != nil {
-//		httpserver.RespondError(h.log, w, err)
-//		return
-//	}
-//
-//	commentID, err := httpserver.ExtractNamedID(r, "commentId")
-//	if err != nil {
-//		httpserver.RespondError(h.log, w, err)
-//		return
-//	}
-//
-//	c, err := h.db.FetchDocumentComment(r.Context(), commentID, documentID, session.ActiveOrganizationID)
-//	if err != nil {
-//		httpserver.RespondError(h.log, w, err)
-//		return
-//	}
-//
-//	nc := c.Unresolve()
-//
-//	if err := h.db.UpdateDocumentComment(r.Context(), nc); err != nil {
-//		httpserver.RespondError(h.log, w, err)
-//		return
-//	}
-//
-//	if h.comments.changeCallback != nil {
-//		h.comments.changeCallback(session.ActiveOrganizationID, documentID, ChangeMessage{
-//			Type:      ChangeTypeUpdated,
-//			CommentID: commentID,
-//		})
-//	}
-//
-//	httpserver.Respond(
-//		h.log,
-//		w,
-//		nc,
-//		http.StatusOK,
-//	)
-//}
 
 // DeleteDocumentComment handles the deletion of a comment.
 // If the comment has replies, the first reply is promoted to become the main comment.
@@ -769,8 +760,9 @@ type CommentsDBAgent interface {
 	// FetchDocumentComment should fetch a comment by its ID along with all its replies.
 	FetchDocumentComment(ctx context.Context, id, documentID xid.ID, organizationID string) (*commentCore.Comment, error)
 
-	// FetchDocumentCommentsByBranchID should fetch all comments for a branch with their replies.
-	FetchDocumentCommentsByBranchID(ctx context.Context, branchID xid.ID, organizationID string) ([]commentCore.Comment, error)
+	// FetchDocumentCommentsByBranchID should fetch the comments of a branch in
+	// the given resolved state with their replies.
+	FetchDocumentCommentsByBranchID(ctx context.Context, branchID xid.ID, organizationID string, resolved bool) ([]commentCore.Comment, error)
 
 	// UpdateDocumentComment should update an existing comment.
 	UpdateDocumentComment(ctx context.Context, c commentCore.Comment) error

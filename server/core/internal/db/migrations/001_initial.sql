@@ -328,6 +328,7 @@ CREATE TABLE document_comments (
 	fk_user_id TEXT REFERENCES users ON DELETE SET NULL,
 	fk_organization_id TEXT NOT NULL REFERENCES organizations ON DELETE CASCADE,
 	fk_resolved_by TEXT REFERENCES users ON DELETE SET NULL,
+	resolved_at TIMESTAMP,
 	anchor_block_id TEXT,
 	resolved BOOLEAN NOT NULL DEFAULT FALSE,
 	content JSONB NOT NULL,

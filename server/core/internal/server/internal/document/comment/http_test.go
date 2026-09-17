@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/guregu/null/v5"
 	documentCore "github.com/oxynote/oxynote/server/core/internal/document"
@@ -475,6 +476,7 @@ func Test_Handler_FetchDocumentComments(t *testing.T) {
 		OmitDoc   bool
 		Query     string
 		RespCode  int
+		Resolved  bool
 	}{
 		"No session in context": {
 			DB:        &DBMock{},
@@ -491,6 +493,11 @@ func Test_Handler_FetchDocumentComments(t *testing.T) {
 		"Invalid branch ID query parameter": {
 			DB:       &DBMock{},
 			Query:    "?branchId=bogus",
+			RespCode: http.StatusBadRequest,
+		},
+		"Invalid resolved query parameter": {
+			DB:       &DBMock{},
+			Query:    "?branchId=" + _branchID.String() + "&resolved=bogus",
 			RespCode: http.StatusBadRequest,
 		},
 		"Branch document fetch error": {
@@ -513,7 +520,7 @@ func Test_Handler_FetchDocumentComments(t *testing.T) {
 		},
 		"Comments fetch error": {
 			DB: &DBMock{
-				FetchDocumentCommentsByBranchIDFunc: func(context.Context, xid.ID, string) ([]commentCore.Comment, error) {
+				FetchDocumentCommentsByBranchIDFunc: func(context.Context, xid.ID, string, bool) ([]commentCore.Comment, error) {
 					return nil, errors.New("boom")
 				},
 			},
@@ -522,12 +529,31 @@ func Test_Handler_FetchDocumentComments(t *testing.T) {
 		},
 		"Successful fetch": {
 			DB: &DBMock{
-				FetchDocumentCommentsByBranchIDFunc: func(context.Context, xid.ID, string) ([]commentCore.Comment, error) {
+				FetchDocumentCommentsByBranchIDFunc: func(context.Context, xid.ID, string, bool) ([]commentCore.Comment, error) {
 					return []commentCore.Comment{*storedComment("u2")}, nil
 				},
 			},
 			Query:    "?branchId=" + _branchID.String(),
 			RespCode: http.StatusOK,
+		},
+		"Successful fetch of open comments": {
+			DB: &DBMock{
+				FetchDocumentCommentsByBranchIDFunc: func(context.Context, xid.ID, string, bool) ([]commentCore.Comment, error) {
+					return []commentCore.Comment{*storedComment("u2")}, nil
+				},
+			},
+			Query:    "?branchId=" + _branchID.String() + "&resolved=false",
+			RespCode: http.StatusOK,
+		},
+		"Successful fetch of resolved comments": {
+			DB: &DBMock{
+				FetchDocumentCommentsByBranchIDFunc: func(context.Context, xid.ID, string, bool) ([]commentCore.Comment, error) {
+					return []commentCore.Comment{*storedComment("u2")}, nil
+				},
+			},
+			Query:    "?branchId=" + _branchID.String() + "&resolved=true",
+			RespCode: http.StatusOK,
+			Resolved: true,
 		},
 	}
 
@@ -570,6 +596,7 @@ func Test_Handler_FetchDocumentComments(t *testing.T) {
 				ff := c.DB.FetchDocumentCommentsByBranchIDCalls()
 				require.Len(t, ff, 1)
 				assert.Equal(t, _branchID, ff[0].BranchID)
+				assert.Equal(t, c.Resolved, ff[0].Resolved)
 			}
 		})
 	}
@@ -797,23 +824,37 @@ func Test_Handler_UpdateDocumentCommentReply(t *testing.T) {
 	}
 }
 
-func Test_Handler_ResolveDocumentComment(t *testing.T) {
+func Test_Handler_UpdateDocumentCommentStatus(t *testing.T) {
+	// resolvedComment builds a stored comment already resolved by u2.
+	resolvedComment := func() *commentCore.Comment {
+		c := storedComment("u2")
+		c.Resolved = true
+		c.ResolvedBy = null.StringFrom("u2")
+		c.ResolvedAt = null.TimeFrom(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+
+		return c
+	}
+
 	cc := map[string]struct {
 		DB        *DBMock
 		NoSession bool
 		OmitDoc   bool
+		Body      string
 		RespCode  int
-		Deleted   int
+		Updated   int
 		Changes   int
+		Check     func(t *testing.T, c commentCore.Comment)
 	}{
 		"No session in context": {
 			DB:        &DBMock{},
 			NoSession: true,
+			Body:      `{"resolved":true}`,
 			RespCode:  http.StatusUnauthorized,
 		},
 		"Missing document ID parameter": {
 			DB:       &DBMock{},
 			OmitDoc:  true,
+			Body:     `{"resolved":true}`,
 			RespCode: http.StatusNotFound,
 		},
 		"Comment fetch error": {
@@ -822,37 +863,89 @@ func Test_Handler_ResolveDocumentComment(t *testing.T) {
 					return nil, errors.New("boom")
 				},
 			},
+			Body:     `{"resolved":true}`,
 			RespCode: http.StatusInternalServerError,
 		},
-		"Another user's comment": {
+		"Invalid JSON body": {
 			DB: &DBMock{
 				FetchDocumentCommentFunc: func(context.Context, xid.ID, xid.ID, string) (*commentCore.Comment, error) {
 					return storedComment("u2"), nil
 				},
 			},
-			RespCode: http.StatusForbidden,
+			Body:     "{",
+			RespCode: http.StatusBadRequest,
 		},
-		"Comment deletion error": {
+		"Missing resolved field": {
 			DB: &DBMock{
 				FetchDocumentCommentFunc: func(context.Context, xid.ID, xid.ID, string) (*commentCore.Comment, error) {
-					return storedComment("u1"), nil
+					return storedComment("u2"), nil
 				},
-				DeleteDocumentCommentFunc: func(context.Context, xid.ID, xid.ID, string) error {
+			},
+			Body:     `{}`,
+			RespCode: http.StatusBadRequest,
+		},
+		"Comment update error": {
+			DB: &DBMock{
+				FetchDocumentCommentFunc: func(context.Context, xid.ID, xid.ID, string) (*commentCore.Comment, error) {
+					return storedComment("u2"), nil
+				},
+				UpdateDocumentCommentFunc: func(context.Context, commentCore.Comment) error {
 					return errors.New("boom")
 				},
 			},
+			Body:     `{"resolved":true}`,
 			RespCode: http.StatusInternalServerError,
-			Deleted:  1,
+			Updated:  1,
 		},
-		"Successful resolution": {
+		"Successful resolution of another user's comment": {
 			DB: &DBMock{
 				FetchDocumentCommentFunc: func(context.Context, xid.ID, xid.ID, string) (*commentCore.Comment, error) {
-					return storedComment("u1"), nil
+					return storedComment("u2"), nil
 				},
 			},
+			Body:     `{"resolved":true}`,
 			RespCode: http.StatusOK,
-			Deleted:  1,
+			Updated:  1,
 			Changes:  1,
+			Check: func(t *testing.T, c commentCore.Comment) {
+				assert.True(t, c.Resolved)
+				assert.Equal(t, null.StringFrom("u1"), c.ResolvedBy)
+				assert.True(t, c.ResolvedAt.Valid)
+			},
+		},
+		"Successful unresolution": {
+			DB: &DBMock{
+				FetchDocumentCommentFunc: func(context.Context, xid.ID, xid.ID, string) (*commentCore.Comment, error) {
+					return resolvedComment(), nil
+				},
+			},
+			Body:     `{"resolved":false}`,
+			RespCode: http.StatusOK,
+			Updated:  1,
+			Changes:  1,
+			Check: func(t *testing.T, c commentCore.Comment) {
+				assert.False(t, c.Resolved)
+				assert.False(t, c.ResolvedBy.Valid)
+				assert.False(t, c.ResolvedAt.Valid)
+			},
+		},
+		"Already resolved": {
+			DB: &DBMock{
+				FetchDocumentCommentFunc: func(context.Context, xid.ID, xid.ID, string) (*commentCore.Comment, error) {
+					return resolvedComment(), nil
+				},
+			},
+			Body:     `{"resolved":true}`,
+			RespCode: http.StatusOK,
+		},
+		"Already unresolved": {
+			DB: &DBMock{
+				FetchDocumentCommentFunc: func(context.Context, xid.ID, xid.ID, string) (*commentCore.Comment, error) {
+					return storedComment("u2"), nil
+				},
+			},
+			Body:     `{"resolved":false}`,
+			RespCode: http.StatusOK,
 		},
 	}
 
@@ -861,18 +954,30 @@ func Test_Handler_ResolveDocumentComment(t *testing.T) {
 			t.Parallel()
 
 			cpt := &capturedChange{}
-			hdl := newTestHandler(c.DB, &fakePublisher{}, cpt)
+			pub := &fakePublisher{}
+			hdl := newTestHandler(c.DB, pub, cpt)
 
 			rec := httptest.NewRecorder()
 
-			hdl.ResolveDocumentComment(rec, newRequest(http.MethodPost, "", c.NoSession, c.OmitDoc, false, true))
+			hdl.UpdateDocumentCommentStatus(rec, newRequest(http.MethodPut, c.Body, c.NoSession, c.OmitDoc, false, true))
 
 			assert.Equal(t, c.RespCode, rec.Code)
-			assert.Len(t, c.DB.DeleteDocumentCommentCalls(), c.Deleted)
+			assert.Empty(t, pub.calls)
+
+			uu := c.DB.UpdateDocumentCommentCalls()
+			require.Len(t, uu, c.Updated)
 			require.Len(t, cpt.calls, c.Changes)
 
 			if c.Changes > 0 {
-				assert.Equal(t, ChangeTypeDeleted, cpt.calls[0].Type)
+				assert.Equal(t, ChangeTypeUpdated, cpt.calls[0].Type)
+			}
+
+			if c.Check != nil {
+				c.Check(t, uu[0].C)
+			}
+
+			if c.RespCode == http.StatusOK {
+				assert.Contains(t, rec.Body.String(), _commentID.String())
 			}
 		})
 	}

@@ -346,11 +346,9 @@ func (s *Server) router() chi.Router {
 				sssr.Get("/", s.handlers.comment.FetchDocumentComments)
 				sssr.Post("/", s.handlers.comment.CreateDocumentComment)
 				sssr.Route("/{commentId}", func(ssssr chi.Router) {
-					// TODO: Uncomment this once comment history is implemented.
-					// ssssr.Put("/unresolve", s.handlers.document.UnresolveDocumentComment)
 					ssssr.Get("/", s.handlers.comment.FetchDocumentComment)
 					ssssr.Put("/", s.handlers.comment.UpdateDocumentComment)
-					ssssr.Put("/resolve", s.handlers.comment.ResolveDocumentComment)
+					ssssr.Put("/status", s.handlers.comment.UpdateDocumentCommentStatus)
 					ssssr.Delete("/", s.handlers.comment.DeleteDocumentComment)
 					ssssr.Route("/replies", func(sssssr chi.Router) {
 						sssssr.Post("/", s.handlers.comment.CreateDocumentCommentReply)
