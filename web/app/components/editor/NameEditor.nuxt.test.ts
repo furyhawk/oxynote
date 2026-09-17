@@ -1,6 +1,10 @@
 import { registerEndpoint } from "@nuxt/test-utils/runtime"
 import type { HocuspocusProvider } from "@hocuspocus/provider"
-import { enableAutoUnmount, type VueWrapper } from "@vue/test-utils"
+import {
+	enableAutoUnmount,
+	flushPromises,
+	type VueWrapper,
+} from "@vue/test-utils"
 import { setResponseStatus } from "h3"
 import { afterEach, beforeEach, describe, it, vi } from "vitest"
 import { toast } from "vue-sonner"
@@ -384,6 +388,70 @@ describe("<NameEditor>", { concurrent: false }, () => {
 		await hookHandle(wrapper).trigger("mouseenter")
 
 		await hookHandle(wrapper).trigger("mouseleave")
+
+		expect(highlightPanels()).toHaveLength(0)
+	})
+
+	it("clears the mark when a click elsewhere closes the menu", async ({
+		expect,
+	}) => {
+		const wrapper = await mountEditor()
+		const handle = hookHandle(wrapper)
+		await handle.trigger("pointerdown", { button: 0 })
+		await handle.trigger("click")
+		await nextTick()
+		await handle.trigger("mouseleave")
+		// the menu's outside-click listener is attached a task after it opens
+		await new Promise((resolve) => setTimeout(resolve, 0))
+
+		document.body.dispatchEvent(
+			new PointerEvent("pointerdown", { bubbles: true, button: 0 }),
+		)
+		await flushPromises()
+
+		expect(highlightPanels()).toHaveLength(0)
+	})
+
+	it("keeps the mark on when a click on the hovered handle closes the menu", async ({
+		expect,
+	}) => {
+		const wrapper = await mountEditor()
+		const handle = hookHandle(wrapper)
+		await handle.trigger("mouseenter")
+		await handle.trigger("pointerdown", { button: 0 })
+		await handle.trigger("click")
+		await nextTick()
+
+		await handle.trigger("pointerdown", { button: 0 })
+		await handle.trigger("click")
+		await nextTick()
+
+		expect(handle.attributes("data-menu-open")).toBeUndefined()
+		expect(handle.attributes("data-hovering")).toBe("")
+		expect(highlightPanels()).toHaveLength(1)
+	})
+
+	it("marks the title when the hook handle takes keyboard focus", async ({
+		expect,
+	}) => {
+		const wrapper = await mountEditor()
+		const handle = hookHandle(wrapper)
+		vi.spyOn(handle.element, "matches").mockReturnValue(true)
+
+		await handle.trigger("focus")
+
+		expect(highlightPanels()).toHaveLength(1)
+	})
+
+	it("clears the mark when keyboard focus leaves the hook handle", async ({
+		expect,
+	}) => {
+		const wrapper = await mountEditor()
+		const handle = hookHandle(wrapper)
+		vi.spyOn(handle.element, "matches").mockReturnValue(true)
+		await handle.trigger("focus")
+
+		await handle.trigger("blur")
 
 		expect(highlightPanels()).toHaveLength(0)
 	})

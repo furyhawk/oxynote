@@ -94,8 +94,16 @@ const hookStatus = computed(() => {
 	return hooks.some((h) => Number(h.score) === 0) ? "stale" : "fresh"
 })
 const hookMenuOpen = ref(false)
-const hoveringHookHandle = ref(false)
 const rootElem = useTemplateRef<HTMLElement>("name-editor-root")
+const hookHandleElem = useTemplateRef<HTMLElement>("hook-handle")
+const hoveringHookHandle = useElementHover(hookHandleElem)
+// the menu hands focus back to the handle when it closes, also after an
+// outside click that never reaches the editor, so a plain focus would
+// leave the panel on with no visible handle under it. The handle only
+// shows for keyboard focus, and the panel follows the same rule.
+const { focused: keyboardFocusOnHookHandle } = useFocus(hookHandleElem, {
+	focusVisible: true,
+})
 const { isEditable } = useEditorMeta()
 const { isScrolling } = useWindowScroll()
 const { show: showHighlight, hide: hideHighlight } = useHighlightOverlay()
@@ -230,19 +238,22 @@ onBeforeUnmount(() => {
 
 // the panel marks what the handle points at, so it follows the handle's
 // hover and outlasts it for as long as the menu it opened is up
-watch([hoveringHookHandle, hookMenuOpen], ([hovering, menuOpen]) => {
-	if (!hovering && !menuOpen) {
-		hideHighlight()
-		return
-	}
+watch(
+	[hoveringHookHandle, keyboardFocusOnHookHandle, hookMenuOpen],
+	([hovering, focused, menuOpen]) => {
+		if (!hovering && !focused && !menuOpen) {
+			hideHighlight()
+			return
+		}
 
-	const rect = documentRect()
-	if (!rect) {
-		return
-	}
+		const rect = documentRect()
+		if (!rect) {
+			return
+		}
 
-	showHighlight(rect, DEFAULT_HIGHLIGHT_OVERLAY_PADDING)
-})
+		showHighlight(rect, DEFAULT_HIGHLIGHT_OVERLAY_PADDING)
+	},
+)
 
 // the panel is placed from a viewport rect, so a scroll would leave it
 // behind the title it covers
@@ -394,8 +405,10 @@ async function executeReviewableAction() {
 				>
 					<ShadcnUiDropdownMenuTrigger as-child>
 						<button
+							ref="hook-handle"
 							type="button"
 							:data-menu-open="hookMenuOpen ? '' : undefined"
+							:data-hovering="hoveringHookHandle ? '' : undefined"
 							:class="
 								cn(
 									'group/hook-handle absolute top-0.5 right-full flex h-7 items-center pr-1.5',
@@ -403,12 +416,9 @@ async function executeReviewableAction() {
 									'group-hover/name-row:pointer-events-auto group-hover/name-row:opacity-100',
 									'focus-visible:pointer-events-auto focus-visible:opacity-100',
 									'data-menu-open:pointer-events-auto data-menu-open:opacity-100',
+									'data-hovering:pointer-events-auto data-hovering:opacity-100',
 								)
 							"
-							@mouseenter="hoveringHookHandle = true"
-							@mouseleave="hoveringHookHandle = false"
-							@focus="hoveringHookHandle = true"
-							@blur="hoveringHookHandle = false"
 						>
 							<span
 								:data-hook-status="hookStatus"
