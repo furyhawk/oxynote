@@ -93,7 +93,10 @@ watchImmediate([debouncedSource, isDark], async ([source]) => {
 
 <template>
 	<div
-		:class="['mermaid-preview', isInitialRender ? 'opacity-0' : 'opacity-100']"
+		:class="[
+			'mermaid-preview break-normal',
+			isInitialRender ? 'opacity-0' : 'opacity-100',
+		]"
 	>
 		<div v-if="isLoading" class="text-foreground">
 			<ShadcnUiEmpty>
