@@ -128,6 +128,8 @@ render). vee-validate uses its own messages (see [README.md](README.md)).
   icon, loaded after the page's load event. Custom SVGs:
   [app/assets/custom-icons/](app/assets/custom-icons/), prefix
   `custom-icons:`.
+- Avoid `lucide:` icons where possible; the app is migrating off Lucide.
+  MingCute (`mingcute:`) is one good source of alternatives.
 - **Every dialog and sheet renders a `DialogDescription`** (`sr-only` when
   nothing visible plays that role; `as-child` around `<i18n-t tag="p">` when
   interpolated), or reka-ui warns per mount. Settings action components
