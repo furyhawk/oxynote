@@ -20,7 +20,7 @@ function metricConfig(title: string): MetricConfig {
 	return {
 		title,
 		dataSourceId: null,
-		visualizationType: null,
+		visualizationType: GenericQueryChartType.Line,
 		queries: null,
 		timeRange: null,
 		refreshInterval: null,

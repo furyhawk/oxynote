@@ -34,7 +34,9 @@ describe("<VisualizationTypeSelect>", { concurrent: false }, () => {
 	})
 
 	it("offers the three visualization types", async ({ expect }) => {
-		const wrapper = await mountTypeSelect({ modelValue: configWith(null) })
+		const wrapper = await mountTypeSelect({
+			modelValue: configWith(GenericQueryChartType.Line),
+		})
 
 		expect(tiles(wrapper).map((t) => t.text())).toEqual([
 			t("editor.metrics.config.type-options.line-chart.title"),
@@ -52,22 +54,26 @@ describe("<VisualizationTypeSelect>", { concurrent: false }, () => {
 		expect(at(tiles(wrapper), LINE).classes()).not.toContain("border-primary")
 	})
 
-	it("marks nothing while no type is chosen", async ({ expect }) => {
-		const wrapper = await mountTypeSelect({ modelValue: configWith(null) })
-
-		expect(
-			tiles(wrapper).filter((t) => t.classes().includes("border-primary")),
-		).toHaveLength(0)
-	})
-
 	it.for([
-		{ index: LINE, expected: GenericQueryChartType.Line },
-		{ index: BAR, expected: GenericQueryChartType.Bar },
-		{ index: GAUGE, expected: GenericQueryChartType.Gauge },
+		{
+			index: LINE,
+			input: GenericQueryChartType.Gauge,
+			expected: GenericQueryChartType.Line,
+		},
+		{
+			index: BAR,
+			input: GenericQueryChartType.Line,
+			expected: GenericQueryChartType.Bar,
+		},
+		{
+			index: GAUGE,
+			input: GenericQueryChartType.Line,
+			expected: GenericQueryChartType.Gauge,
+		},
 	])(
 		"stores the $expected type when picked",
-		async ({ index, expected }, { expect }) => {
-			const config = configWith(null)
+		async ({ index, input, expected }, { expect }) => {
+			const config = configWith(input)
 			const wrapper = await mountTypeSelect({ modelValue: config })
 
 			await at(tiles(wrapper), index).trigger("click")
@@ -78,22 +84,22 @@ describe("<VisualizationTypeSelect>", { concurrent: false }, () => {
 
 	it("changes nothing in read mode", async ({ expect }) => {
 		useEditorMeta().setEditable(false)
-		const config = configWith(null)
+		const config = configWith(GenericQueryChartType.Line)
 		const wrapper = await mountTypeSelect({ modelValue: config })
 
 		await at(tiles(wrapper), BAR).trigger("click")
 
-		expect(config.visualizationType).toBeNull()
+		expect(config.visualizationType).toBe(GenericQueryChartType.Line)
 	})
 
 	it("changes nothing while a reviewable diff is shown", async ({ expect }) => {
 		useEditorStore().setReviewableDiffActive(true)
-		const config = configWith(null)
+		const config = configWith(GenericQueryChartType.Line)
 		const wrapper = await mountTypeSelect({ modelValue: config })
 
 		await at(tiles(wrapper), BAR).trigger("click")
 
-		expect(config.visualizationType).toBeNull()
+		expect(config.visualizationType).toBe(GenericQueryChartType.Line)
 	})
 
 	it("changes nothing when there is no config to edit", async ({ expect }) => {

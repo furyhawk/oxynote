@@ -102,7 +102,7 @@ function truncToDecimals(num: number, decimals: number | null) {
 }
 
 function extractVisualizationData(
-	visualizationType: GenericQueryChartType | null | undefined,
+	visualizationType: GenericQueryChartType,
 	input: GenericQueryResult | null | undefined,
 	legendLabelFormat: string,
 	decimals: number | null,
@@ -112,10 +112,6 @@ function extractVisualizationData(
 	queryErrorMessage?: string
 	data?: MultipleLineChartData | MultipleBarChartData | MultipleGaugeChartData
 } {
-	if (!visualizationType) {
-		return { status: GenericQueryResultStatus.TypeNotSelected }
-	}
-
 	if (!input) {
 		return { status: GenericQueryResultStatus.NoData }
 	}
@@ -227,7 +223,7 @@ export interface QueryResultItem {
 }
 
 export function mergeVisualizationResults(
-	visualizationType: GenericQueryChartType | null | undefined,
+	visualizationType: GenericQueryChartType,
 	queryResults: QueryResultItem[] | null | undefined,
 	decimals: number | null,
 	orderedLegendLabelFn: (type: GenericQueryChartType) => string,
@@ -236,10 +232,6 @@ export function mergeVisualizationResults(
 	queryErrorMessage?: string
 	data?: MultipleLineChartData | MultipleBarChartData | MultipleGaugeChartData
 } {
-	if (!visualizationType) {
-		return { status: GenericQueryResultStatus.TypeNotSelected }
-	}
-
 	if (!queryResults?.length) {
 		return { status: GenericQueryResultStatus.NoData }
 	}

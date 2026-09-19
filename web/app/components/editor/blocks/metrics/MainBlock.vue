@@ -73,7 +73,8 @@ function migrateLegacyIfNeeded(fieldAttrs: Record<string, any>) {
 	safeUpdateAttributes({
 		title: legacy.title ?? "",
 		dataSourceId: legacy.dataSourceId ?? null,
-		visualizationType: legacy.type ?? legacy.visualizationType ?? null,
+		visualizationType:
+			legacy.type ?? legacy.visualizationType ?? GenericQueryChartType.Line,
 		queries: legacy.queries ?? null,
 		timeRange: legacy.timeRange ?? null,
 		refreshInterval: legacy.refreshInterval ?? null,
@@ -123,9 +124,9 @@ const config = reactive({
 		get: () =>
 			legacyConfig.value?.type ??
 			legacyConfig.value?.visualizationType ??
-			(props.node.attrs
-				.visualizationType as MetricConfig["visualizationType"]) ??
-			null,
+			(props.node.attrs.visualizationType as
+				MetricConfig["visualizationType"] | null) ??
+			GenericQueryChartType.Line,
 		set: (v) => {
 			migrateLegacyIfNeeded({ visualizationType: v })
 		},
@@ -243,6 +244,7 @@ const lastOtherEditingUser = computed(() => {
 })
 
 const disableVisualizationRefresh = ref(false)
+const simulationVisible = ref(false)
 
 watchImmediate(
 	[
@@ -346,7 +348,20 @@ function disableVisualizationRefreshTemporarily() {
 				>
 					{{ lastOtherEditingUser.name }}
 				</div>
-				<div class="absolute top-1 right-1.5 z-1 flex items-center gap-1">
+				<div
+					class="absolute top-1 right-1.5 z-1 flex items-center rounded-md bg-background pl-0.5"
+				>
+					<ShadcnUiTooltip v-if="simulationVisible">
+						<ShadcnUiTooltipTrigger as-child>
+							<Icon
+								name="mingcute:test-tube-line"
+								class="size-3.5 text-foreground"
+							/>
+						</ShadcnUiTooltipTrigger>
+						<ShadcnUiTooltipContent side="bottom">
+							{{ $t("editor.metrics.simulation.tooltip") }}
+						</ShadcnUiTooltipContent>
+					</ShadcnUiTooltip>
 					<ShadcnUiPopoverTrigger as-child>
 						<ShadcnUiButton
 							variant="ghost-plain"
@@ -362,6 +377,7 @@ function disableVisualizationRefreshTemporarily() {
 					:uid="props.node.attrs.uid"
 					:disable-refresh="disableVisualizationRefresh"
 					@simulate="(preset) => (config.simulationPreset = preset)"
+					@simulation-visible="(v) => (simulationVisible = v)"
 				/>
 			</div>
 			<ShadcnUiPopoverContent class="w-50" side="right" side-flip align="start">

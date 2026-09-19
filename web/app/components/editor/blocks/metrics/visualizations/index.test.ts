@@ -175,23 +175,6 @@ describe("indexToAlphabeticLabel", () => {
 
 describe("mergeVisualizationResults", () => {
 	it.for([
-		{ name: "null", type: null },
-		{ name: "undefined", type: undefined },
-	])(
-		"reports type-not-selected when the chart type is $name",
-		({ type }, { expect }) => {
-			expect(
-				mergeVisualizationResults(
-					type,
-					[queryItem(okResult([]))],
-					null,
-					orderedLabel,
-				),
-			).toEqual({ status: GenericQueryResultStatus.TypeNotSelected })
-		},
-	)
-
-	it.for([
 		{ name: "null", results: null },
 		{ name: "undefined", results: undefined },
 		{ name: "an empty list", results: [] },

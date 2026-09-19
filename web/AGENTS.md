@@ -348,6 +348,8 @@ test context).
   functions.
 - Tailwind utilities by default; custom rules go in `main.css` and are
   applied by class. No `<style>` blocks or static inline `style=`.
+- Lengths are rem or screen proportions (`dvh`, `dvw`, `%`), never `px`,
+  including in arbitrary values: `max-h-[min(90dvh,60rem)]`.
 
 ## PromQL grammar
 

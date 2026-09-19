@@ -82,6 +82,7 @@ const isRefreshIntervalModified = computed(() => {
 })
 const chartTopOptionElem = useTemplateRef<HTMLDivElement>("chart-top-options")
 const { width: chartTopOptionWidth } = useElementSize(chartTopOptionElem)
+const simulationVisible = ref(false)
 
 function updateOpenStatus(v: boolean) {
 	if (v) {
@@ -147,10 +148,10 @@ function openSettings() {
 				</ShadcnUiDialogHeader>
 				<div
 					v-if="config"
-					class="flex flex-col rounded-md border bg-muted/50 lg:flex-row"
+					class="flex flex-col rounded-md border bg-muted/50 lg:h-126 lg:flex-row"
 				>
 					<div class="flex min-w-0 flex-1 flex-col self-stretch">
-						<div class="relative h-70 min-w-0 border-b">
+						<div class="relative h-70 min-w-0 shrink-0 border-b">
 							<div
 								ref="chart-top-options"
 								:class="
@@ -159,6 +160,17 @@ function openSettings() {
 									)
 								"
 							>
+								<ShadcnUiTooltip v-if="simulationVisible">
+									<ShadcnUiTooltipTrigger as-child>
+										<Icon
+											name="mingcute:test-tube-line"
+											class="size-3.5 text-foreground"
+										/>
+									</ShadcnUiTooltipTrigger>
+									<ShadcnUiTooltipContent side="bottom">
+										{{ $t("editor.metrics.simulation.tooltip") }}
+									</ShadcnUiTooltipContent>
+								</ShadcnUiTooltip>
 								<div class="flex flex-col gap-0.5 md:gap-1">
 									<ShadcnUiSelect v-model="config.timeRange">
 										<ShadcnUiSelectTrigger
@@ -297,6 +309,7 @@ function openSettings() {
 								simplified-empty
 								:uid="editorStore.activeMetricBlockConfig!"
 								@simulate="(preset) => (config!.simulationPreset = preset)"
+								@simulation-visible="(v) => (simulationVisible = v)"
 							/>
 						</div>
 						<div v-if="!isMinWidth1024px" class="self-stretch border-b">
@@ -307,7 +320,7 @@ function openSettings() {
 								@open-settings="openSettings"
 							/>
 						</div>
-						<div>
+						<div class="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
 							<BottomConfig
 								:model-value="config"
 								:diff-status="diffStatus"
@@ -315,7 +328,10 @@ function openSettings() {
 							/>
 						</div>
 					</div>
-					<div v-if="isMinWidth1024px" class="w-70 self-stretch border-l">
+					<div
+						v-if="isMinWidth1024px"
+						class="w-70 self-stretch border-l lg:overflow-y-auto"
+					>
 						<ConfigSidebar
 							:model-value="config"
 							:diff-status="diffStatus"

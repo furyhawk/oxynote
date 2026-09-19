@@ -109,54 +109,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 
 	afterEach(disposeMockEndpoints)
 
-	it("asks for a visualization type before anything else", async ({
-		expect,
-	}) => {
-		const wrapper = await mountContainer(
-			metricConfig({ visualizationType: null }),
-		)
-
-		expect(wrapper.text()).toContain(
-			t("editor.metrics.status.type-not-selected.title"),
-		)
-		expect(wrapper.text()).toContain(
-			t("editor.metrics.status.type-not-selected.normal-action-button"),
-		)
-	})
-
-	it("offers only to view the metrics in read mode", async ({ expect }) => {
-		useEditorMeta().setEditable(false)
-
-		const wrapper = await mountContainer(
-			metricConfig({ visualizationType: null }),
-		)
-
-		expect(wrapper.text()).toContain(
-			t("editor.metrics.status.type-not-selected.readonly-action-button"),
-		)
-	})
-
-	it("hides the action button when the host asks it to", async ({ expect }) => {
-		const wrapper = await mountContainer(
-			metricConfig({ visualizationType: null }),
-			{ hideEmptyActionButton: true },
-		)
-
-		expect(wrapper.findAll("button")).toHaveLength(0)
-	})
-
-	it("shows a bare placeholder in a simplified host", async ({ expect }) => {
-		const wrapper = await mountContainer(
-			metricConfig({ visualizationType: null }),
-			{ simplifiedEmpty: true },
-		)
-
-		expect(wrapper.text()).toBe(
-			t("editor.metrics.status.simplified-config-in-progress.title"),
-		)
-	})
-
-	it("asks for a data source once a type is chosen", async ({ expect }) => {
+	it("asks for a data source before anything else", async ({ expect }) => {
 		const wrapper = await mountContainer(
 			metricConfig({ dataSourceId: null, queries: [] }),
 		)
@@ -164,6 +117,32 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 		expect(wrapper.text()).toContain(
 			t("editor.metrics.status.data-source-not-selected.title"),
 		)
+		expect(wrapper.text()).toContain(
+			t("editor.metrics.status.data-source-not-selected.normal-action-button"),
+		)
+	})
+
+	it("offers only to view the metrics in read mode", async ({ expect }) => {
+		useEditorMeta().setEditable(false)
+
+		const wrapper = await mountContainer(
+			metricConfig({ dataSourceId: null, queries: [] }),
+		)
+
+		expect(wrapper.text()).toContain(
+			t(
+				"editor.metrics.status.data-source-not-selected.readonly-action-button",
+			),
+		)
+	})
+
+	it("hides the action button when the host asks it to", async ({ expect }) => {
+		const wrapper = await mountContainer(
+			metricConfig({ dataSourceId: null, queries: [] }),
+			{ hideEmptyActionButton: true },
+		)
+
+		expect(wrapper.findAll("button")).toHaveLength(0)
 	})
 
 	it("shows a bare placeholder for a missing data source in a simplified host", async ({
@@ -319,13 +298,13 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 	it("opens the config modal from the action button", async ({ expect }) => {
 		const uid = nextUid()
 		const wrapper = await mountContainer(
-			metricConfig({ visualizationType: null }),
+			metricConfig({ dataSourceId: null, queries: [] }),
 			{ uid: uid },
 		)
 
 		await findButtonByText(
 			wrapper,
-			t("editor.metrics.status.type-not-selected.normal-action-button"),
+			t("editor.metrics.status.data-source-not-selected.normal-action-button"),
 		).trigger("click")
 
 		expect(useEditorStore().activeMetricBlockConfig).toBe(uid)
@@ -512,7 +491,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			await vi.waitFor(() => {
 				expect(calls.length).toBeGreaterThan(0)
 			}, WAIT_FOR_OPTIONS)
-			expect(wrapper.text()).not.toContain(t("editor.metrics.simulation.label"))
+			expect(simulationVisible(wrapper)).toBe(false)
 		})
 
 		// a simulation stands in for a metric that has not arrived, not
@@ -535,9 +514,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 				)
 
 				await vi.waitFor(() => {
-					expect(wrapper.text()).not.toContain(
-						t("editor.metrics.simulation.label"),
-					)
+					expect(simulationVisible(wrapper)).toBe(false)
 				}, WAIT_FOR_OPTIONS)
 			},
 		)
@@ -552,7 +529,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 				metricConfig({ simulationPreset: MetricSimulationPreset.CPUUsage }),
 			)
 
-			expect(wrapper.text()).toContain(t("editor.metrics.simulation.label"))
+			expect(simulationVisible(wrapper)).toBe(true)
 		})
 
 		it("draws the window the block is configured for", async ({ expect }) => {
@@ -600,7 +577,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			},
 		)
 
-		it("marks a simulated block for every reader", async ({ expect }) => {
+		it("reports a simulated block for every reader", async ({ expect }) => {
 			useEditorMeta().setEditable(false)
 			mockEndpoint("GET", QUERY_URL, () => seriesResult())
 
@@ -608,15 +585,15 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 				metricConfig({ simulationPreset: MetricSimulationPreset.CPUUsage }),
 			)
 
-			expect(wrapper.text()).toContain(t("editor.metrics.simulation.label"))
+			expect(simulationVisible(wrapper)).toBe(true)
 		})
 
-		it("leaves an unsimulated block unmarked", async ({ expect }) => {
+		it("reports an unsimulated block as not simulating", async ({ expect }) => {
 			mockEndpoint("GET", QUERY_URL, () => seriesResult())
 
 			const wrapper = await mountContainer(metricConfig())
 
-			expect(wrapper.text()).not.toContain(t("editor.metrics.simulation.label"))
+			expect(simulationVisible(wrapper)).toBe(false)
 		})
 
 		it("asks core whether the real data has arrived", async ({ expect }) => {
@@ -727,7 +704,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			expect(wrapper.text()).not.toContain(
 				t("editor.metrics.status.no-data-loaded.title"),
 			)
-			expect(wrapper.text()).toContain(t("editor.metrics.simulation.label"))
+			expect(simulationVisible(wrapper)).toBe(true)
 			expect(
 				wrapper.findComponent({ name: "LineChart" }).props("seriesData"),
 			).toHaveLength(3)
@@ -739,7 +716,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 					wrapper.findComponent({ name: "LineChart" }).props("seriesData"),
 				).toHaveLength(1)
 			}, WAIT_FOR_OPTIONS)
-			expect(wrapper.text()).not.toContain(t("editor.metrics.simulation.label"))
+			expect(simulationVisible(wrapper)).toBe(false)
 		})
 
 		// a block whose queries cannot run is never answered, and holding
@@ -764,7 +741,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			})
 			await nextTick()
 
-			expect(wrapper.text()).not.toContain(t("editor.metrics.simulation.label"))
+			expect(simulationVisible(wrapper)).toBe(false)
 			expect(calls).toHaveLength(0)
 		})
 
@@ -826,7 +803,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 
 			const wrapper = await mountContainer(config, { uid: uid })
 
-			expect(wrapper.text()).toContain(t("editor.metrics.simulation.label"))
+			expect(simulationVisible(wrapper)).toBe(true)
 
 			// core removes the attribute on the live document, which reaches
 			// the editor as a node attribute change
@@ -837,7 +814,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			await vi.waitFor(() => {
 				expect(calls.length).toBeGreaterThan(0)
 			}, WAIT_FOR_OPTIONS)
-			expect(wrapper.text()).not.toContain(t("editor.metrics.simulation.label"))
+			expect(simulationVisible(wrapper)).toBe(false)
 		})
 
 		it("keeps drawing when the check fails", async ({ expect }) => {
@@ -859,3 +836,8 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 		})
 	})
 })
+
+// whether the container last reported simulated data as visible
+function simulationVisible(wrapper: VueWrapper): boolean | undefined {
+	return wrapper.emitted<[boolean]>("simulation-visible")?.at(-1)?.[0]
+}

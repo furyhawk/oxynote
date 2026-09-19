@@ -95,7 +95,9 @@ function openModal() {
 			size="2sm"
 			@click.stop="openModal"
 		>
-			<Icon name="lucide:square-pen" />
+			<Icon
+				:name="isEditingDisabled ? 'mingcute:eye-line' : 'mingcute:pencil-line'"
+			/>
 			{{
 				!isEditingDisabled
 					? $t("editor.metrics.config.modal-trigger-button-normal")

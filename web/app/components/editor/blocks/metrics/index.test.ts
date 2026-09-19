@@ -226,7 +226,7 @@ describe("MetricBlock", () => {
 				config: null,
 				title: "",
 				dataSourceId: null,
-				visualizationType: null,
+				visualizationType: GenericQueryChartType.Line,
 				queries: [{ name: "Query 1", query: "", legendFormat: "" }],
 				timeRange: TimeRangePreset.Last5Minutes,
 				refreshInterval: RefreshInterval.M5,

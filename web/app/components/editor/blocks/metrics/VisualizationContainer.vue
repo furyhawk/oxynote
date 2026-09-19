@@ -33,7 +33,7 @@ const props = defineProps<{
 	disableRefresh?: boolean
 }>()
 const emit = defineEmits<{
-	(event: "loading", v: boolean): void
+	(event: "loading" | "simulation-visible", v: boolean): void
 	(event: "simulate", preset: MetricSimulationPreset): void
 }>()
 
@@ -119,7 +119,7 @@ const fetchMetricData = useMultipleGenericQueries(
 			? debouncedConfig.value.visualizationType
 			: props.config.visualizationType
 
-		if (!queries?.length || !timeRange || !visualizationType) {
+		if (!queries?.length || !timeRange) {
 			return null
 		}
 
@@ -161,6 +161,14 @@ const queryRunnable = computed(() => {
 
 const canSimulate = computed(() => {
 	return queryRunnable.value && !dataSourceUnavailable.value
+})
+
+const simulationOffered = computed(() => {
+	return !isEditingDisabled.value && canSimulate.value
+})
+
+const metricsButtonIcon = computed(() => {
+	return isEditingDisabled.value ? "mingcute:eye-line" : "mingcute:pencil-line"
 })
 
 // what the block draws, which outlives the attribute by one load
@@ -310,6 +318,13 @@ watch(
 	},
 )
 
+watchImmediate(
+	() => !!drawnSimulationPreset.value,
+	(visible) => {
+		emit("simulation-visible", visible)
+	},
+)
+
 // labels series the query gave no legend format for, counting up per
 // merge call ("Line A", "Line B", ...)
 function orderedLegendLabel() {
@@ -416,13 +431,6 @@ function openModal() {
 </script>
 <template>
 	<div class="relative flex size-full min-w-0 items-center justify-center">
-		<div
-			v-if="drawnSimulationPreset"
-			class="pointer-events-none absolute top-2.5 left-1/2 z-1 flex -translate-x-1/2 items-center gap-1 text-2sm text-foreground/70"
-		>
-			<Icon name="lucide:hourglass" class="size-3" />
-			{{ $t("editor.metrics.simulation.label") }}
-		</div>
 		<template v-if="data.status === GenericQueryResultStatus.Ok && data.data">
 			<LineChart
 				v-if="props.config.visualizationType === GenericQueryChartType.Line"
@@ -480,8 +488,12 @@ function openModal() {
 							{{ $t("editor.metrics.status.no-data-loaded.description") }}
 						</ShadcnUiEmptyDescription>
 					</ShadcnUiEmptyHeader>
-					<ShadcnUiEmptyContent v-if="!props.hideEmptyActionButton">
-						<ShadcnUiButton variant="outline" size="2sm" @click="openModal">
+					<ShadcnUiEmptyContent
+						v-if="!props.hideEmptyActionButton"
+						:class="simulationOffered && 'grid w-auto grid-cols-2'"
+					>
+						<ShadcnUiButton size="2sm" @click="openModal">
+							<Icon :name="metricsButtonIcon" class="size-3.5" />
 							{{
 								!isEditingDisabled
 									? $t(
@@ -493,11 +505,13 @@ function openModal() {
 							}}
 						</ShadcnUiButton>
 						<ShadcnUiButton
-							v-if="!isEditingDisabled && canSimulate"
+							v-if="simulationOffered"
 							variant="outline"
 							size="2sm"
+							class="gap-0.5"
 							@click="startSimulation"
 						>
+							<Icon name="mingcute:test-tube-line" class="size-3.5" />
 							{{
 								$t(
 									"editor.metrics.status.no-data-loaded.simulate-action-button",
@@ -521,7 +535,8 @@ function openModal() {
 						</ShadcnUiEmptyDescription>
 					</ShadcnUiEmptyHeader>
 					<ShadcnUiEmptyContent v-if="!props.hideEmptyActionButton">
-						<ShadcnUiButton variant="outline" size="2sm" @click="openModal">
+						<ShadcnUiButton size="2sm" @click="openModal">
+							<Icon :name="metricsButtonIcon" class="size-3.5" />
 							{{
 								!isEditingDisabled
 									? $t(
@@ -548,56 +563,19 @@ function openModal() {
 				</ShadcnUiEmptyHeader>
 				<!-- editing the block is what the simplified state is already
 				inside of, but simulating it is not offered anywhere else -->
-				<ShadcnUiEmptyContent v-if="!isEditingDisabled && canSimulate">
-					<ShadcnUiButton variant="outline" size="2sm" @click="startSimulation">
+				<ShadcnUiEmptyContent v-if="simulationOffered">
+					<ShadcnUiButton
+						variant="outline"
+						size="2sm"
+						class="gap-0.5"
+						@click="startSimulation"
+					>
+						<Icon name="mingcute:test-tube-line" class="size-3.5" />
 						{{
 							$t("editor.metrics.status.no-data-loaded.simulate-action-button")
 						}}
 					</ShadcnUiButton>
 				</ShadcnUiEmptyContent>
-			</ShadcnUiEmpty>
-		</div>
-		<div
-			v-else-if="data.status === GenericQueryResultStatus.TypeNotSelected"
-			class="text-foreground"
-		>
-			<ShadcnUiEmpty v-if="!props.simplifiedEmpty">
-				<ShadcnUiEmptyHeader>
-					<ShadcnUiEmptyMedia variant="icon" class="size-9">
-						<Icon name="lucide:chart-line" class="size-6" />
-					</ShadcnUiEmptyMedia>
-					<ShadcnUiEmptyTitle>
-						{{ $t("editor.metrics.status.type-not-selected.title") }}
-					</ShadcnUiEmptyTitle>
-					<ShadcnUiEmptyDescription>
-						{{ $t("editor.metrics.status.type-not-selected.description") }}
-					</ShadcnUiEmptyDescription>
-				</ShadcnUiEmptyHeader>
-				<ShadcnUiEmptyContent v-if="!props.hideEmptyActionButton">
-					<ShadcnUiButton variant="outline" size="2sm" @click="openModal">
-						{{
-							!isEditingDisabled
-								? $t(
-										"editor.metrics.status.type-not-selected.normal-action-button",
-									)
-								: $t(
-										"editor.metrics.status.type-not-selected.readonly-action-button",
-									)
-						}}
-					</ShadcnUiButton>
-				</ShadcnUiEmptyContent>
-			</ShadcnUiEmpty>
-			<ShadcnUiEmpty v-else>
-				<ShadcnUiEmptyHeader>
-					<ShadcnUiEmptyMedia variant="icon" class="size-9">
-						<Icon name="lucide:chart-line" class="size-6" />
-					</ShadcnUiEmptyMedia>
-					<ShadcnUiEmptyTitle>
-						{{
-							$t("editor.metrics.status.simplified-config-in-progress.title")
-						}}
-					</ShadcnUiEmptyTitle>
-				</ShadcnUiEmptyHeader>
 			</ShadcnUiEmpty>
 		</div>
 		<div
@@ -638,7 +616,8 @@ function openModal() {
 					</ShadcnUiEmptyDescription>
 				</ShadcnUiEmptyHeader>
 				<ShadcnUiEmptyContent v-if="!props.hideEmptyActionButton">
-					<ShadcnUiButton variant="outline" size="2sm" @click="openModal">
+					<ShadcnUiButton size="2sm" @click="openModal">
+						<Icon :name="metricsButtonIcon" class="size-3.5" />
 						{{
 							!isEditingDisabled
 								? $t("editor.metrics.status.invalid-data.normal-action-button")
@@ -664,7 +643,8 @@ function openModal() {
 					</ShadcnUiEmptyDescription>
 				</ShadcnUiEmptyHeader>
 				<ShadcnUiEmptyContent v-if="!props.hideEmptyActionButton">
-					<ShadcnUiButton variant="outline" size="2sm" @click="openModal">
+					<ShadcnUiButton size="2sm" @click="openModal">
+						<Icon :name="metricsButtonIcon" class="size-3.5" />
 						{{
 							!isEditingDisabled
 								? $t("editor.metrics.status.invalid-data.normal-action-button")

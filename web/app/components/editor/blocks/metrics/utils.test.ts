@@ -29,7 +29,7 @@ describe("defaultMetricConfig", () => {
 		expect(defaultMetricConfig()).toEqual({
 			title: "",
 			dataSourceId: null,
-			visualizationType: null,
+			visualizationType: GenericQueryChartType.Line,
 			queries: [{ name: "Query 1", query: "", legendFormat: "" }],
 			timeRange: TimeRangePreset.Last5Minutes,
 			refreshInterval: RefreshInterval.M5,
@@ -103,7 +103,7 @@ describe("buildConfigFromNodeAttrs", () => {
 		expect(buildConfigFromNodeAttrs({ config: {} })).toEqual({
 			title: "",
 			dataSourceId: null,
-			visualizationType: null,
+			visualizationType: GenericQueryChartType.Line,
 			queries: null,
 			timeRange: null,
 			refreshInterval: null,
@@ -161,7 +161,7 @@ describe("buildConfigFromNodeAttrs", () => {
 		expect(buildConfigFromNodeAttrs({})).toEqual({
 			title: "",
 			dataSourceId: null,
-			visualizationType: null,
+			visualizationType: GenericQueryChartType.Line,
 			queries: null,
 			timeRange: null,
 			refreshInterval: null,

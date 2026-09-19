@@ -437,12 +437,6 @@
 				"simplified-config-in-progress": {
 					"title": "No Data"
 				},
-				"type-not-selected": {
-					"title": "No Visualization Selected",
-					"description": "Start configuring metrics by selecting a visualization type",
-					"normal-action-button": "Edit Metrics",
-					"readonly-action-button": "View Metrics"
-				},
 				"data-source-not-selected": {
 					"title": "No Data Source Selected",
 					"description": "Choose a data source to see metric data",
@@ -464,7 +458,7 @@
 					"description": "The current configuration returned no data. Please adjust your queries or data sources",
 					"normal-action-button": "Edit Metrics",
 					"readonly-action-button": "View Metrics",
-					"simulate-action-button": "Simulate data"
+					"simulate-action-button": "Simulate Data"
 				}
 			},
 			"config": {
@@ -783,12 +777,12 @@
 				}
 			},
 			"simulation": {
-				"label": "Simulation",
+				"tooltip": "Showing simulated data until real data is available",
 				"section-title": "Simulated data",
-				"section-description": "Simulate the shape this chart will take until the metric it documents becomes available.",
-				"preset-label": "Chart",
-				"preset-placeholder": "Select a chart",
-				"stop-button": "Stop simulating",
+				"section-description": "The chart shows sample data in the pattern below until real data is available.",
+				"preset-label": "Data pattern",
+				"preset-placeholder": "Select a pattern",
+				"stop-button": "Remove Simulated Data",
 				"preset-options": {
 					"cpu_usage": "CPU usage",
 					"memory_usage": "Memory usage",

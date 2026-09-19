@@ -1,4 +1,3 @@
-import { mountSuspended } from "@nuxt/test-utils/runtime"
 import { enableAutoUnmount } from "@vue/test-utils"
 import { afterEach, beforeEach, describe, it } from "vitest"
 import BaseModal from "./BaseModal.client.vue"
@@ -20,6 +19,7 @@ import {
 } from "~/composables/api/test-helpers"
 import {
 	emitFrom,
+	mountUnderTooltipProvider,
 	stubViewportMatches,
 	t,
 	teleportedButton,
@@ -67,7 +67,7 @@ function activateBlock(
 }
 
 function mountModal() {
-	return mountSuspended(BaseModal)
+	return mountUnderTooltipProvider(BaseModal, {})
 }
 
 function dialogText(): string {
@@ -275,6 +275,30 @@ describe("<MetricConfigBaseModal>", { concurrent: false }, () => {
 		).toBe(MetricSimulationPreset.HTTPLatency)
 	})
 
+	it("shows the simulation icon while the preview simulates", async ({
+		expect,
+	}) => {
+		activateBlock()
+		const wrapper = await mountModal()
+
+		emitFrom(wrapper, VisualizationContainer, "simulation-visible", true)
+		await nextTick()
+
+		expect(simulationIconShown()).toBe(true)
+	})
+
+	it("hides the simulation icon while the preview draws real data", async ({
+		expect,
+	}) => {
+		activateBlock()
+		const wrapper = await mountModal()
+
+		emitFrom(wrapper, VisualizationContainer, "simulation-visible", false)
+		await nextTick()
+
+		expect(simulationIconShown()).toBe(false)
+	})
+
 	it("stands aside when the reader asks for the data source settings", async ({
 		expect,
 	}) => {
@@ -285,6 +309,15 @@ describe("<MetricConfigBaseModal>", { concurrent: false }, () => {
 		await nextTick()
 
 		expect(useEditorStore().activeMetricBlockConfig).toBeNull()
-		expect(wrapper.emitted("open-settings")).toHaveLength(1)
+		expect(
+			wrapper.findComponent(BaseModal).emitted("open-settings"),
+		).toHaveLength(1)
 	})
 })
+
+// the modal teleports to the body, out of the wrapper's reach
+function simulationIconShown(): boolean {
+	return (
+		document.body.querySelector('[class~="i-mingcute:test-tube-line"]') !== null
+	)
+}

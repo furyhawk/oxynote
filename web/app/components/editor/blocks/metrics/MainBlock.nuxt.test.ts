@@ -13,6 +13,7 @@ import {
 	makeEditor,
 	makeNode,
 	mountNodeView,
+	mountNodeViewUnderTooltipProvider,
 } from "../../test-helpers/node-view"
 import { DiffStatus } from "~/components/editor/diff/position-map"
 import {
@@ -20,7 +21,7 @@ import {
 	disposeMockEndpoints,
 	makeXid,
 } from "~/composables/api/test-helpers"
-import { emitFrom } from "~/components/test-helpers"
+import { emitFrom, renderedIconNames } from "~/components/test-helpers"
 
 const DOCUMENT_ID = makeXid("doc")
 const BRANCH_ID = makeXid("branch")
@@ -77,11 +78,15 @@ function mountBlock(
 		getPos?: () => number | undefined
 		nodeAtPos?: { attrs: Record<string, unknown> } | null
 		editing?: { uid: string; name: string; color: string } | null
+		underTooltipProvider?: boolean
 	} = {},
 ) {
 	const uid = options.uid ?? nextUid()
+	const mount = options.underTooltipProvider
+		? mountNodeViewUnderTooltipProvider
+		: mountNodeView
 
-	return mountNodeView(MainBlock, {
+	return mount(MainBlock, {
 		node: makeNode({ uid: uid, ...options.attrs }),
 		editor: makeMetricEditor({
 			nodeAtPos:
@@ -205,6 +210,18 @@ describe("<MetricMainBlock>", { concurrent: false }, () => {
 		expect(storedConfig(uid)?.axisBounds).toEqual({ min: 0, max: 10 })
 	})
 
+	it("reads a block saved without a chart type as a time series", async ({
+		expect,
+	}) => {
+		const uid = nextUid()
+
+		await mountBlock({ uid: uid, attrs: { visualizationType: null } })
+
+		expect(storedConfig(uid)?.visualizationType).toBe(
+			GenericQueryChartType.Line,
+		)
+	})
+
 	it("publishes nothing for a block shown inside a diff", async ({
 		expect,
 	}) => {
@@ -298,11 +315,34 @@ describe("<MetricMainBlock>", { concurrent: false }, () => {
 		await mountBlock({
 			uid: uid,
 			attrs: { simulationPreset: MetricSimulationPreset.DiskUsage },
+			underTooltipProvider: true,
 		})
 
 		expect(storedConfig(uid)?.simulationPreset).toBe(
 			MetricSimulationPreset.DiskUsage,
 		)
+	})
+
+	it("shows the simulation icon while the visualization simulates", async ({
+		expect,
+	}) => {
+		const wrapper = await mountBlock({ underTooltipProvider: true })
+
+		emitFrom(wrapper, VisualizationContainer, "simulation-visible", true)
+		await nextTick()
+
+		expect(renderedIconNames(wrapper)).toContain("mingcute:test-tube-line")
+	})
+
+	it("hides the simulation icon while the visualization draws real data", async ({
+		expect,
+	}) => {
+		const wrapper = await mountBlock()
+
+		emitFrom(wrapper, VisualizationContainer, "simulation-visible", false)
+		await nextTick()
+
+		expect(renderedIconNames(wrapper)).not.toContain("mingcute:test-tube-line")
 	})
 
 	it("flattens a legacy config on the first edit", async ({ expect }) => {

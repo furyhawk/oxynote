@@ -79,7 +79,7 @@ export enum MetricSimulationPreset {
 export interface MetricConfig {
 	title: string
 	dataSourceId: string | null
-	visualizationType: GenericQueryChartType | null
+	visualizationType: GenericQueryChartType
 	queries:
 		| {
 				name: string
@@ -118,7 +118,7 @@ export function defaultMetricConfig(): MetricConfig {
 	return {
 		title: "",
 		dataSourceId: null,
-		visualizationType: null,
+		visualizationType: GenericQueryChartType.Line,
 		// NOTE: this doesn't use i18n because this isn't a reactive context
 		queries: [{ name: "Query 1", query: "", legendFormat: "" }],
 		timeRange: TimeRangePreset.Last5Minutes,
@@ -153,7 +153,8 @@ export function buildConfigFromNodeAttrs(
 		return {
 			title: legacy.title ?? "",
 			dataSourceId: legacy.dataSourceId ?? null,
-			visualizationType: legacy.type ?? legacy.visualizationType ?? null,
+			visualizationType:
+				legacy.type ?? legacy.visualizationType ?? GenericQueryChartType.Line,
 			queries: legacy.queries ?? null,
 			timeRange: legacy.timeRange ?? null,
 			refreshInterval: legacy.refreshInterval ?? null,
@@ -178,7 +179,7 @@ export function buildConfigFromNodeAttrs(
 		dataSourceId: (attrs.dataSourceId as string | null | undefined) ?? null,
 		visualizationType:
 			(attrs.visualizationType as GenericQueryChartType | null | undefined) ??
-			null,
+			GenericQueryChartType.Line,
 		queries: (attrs.queries as MetricConfig["queries"] | undefined) ?? null,
 		timeRange: (attrs.timeRange as TimeRangePreset | null | undefined) ?? null,
 		refreshInterval:
