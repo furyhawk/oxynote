@@ -13,6 +13,170 @@ export function contentEditor(page: Page): Locator {
 	return page.locator(".content-editor .ProseMirror")
 }
 
+// diffEditor is the merged read-only editor a draft shows while "show
+// changes" is on. It is the one editor that hides its caret, which is
+// also what tells it apart from the comment composer mounted in the same
+// pane.
+export function diffEditor(page: Page): Locator {
+	return page.locator(".diff-editor .ProseMirror.caret-transparent")
+}
+
+// the panes wrapping each editor together with its block handle, bubble
+// menu and comment popover. Anything the editor owns but renders outside
+// its ProseMirror element is found through the pane.
+export function contentPane(page: Page): Locator {
+	return page.locator(".content-editor")
+}
+
+export function diffPane(page: Page): Locator {
+	return page.locator(".diff-editor")
+}
+
+// placeCaret clicks just inside the left or right edge of a block, which
+// maps to the first or last position of its line. The block is a
+// full-width element, so its edge sits well past its text, and the click
+// is retried until focus sticks: a late re-render of a freshly switched
+// branch can swallow the first one. Home and End are not used because on
+// macOS chromium binds them to the document, not the line.
+export async function placeCaret(
+	block: Locator,
+	edge: "start" | "end",
+): Promise<void> {
+	await expect(async () => {
+		const box = await block.boundingBox()
+		expect(box).not.toBeNull()
+
+		await block.click({
+			position: {
+				x: edge === "start" ? 1 : (box?.width ?? 2) - 1,
+				y: (box?.height ?? 2) / 2,
+			},
+		})
+		await expect(
+			block.locator("xpath=ancestor::*[contains(@class, 'ProseMirror')]"),
+		).toBeFocused()
+	}).toPass()
+	await selectionSettled(block)
+}
+
+// selectText selects one run of a block's text with the keyboard, walking
+// to it from the block's start. A mouse drag would depend on where each
+// glyph is drawn.
+export async function selectText(
+	page: Page,
+	block: Locator,
+	text: string,
+): Promise<void> {
+	const content = await editorText(block)
+	const start = content.indexOf(text)
+	if (start === -1) {
+		throw new Error(`"${text}" is not in the block reading "${content}"`)
+	}
+
+	await placeCaret(block, "start")
+	await pressTimes(page, "ArrowRight", start)
+	await pressTimes(page, "Shift+ArrowRight", text.length)
+	await selectionSettled(block)
+}
+
+// the slice of tiptap's editor, reachable from its element, that
+// selectionSettled reads
+interface EditorHandle {
+	state: { selection: { from: number; to: number } }
+	view: { posAtDOM(node: Node, offset: number): number }
+}
+
+// selectionSettled waits until the editor's own selection matches the
+// browser's. A click or an arrow key moves the browser's caret at once,
+// but the editor only learns of it from the selectionchange event, which
+// queues behind the input that caused it. A key the editor handles
+// itself, such as Enter or Backspace, sent before then acts on the old
+// selection.
+export async function selectionSettled(block: Locator): Promise<void> {
+	await expect
+		.poll(() =>
+			block.evaluate((el) => {
+				const root = el.closest<Element & { editor?: EditorHandle }>(
+					".ProseMirror",
+				)
+				const editor = root?.editor
+				const selection = document.getSelection()
+				if (!editor || !selection?.anchorNode || !selection.focusNode) {
+					return false
+				}
+
+				try {
+					const anchor = editor.view.posAtDOM(
+						selection.anchorNode,
+						selection.anchorOffset,
+					)
+					const focus = editor.view.posAtDOM(
+						selection.focusNode,
+						selection.focusOffset,
+					)
+					const { from, to } = editor.state.selection
+
+					return (
+						Math.min(anchor, focus) === from && Math.max(anchor, focus) === to
+					)
+				} catch {
+					return false
+				}
+			}),
+		)
+		.toBe(true)
+}
+
+async function pressTimes(
+	page: Page,
+	key: string,
+	times: number,
+): Promise<void> {
+	for (let pressed = 0; pressed < times; pressed += 1) {
+		await page.keyboard.press(key)
+	}
+}
+
+// the heights, as fractions of a block, at which openBlockMenu hovers it
+const HOVER_HEIGHTS = [0.5, 0.25, 0.75, 0.1, 0.9]
+
+// openBlockMenu opens the block handle's menu for a block. The handle
+// slides in beside whichever block the pointer is over, so the block is
+// hovered first, at more than one height if need be: the handle stays
+// away while the pointer is level with an element that opts out of it,
+// such as a parameter separator in the other column of a split block.
+// On an editable branch the handle carries two triggers, hooks and block
+// actions, told apart by the icon each one shows.
+export async function openBlockMenu(
+	page: Page,
+	pane: Locator,
+	block: Locator,
+): Promise<Locator> {
+	const trigger = pane.locator(
+		'.z-drag-handle [data-slot="dropdown-menu-trigger"]',
+		{ has: page.locator('[class*="dots-line"]') },
+	)
+
+	let attempt = 0
+	await expect(async () => {
+		const box = await block.boundingBox()
+		expect(box).not.toBeNull()
+
+		const height = HOVER_HEIGHTS[attempt % HOVER_HEIGHTS.length] ?? 0.5
+		attempt += 1
+		await block.hover({
+			position: { x: (box?.width ?? 2) / 2, y: (box?.height ?? 2) * height },
+		})
+		await expect(trigger).toBeVisible({ timeout: 1_000 })
+	}).toPass()
+	await trigger.click()
+
+	const menu = page.getByRole("menu")
+	await expect(menu).toBeVisible()
+
+	return menu
+}
+
 // readModeToggle is the navbar button switching the page between read and
 // edit mode. Its accessible name is the mode the page is in.
 export function readModeToggle(page: Page): Locator {

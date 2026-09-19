@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test"
-import { contentEditor, waitForEditor } from "./editor"
+import { contentEditor, diffEditor, waitForEditor } from "./editor"
 import { t } from "./i18n"
 
 // the two branches a reviewable page carries. They are the branch names
@@ -67,6 +67,22 @@ export async function switchToBranch(
 	if (branch === "draft") {
 		await expect(contentEditor(page)).toHaveAttribute("contenteditable", "true")
 	}
+}
+
+// showChanges turns the draft's "show changes" switch on and waits for the
+// merged diff editor it mounts over the draft. The diff needs the main
+// branch synced as well, so on a fresh page the editor takes a moment.
+export async function showChanges(page: Page): Promise<void> {
+	await page.locator("#show-diff").click()
+	await expect(diffEditor(page)).toBeVisible({ timeout: 15_000 })
+}
+
+// hideChanges turns the switch off again and waits for the draft editor
+// to be back in view.
+export async function hideChanges(page: Page): Promise<void> {
+	await page.locator("#show-diff").click()
+	await expect(diffEditor(page)).toHaveCount(0)
+	await expect(contentEditor(page)).toBeVisible()
 }
 
 // reviewActions is the split button carrying the draft's approve and

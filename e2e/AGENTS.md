@@ -199,7 +199,15 @@ cheaper tier can:
   is rendered inside the paragraph, so a plain text read splices the other
   user's name into the content.
 - **The title and the body are two editors** (`titleEditor()`,
-  `contentEditor()`); Enter in the title moves into the body.
+  `contentEditor()`); Enter in the title moves into the body. With "show
+  changes" on, the body is a third, `diffEditor()`, and everything an
+  editor renders outside its ProseMirror element (handle, bubble menu,
+  comment popover) is reached through its pane, `contentPane()` or
+  `diffPane()`.
+- **Block handles come through `openBlockMenu()`**, which hovers the block
+  until the handle shows: the handle stays away while the pointer is level
+  with any `drag-handle-ignore` element in the editor, such as a parameter
+  separator in the other column of a split block.
 
 ### Independence & concurrency
 
@@ -228,9 +236,26 @@ cheaper tier can:
 - **`documentPersisted()` is the one permitted `waitForTimeout`**:
   hocuspocus stores two seconds after the last change and nothing reports
   it.
+- **The editor's selection lags the browser's caret.** A click or an arrow
+  key moves the caret at once; tiptap learns of it from the queued
+  `selectionchange` event. A key tiptap handles itself (Enter, Backspace)
+  or a click handler that reads the selection, sent straight after, acts
+  on the old one. Place and extend selections through `placeCaret()` and
+  `selectText()`, and open a text comment through `openTextComment()`,
+  which all wait for the editor to catch up. Never `Home` or `End`: macOS
+  chromium binds them to the document, not the line.
 - Three waits are raised above the default (post-signup redirect,
   post-login redirect, cold document load), all cross-service chains. Any
   other raised timeout carries a comment saying what is slow.
+
+### A test that fails after a code change
+
+- **Never edit a test just to make it pass again.** First decide whether
+  the code or the test is wrong. A failure caused by anything other than an
+  intended change is a bug the test caught; fix the code.
+- Change a test only where the behaviour it asserts changed on purpose,
+  and change only those assertions. Name that intended change when
+  reporting the edit.
 
 ### Failure artifacts
 

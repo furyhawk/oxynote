@@ -9,11 +9,12 @@ import {
 import { setResponseStatus } from "h3"
 import { afterEach, beforeEach, describe, it, vi } from "vitest"
 import CommentRenderer from "./CommentRenderer.vue"
-import { CommentMark } from "./comment-mark"
+import { CommentMark, findCommentMarkById } from "./comment-mark"
 import { NodeComment } from "./node-comment-extension"
 import { CommentExtensions } from "./utils"
 import UniqueID from "../tiptap-utils/unique-id"
 import { stubThemeColorContext } from "../test-helpers/theme"
+import { DiffStatus, type PositionMap } from "../diff/position-map"
 import {
 	clearQueryCache,
 	disposeMockEndpoints,
@@ -65,8 +66,10 @@ const DOCUMENT_ID = makeXid("doc")
 const BRANCH_ID = makeXid("branch")
 const ME = makeXid("usme")
 const COMMENT_ID = makeXid("cmt")
+const BLOCK_UID = "block-1"
 
 let contentEditor: Editor | null = null
+let diffEditor: Editor | null = null
 
 // the renderer anchors comments in a live document, so the suite drives a
 // real editor holding the same mark and node comment extensions the app
@@ -113,6 +116,83 @@ function serverComment(overrides: Record<string, unknown> = {}) {
 		createdAt: new Date("2026-01-01T00:00:00Z"),
 		...overrides,
 	}
+}
+
+// a diff editor over the same content. Both editors carry the block under
+// one uid, the way the diff view pairs merged blocks with their source.
+function diffDocOf(source: Editor): Editor {
+	const element = document.createElement("div")
+	document.body.appendChild(element)
+
+	diffEditor = new TiptapEditor({
+		element: element,
+		extensions: [
+			...CommentExtensions,
+			UniqueID.configure({ types: ["paragraph"], attributeName: "uid" }),
+			CommentMark,
+			NodeComment.configure({ types: ["paragraph"] }),
+		],
+		content: source.getJSON(),
+	})
+
+	for (const editor of [source, diffEditor]) {
+		const block = editor.state.doc.firstChild
+		editor.view.dispatch(
+			editor.state.tr.setNodeMarkup(0, undefined, {
+				...block?.attrs,
+				uid: BLOCK_UID,
+			}),
+		)
+	}
+
+	return diffEditor
+}
+
+// the first block, reported as added on the branch
+function addedBlockMap(editor: Editor): PositionMap {
+	return [
+		{
+			source: "modified",
+			blockIndex: 0,
+			startPos: 0,
+			nodeSize: editor.state.doc.firstChild?.nodeSize ?? 0,
+			diffStatus: DiffStatus.Added,
+			uid: BLOCK_UID,
+		},
+	]
+}
+
+function mountDiffRenderer(content: Editor, diff: Editor) {
+	return mountSuspended(CommentRenderer, {
+		props: {
+			contentEditor: content,
+			container: null,
+			diffContext: {
+				diffEditor: diff,
+				positionMap: addedBlockMap(diff),
+				suppressNextRecompute: () => undefined,
+			},
+		},
+	})
+}
+
+// types a draft into the open thread and saves it against the stubbed
+// server, which answers with COMMENT_ID
+async function saveDraft(wrapper: VueWrapper) {
+	mockEndpoint("POST", `/api/documents/${DOCUMENT_ID}/comments`, () =>
+		serverComment(),
+	)
+	// saving refetches the thread list
+	mockEndpoint("GET", `/api/documents/${DOCUMENT_ID}/comments`, () => [
+		serverComment(),
+	])
+	commentEditor(wrapper).commands.setContent(commentBody("looks good"))
+	await flushPromises()
+
+	await popoverButton(
+		wrapper,
+		t("editor.comment-thread.comment-button"),
+	).trigger("click")
 }
 
 function mountRenderer(editor: Editor) {
@@ -197,6 +277,14 @@ describe("<CommentRenderer>", { concurrent: false }, () => {
 			contentEditor.destroy()
 			element?.remove()
 			contentEditor = null
+		}
+
+		if (diffEditor) {
+			const element = diffEditor.view.dom.parentElement
+
+			diffEditor.destroy()
+			element?.remove()
+			diffEditor = null
 		}
 	})
 
@@ -699,5 +787,52 @@ describe("<CommentRenderer>", { concurrent: false }, () => {
 		await vi.waitFor(() => {
 			expect(calls.length).toBeGreaterThan(0)
 		}, WAIT_FOR_OPTIONS)
+	})
+	// the content editor keeps its own renderer mounted, hidden, next to
+	// the diff one
+	describe("when the diff view is on", () => {
+		beforeEach(() => {
+			useEditorStore().setReviewableDiffActive(true)
+		})
+
+		it("keeps a block comment on added content in the branch", async ({
+			expect,
+		}) => {
+			const content = textDoc("hello world")
+			const diff = diffDocOf(content)
+			await mountRenderer(content)
+			const wrapper = await mountDiffRenderer(content, diff)
+			await api(wrapper).addNewComment(0)
+			await nextTick()
+
+			await saveDraft(wrapper)
+
+			await vi.waitFor(() => {
+				expect(diff.state.doc.firstChild?.attrs.nodeCommentId).toBe(COMMENT_ID)
+			}, WAIT_FOR_OPTIONS)
+			expect(content.state.doc.firstChild?.attrs.nodeCommentId).toBe(COMMENT_ID)
+		})
+
+		it("keeps a text comment on added content in the branch", async ({
+			expect,
+		}) => {
+			const content = textDoc("hello world")
+			const diff = diffDocOf(content)
+			diff.commands.setTextSelection({ from: 1, to: 6 })
+			await mountRenderer(content)
+			const wrapper = await mountDiffRenderer(content, diff)
+			await api(wrapper).addNewComment("text-selection")
+			await nextTick()
+
+			await saveDraft(wrapper)
+
+			await vi.waitFor(() => {
+				expect(findCommentMarkById(diff.state, COMMENT_ID)).not.toBeNull()
+			}, WAIT_FOR_OPTIONS)
+			expect(findCommentMarkById(content.state, COMMENT_ID)).toMatchObject({
+				from: 1,
+				to: 6,
+			})
+		})
 	})
 })

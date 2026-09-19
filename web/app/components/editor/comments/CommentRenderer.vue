@@ -352,6 +352,13 @@ watch(
 )
 
 watchDeep([fetchComments.state, fetchComments.isPending], () => {
+	// the content editor's renderer stays mounted, hidden, while the diff
+	// view is on. The diff renderer then owns the drafts in the content
+	// editor, and removing them here loses comments on added content.
+	if (!isDiffMode.value && editorStore.reviewableDiffActive) {
+		return
+	}
+
 	if (isDiffMode.value && props.diffContext?.diffEditor) {
 		deletePendingCommentData(
 			props.diffContext.diffEditor,
