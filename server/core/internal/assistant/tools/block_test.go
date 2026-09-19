@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/oxynote/oxynote/server/core/internal/assistant/block"
@@ -26,10 +27,13 @@ const _stubContentUID = "a"
 // for the cases that need a block with attributes of its own.
 const _stubHeadingUID = "h"
 
+// _stubMetricUID is the uid of the metric stubSimulationDB answers with.
+const _stubMetricUID = "m"
+
 // stubContentDB answers content reads with a single paragraph the
 // placement checks can find.
 func stubContentDB(err error) *DBMock {
-	root := document.RootBlock{
+	return stubRootDB(document.RootBlock{
 		Content: []document.Block{
 			{
 				Type:  document.BlockNodeParagraph,
@@ -42,8 +46,35 @@ func stubContentDB(err error) *DBMock {
 				Attrs: document.Attributes{document.AttrUID: _stubHeadingUID, document.AttrLevel: 1},
 			},
 		},
-	}
+	}, err)
+}
 
+// stubSimulationDB answers content reads with one metric whose data has
+// arrived: it still names its preset and its simulation is switched off.
+func stubSimulationDB() *DBMock {
+	return stubRootDB(document.RootBlock{
+		Content: []document.Block{
+			{
+				Type:  document.BlockNodeMetricGrid,
+				Attrs: document.Attributes{document.AttrUID: "g"},
+				Content: []document.Block{
+					{
+						Type: document.BlockNodeMetricBlock,
+						Attrs: document.Attributes{
+							document.AttrUID:              _stubMetricUID,
+							document.AttrSimulationPreset: "cpu_usage",
+							document.AttrSimulationActive: false,
+						},
+					},
+				},
+			},
+		},
+	}, nil)
+}
+
+// stubRootDB answers content reads with the given tree. err makes the
+// branch fetch fail.
+func stubRootDB(root document.RootBlock, err error) *DBMock {
 	db := stubDocumentDB()
 	fetch := db.FetchDocumentFunc
 	fetchByBranch := db.FetchDocumentByBranchIDFunc
@@ -98,7 +129,11 @@ func metricBlockArgs(dataSourceID string) string {
 // stubMetricDB answers content reads and resolves exactly one data
 // source, so only the id under test decides a metric write's outcome.
 func stubMetricDB() *DBMock {
-	db := stubContentDB(nil)
+	return stubDataSource(stubContentDB(nil))
+}
+
+// stubDataSource makes db resolve exactly one data source.
+func stubDataSource(db *DBMock) *DBMock {
 	db.FetchDataSourceFunc = func(_ context.Context, id xid.ID, orgID string) (*datasource.DataSource, error) {
 		if id != _testDataSourceID || orgID != "org" {
 			return nil, errutil.ErrNotFound
@@ -120,7 +155,12 @@ type editCase struct {
 	Runner   *datasourceMock.Runner
 	Args     string
 	Contains []string
-	Err      error
+
+	// Op is the single operation the write should send, as the realtime
+	// service receives it. Empty skips the check.
+	Op string
+
+	Err error
 }
 
 // runEdit executes a block tool and asserts the shared outcome.
@@ -153,6 +193,21 @@ func runEdit(t *testing.T, tl Tool, name Name, c editCase) {
 	for _, want := range c.Contains {
 		assert.Contains(t, res, want)
 	}
+
+	if c.Op == "" {
+		return
+	}
+
+	require.Len(t, applier.ApplyCalls(), 1)
+	require.Len(t, applier.ApplyCalls()[0].Ops, 1)
+
+	op, err := applier.ApplyCalls()[0].Ops[0]()
+	require.NoError(t, err)
+
+	raw, err := json.Marshal(op)
+	require.NoError(t, err)
+
+	assert.JSONEq(t, c.Op, string(raw))
 }
 
 func Test_readBlockArgs_Validate(t *testing.T) {
@@ -540,6 +595,22 @@ func Test_replaceBlock_Execute(t *testing.T) {
 				`","block":` + metricBlockArgs(_unknownDataSourceID) + `}`,
 			Err: assert.AnError,
 		},
+		// read_block shows a metric with its preset even after its data
+		// arrived. Re-sending it must not start the simulation again.
+		"A metric re-sent with its preset keeps its simulation switched off": {
+			DB: stubSimulationDB(),
+			Args: `{` + targetArgs(_stubMainBranchID) + `,"block_uid":"` + _stubMetricUID + `","block":` +
+				`{"type":"metric","uid":"` + _stubMetricUID + `","attrs":{"title":"CPU","simulationPreset":"cpu_usage"}}}`,
+			Op: `{"kind":"replace","block_uid":"m","block":{"type":"metricBlock","attrs":` +
+				`{"uid":"m","title":"CPU","simulationPreset":"cpu_usage","simulationActive":false}}}`,
+		},
+		"A metric re-sent with another preset simulates": {
+			DB: stubSimulationDB(),
+			Args: `{` + targetArgs(_stubMainBranchID) + `,"block_uid":"` + _stubMetricUID + `","block":` +
+				`{"type":"metric","uid":"` + _stubMetricUID + `","attrs":{"simulationPreset":"error_rate"}}}`,
+			Op: `{"kind":"replace","block_uid":"m","block":{"type":"metricBlock","attrs":` +
+				`{"uid":"m","simulationPreset":"error_rate","simulationActive":true}}}`,
+		},
 	}
 
 	for cn, c := range cc {
@@ -757,21 +828,46 @@ func Test_updateBlockAttrs_Execute(t *testing.T) {
 		// the payload names attributes, not a block type, so a metric's
 		// data source arrives on its own rather than inside a block.
 		"A data source the organisation owns": {
-			DB: stubMetricDB(),
-			Args: `{` + targetArgs(_stubMainBranchID) + `,"block_uid":"a","attrs":{"dataSourceId":"` +
+			DB: stubDataSource(stubSimulationDB()),
+			Args: `{` + targetArgs(_stubMainBranchID) + `,"block_uid":"` + _stubMetricUID + `","attrs":{"dataSourceId":"` +
 				_testDataSourceID.String() + `"}}`,
 		},
 		"A data source it does not": {
-			DB: stubMetricDB(),
-			Args: `{` + targetArgs(_stubMainBranchID) + `,"block_uid":"a","attrs":{"dataSourceId":"` +
+			DB: stubDataSource(stubSimulationDB()),
+			Args: `{` + targetArgs(_stubMainBranchID) + `,"block_uid":"` + _stubMetricUID + `","attrs":{"dataSourceId":"` +
 				_unknownDataSourceID + `"}}`,
 			Err: assert.AnError,
 		},
 		// an empty data source is the editor's "unset", not a reference
 		// to check, and no other attribute names one at all.
 		"An empty data source is not looked up": {
-			DB:   stubMetricDB(),
-			Args: `{` + targetArgs(_stubMainBranchID) + `,"block_uid":"a","attrs":{"dataSourceId":""}}`,
+			DB:   stubDataSource(stubSimulationDB()),
+			Args: `{` + targetArgs(_stubMainBranchID) + `,"block_uid":"` + _stubMetricUID + `","attrs":{"dataSourceId":""}}`,
+		},
+		"A simulation flag the caller sent is dropped": {
+			DB: stubSimulationDB(),
+			Args: `{` + targetArgs(_stubMainBranchID) + `,"block_uid":"` + _stubMetricUID +
+				`","attrs":{"title":"CPU","simulationActive":true}}`,
+			Op: `{"kind":"update_attrs","block_uid":"m","attrs":{"title":"CPU"}}`,
+		},
+		"Another preset switches the simulation on": {
+			DB: stubSimulationDB(),
+			Args: `{` + targetArgs(_stubMainBranchID) + `,"block_uid":"` + _stubMetricUID +
+				`","attrs":{"simulationPreset":"error_rate"}}`,
+			Op: `{"kind":"update_attrs","block_uid":"m","attrs":{"simulationPreset":"error_rate","simulationActive":true}}`,
+		},
+		"A null preset switches the simulation off": {
+			DB: stubSimulationDB(),
+			Args: `{` + targetArgs(_stubMainBranchID) + `,"block_uid":"` + _stubMetricUID +
+				`","attrs":{"simulationPreset":null}}`,
+			Op: `{"kind":"update_attrs","block_uid":"m","attrs":{"simulationPreset":null,"simulationActive":false}}`,
+		},
+		// only metric blocks have the flag, so any other block is sent
+		// unchanged.
+		"A block that is not a metric is sent as given": {
+			DB:   stubContentDB(nil),
+			Args: `{` + targetArgs(_stubMainBranchID) + `,"block_uid":"h","attrs":{"level":2}}`,
+			Op:   `{"kind":"update_attrs","block_uid":"h","attrs":{"level":2}}`,
 		},
 	}
 
@@ -996,6 +1092,144 @@ func Test_moveBlock_Execute(t *testing.T) {
 			t.Parallel()
 
 			runEdit(t, moveBlock{}, NameMoveBlock, c)
+		})
+	}
+}
+
+func Test_sanitizeBlock(t *testing.T) {
+	t.Parallel()
+
+	metric := func(attrs document.Attributes) block.Block {
+		return block.Block{Type: block.BlockMetric, UID: _stubMetricUID, Attrs: attrs}
+	}
+
+	cc := map[string]struct {
+		Block  block.Block
+		Stored document.Block
+		Result document.Attributes
+		Err    error
+	}{
+		"Error returned by inp.CheckDataSources": {
+			Block: metric(document.Attributes{document.AttrDataSourceID: _unknownDataSourceID}),
+			Err:   assert.AnError,
+		},
+		"Error returned by block.Expand": {
+			Block: block.Block{Type: "nope"},
+			Err:   assert.AnError,
+		},
+		"A new metric naming a preset simulates": {
+			Block: metric(document.Attributes{document.AttrSimulationPreset: "cpu_usage"}),
+			Result: document.Attributes{
+				document.AttrUID:              _stubMetricUID,
+				document.AttrSimulationPreset: "cpu_usage",
+				document.AttrSimulationActive: true,
+			},
+		},
+		"A stored metric keeps its simulation flag": {
+			Block: metric(document.Attributes{document.AttrSimulationPreset: "cpu_usage"}),
+			Stored: document.Block{
+				Type: document.BlockNodeMetricBlock,
+				Attrs: document.Attributes{
+					document.AttrUID:              _stubMetricUID,
+					document.AttrSimulationPreset: "cpu_usage",
+					document.AttrSimulationActive: false,
+				},
+			},
+			Result: document.Attributes{
+				document.AttrUID:              _stubMetricUID,
+				document.AttrSimulationPreset: "cpu_usage",
+				document.AttrSimulationActive: false,
+			},
+		},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			inp := testInput(testDeps(stubMetricDB(), nil, nil), NameReplaceBlock, `{}`)
+
+			res, err := sanitizeBlock(inp, c.Block, c.Stored)
+			testutil.AssertEqualError(t, c.Err, err)
+
+			if err != nil {
+				return
+			}
+
+			assert.Equal(t, document.BlockNodeMetricBlock, res.Type)
+			assert.Equal(t, c.Result, res.Attrs)
+		})
+	}
+}
+
+func Test_sanitizeBlockAttrs(t *testing.T) {
+	t.Parallel()
+
+	stored := document.Block{
+		Type: document.BlockNodeMetricBlock,
+		Attrs: document.Attributes{
+			document.AttrUID:              _stubMetricUID,
+			document.AttrSimulationPreset: "cpu_usage",
+			document.AttrSimulationActive: false,
+		},
+	}
+
+	cc := map[string]struct {
+		Attrs  map[string]any
+		Stored document.Block
+		Result map[string]any
+		Err    error
+	}{
+		"Error returned by inp.CheckDataSources": {
+			Attrs:  map[string]any{document.AttrDataSourceID: _unknownDataSourceID},
+			Stored: stored,
+			Err:    assert.AnError,
+		},
+		"A block that is not a metric is left as given": {
+			Attrs: map[string]any{
+				document.AttrDataSourceID:     _unknownDataSourceID,
+				document.AttrSimulationActive: true,
+			},
+			Stored: document.Block{Type: document.BlockNodeParagraph},
+			Result: map[string]any{
+				document.AttrDataSourceID:     _unknownDataSourceID,
+				document.AttrSimulationActive: true,
+			},
+		},
+		"An empty data source is not looked up": {
+			Attrs:  map[string]any{document.AttrDataSourceID: ""},
+			Stored: stored,
+			Result: map[string]any{document.AttrDataSourceID: ""},
+		},
+		"A metric has its simulation flag derived": {
+			Attrs: map[string]any{
+				document.AttrDataSourceID:     _testDataSourceID.String(),
+				document.AttrSimulationPreset: "error_rate",
+				document.AttrSimulationActive: false,
+			},
+			Stored: stored,
+			Result: map[string]any{
+				document.AttrDataSourceID:     _testDataSourceID.String(),
+				document.AttrSimulationPreset: "error_rate",
+				document.AttrSimulationActive: true,
+			},
+		},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			inp := testInput(testDeps(stubMetricDB(), nil, nil), NameUpdateBlockAttrs, `{}`)
+
+			err := sanitizeBlockAttrs(inp, c.Attrs, c.Stored)
+			testutil.AssertEqualError(t, c.Err, err)
+
+			if err != nil {
+				return
+			}
+
+			assert.Equal(t, c.Result, c.Attrs)
 		})
 	}
 }

@@ -17,65 +17,57 @@ var _ datasource.Runner = &Runner{}
 
 // Runner is a mock implementation of datasource.Runner.
 //
-//	func TestSomethingThatUsesdatasource.Runner(t *testing.T) {
+//	func TestSomethingThatUsesRunner(t *testing.T) {
 //
 //		// make and configure a mocked datasource.Runner
-//		mockeddatasource.Runner := &Runner{
-//			TypeFunc: func() datasource.Type {
-//				panic("mock out the Type method")
-//			},
-//			TestConnectionFunc: func(ctx context.Context) (processor.ConnectionStatus, error) {
-//				panic("mock out the TestConnection method")
-//			},
-//			PrometheusFunc: func(ctx context.Context) (datasource.Prometheus, error) {
-//				panic("mock out the Prometheus method")
+//		mockedRunner := &Runner{
+//			MySQLFunc: func(ctx context.Context) (datasource.MySQL, error) {
+//				panic("mock out the MySQL method")
 //			},
 //			PostgreSQLFunc: func(ctx context.Context) (datasource.PostgreSQL, error) {
 //				panic("mock out the PostgreSQL method")
 //			},
-//			MySQLFunc: func(ctx context.Context) (datasource.MySQL, error) {
-//				panic("mock out the MySQL method")
+//			PrometheusFunc: func(ctx context.Context) (datasource.Prometheus, error) {
+//				panic("mock out the Prometheus method")
 //			},
 //			SQLFunc: func(ctx context.Context) (datasource.SQL, error) {
 //				panic("mock out the SQL method")
 //			},
+//			TestConnectionFunc: func(ctx context.Context) (processor.ConnectionStatus, error) {
+//				panic("mock out the TestConnection method")
+//			},
+//			TypeFunc: func() datasource.Type {
+//				panic("mock out the Type method")
+//			},
 //		}
 //
-//		// use mockeddatasource.Runner in code that requires datasource.Runner
+//		// use mockedRunner in code that requires datasource.Runner
 //		// and then make assertions.
 //
 //	}
 type Runner struct {
-	// TypeFunc mocks the Type method.
-	TypeFunc func() datasource.Type
-
-	// TestConnectionFunc mocks the TestConnection method.
-	TestConnectionFunc func(ctx context.Context) (processor.ConnectionStatus, error)
-
-	// PrometheusFunc mocks the Prometheus method.
-	PrometheusFunc func(ctx context.Context) (datasource.Prometheus, error)
+	// MySQLFunc mocks the MySQL method.
+	MySQLFunc func(ctx context.Context) (datasource.MySQL, error)
 
 	// PostgreSQLFunc mocks the PostgreSQL method.
 	PostgreSQLFunc func(ctx context.Context) (datasource.PostgreSQL, error)
 
-	// MySQLFunc mocks the MySQL method.
-	MySQLFunc func(ctx context.Context) (datasource.MySQL, error)
+	// PrometheusFunc mocks the Prometheus method.
+	PrometheusFunc func(ctx context.Context) (datasource.Prometheus, error)
 
 	// SQLFunc mocks the SQL method.
 	SQLFunc func(ctx context.Context) (datasource.SQL, error)
 
+	// TestConnectionFunc mocks the TestConnection method.
+	TestConnectionFunc func(ctx context.Context) (processor.ConnectionStatus, error)
+
+	// TypeFunc mocks the Type method.
+	TypeFunc func() datasource.Type
+
 	// calls tracks calls to the methods.
 	calls struct {
-		// Type holds details about calls to the Type method.
-		Type []struct {
-		}
-		// TestConnection holds details about calls to the TestConnection method.
-		TestConnection []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-		}
-		// Prometheus holds details about calls to the Prometheus method.
-		Prometheus []struct {
+		// MySQL holds details about calls to the MySQL method.
+		MySQL []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
@@ -84,8 +76,8 @@ type Runner struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
-		// MySQL holds details about calls to the MySQL method.
-		MySQL []struct {
+		// Prometheus holds details about calls to the Prometheus method.
+		Prometheus []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
@@ -94,114 +86,56 @@ type Runner struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
+		// TestConnection holds details about calls to the TestConnection method.
+		TestConnection []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
+		// Type holds details about calls to the Type method.
+		Type []struct {
+		}
 	}
-	lockType           sync.RWMutex
-	lockTestConnection sync.RWMutex
-	lockPrometheus     sync.RWMutex
-	lockPostgreSQL     sync.RWMutex
 	lockMySQL          sync.RWMutex
+	lockPostgreSQL     sync.RWMutex
+	lockPrometheus     sync.RWMutex
 	lockSQL            sync.RWMutex
+	lockTestConnection sync.RWMutex
+	lockType           sync.RWMutex
 }
 
-// Type calls TypeFunc.
-func (mock *Runner) Type() datasource.Type {
-	callInfo := struct {
-	}{}
-	mock.lockType.Lock()
-	mock.calls.Type = append(mock.calls.Type, callInfo)
-	mock.lockType.Unlock()
-	if mock.TypeFunc == nil {
-		var (
-			typeOut datasource.Type
-		)
-		return typeOut
-	}
-	return mock.TypeFunc()
-}
-
-// TypeCalls gets all the calls that were made to Type.
-// Check the length with:
-//
-//	len(mockeddatasource.Runner.TypeCalls())
-func (mock *Runner) TypeCalls() []struct {
-} {
-	var calls []struct {
-	}
-	mock.lockType.RLock()
-	calls = mock.calls.Type
-	mock.lockType.RUnlock()
-	return calls
-}
-
-// TestConnection calls TestConnectionFunc.
-func (mock *Runner) TestConnection(ctx context.Context) (processor.ConnectionStatus, error) {
+// MySQL calls MySQLFunc.
+func (mock *Runner) MySQL(ctx context.Context) (datasource.MySQL, error) {
 	callInfo := struct {
 		Ctx context.Context
 	}{
 		Ctx: ctx,
 	}
-	mock.lockTestConnection.Lock()
-	mock.calls.TestConnection = append(mock.calls.TestConnection, callInfo)
-	mock.lockTestConnection.Unlock()
-	if mock.TestConnectionFunc == nil {
+	mock.lockMySQL.Lock()
+	mock.calls.MySQL = append(mock.calls.MySQL, callInfo)
+	mock.lockMySQL.Unlock()
+	if mock.MySQLFunc == nil {
 		var (
-			connectionStatusOut processor.ConnectionStatus
-			errOut              error
+			mySQLOut datasource.MySQL
+			errOut   error
 		)
-		return connectionStatusOut, errOut
+		return mySQLOut, errOut
 	}
-	return mock.TestConnectionFunc(ctx)
+	return mock.MySQLFunc(ctx)
 }
 
-// TestConnectionCalls gets all the calls that were made to TestConnection.
+// MySQLCalls gets all the calls that were made to MySQL.
 // Check the length with:
 //
-//	len(mockeddatasource.Runner.TestConnectionCalls())
-func (mock *Runner) TestConnectionCalls() []struct {
+//	len(mockedRunner.MySQLCalls())
+func (mock *Runner) MySQLCalls() []struct {
 	Ctx context.Context
 } {
 	var calls []struct {
 		Ctx context.Context
 	}
-	mock.lockTestConnection.RLock()
-	calls = mock.calls.TestConnection
-	mock.lockTestConnection.RUnlock()
-	return calls
-}
-
-// Prometheus calls PrometheusFunc.
-func (mock *Runner) Prometheus(ctx context.Context) (datasource.Prometheus, error) {
-	callInfo := struct {
-		Ctx context.Context
-	}{
-		Ctx: ctx,
-	}
-	mock.lockPrometheus.Lock()
-	mock.calls.Prometheus = append(mock.calls.Prometheus, callInfo)
-	mock.lockPrometheus.Unlock()
-	if mock.PrometheusFunc == nil {
-		var (
-			prometheusOut datasource.Prometheus
-			errOut        error
-		)
-		return prometheusOut, errOut
-	}
-	return mock.PrometheusFunc(ctx)
-}
-
-// PrometheusCalls gets all the calls that were made to Prometheus.
-// Check the length with:
-//
-//	len(mockeddatasource.Runner.PrometheusCalls())
-func (mock *Runner) PrometheusCalls() []struct {
-	Ctx context.Context
-} {
-	var calls []struct {
-		Ctx context.Context
-	}
-	mock.lockPrometheus.RLock()
-	calls = mock.calls.Prometheus
-	mock.lockPrometheus.RUnlock()
+	mock.lockMySQL.RLock()
+	calls = mock.calls.MySQL
+	mock.lockMySQL.RUnlock()
 	return calls
 }
 
@@ -228,7 +162,7 @@ func (mock *Runner) PostgreSQL(ctx context.Context) (datasource.PostgreSQL, erro
 // PostgreSQLCalls gets all the calls that were made to PostgreSQL.
 // Check the length with:
 //
-//	len(mockeddatasource.Runner.PostgreSQLCalls())
+//	len(mockedRunner.PostgreSQLCalls())
 func (mock *Runner) PostgreSQLCalls() []struct {
 	Ctx context.Context
 } {
@@ -241,39 +175,39 @@ func (mock *Runner) PostgreSQLCalls() []struct {
 	return calls
 }
 
-// MySQL calls MySQLFunc.
-func (mock *Runner) MySQL(ctx context.Context) (datasource.MySQL, error) {
+// Prometheus calls PrometheusFunc.
+func (mock *Runner) Prometheus(ctx context.Context) (datasource.Prometheus, error) {
 	callInfo := struct {
 		Ctx context.Context
 	}{
 		Ctx: ctx,
 	}
-	mock.lockMySQL.Lock()
-	mock.calls.MySQL = append(mock.calls.MySQL, callInfo)
-	mock.lockMySQL.Unlock()
-	if mock.MySQLFunc == nil {
+	mock.lockPrometheus.Lock()
+	mock.calls.Prometheus = append(mock.calls.Prometheus, callInfo)
+	mock.lockPrometheus.Unlock()
+	if mock.PrometheusFunc == nil {
 		var (
-			mySQLOut datasource.MySQL
-			errOut   error
+			prometheusOut datasource.Prometheus
+			errOut        error
 		)
-		return mySQLOut, errOut
+		return prometheusOut, errOut
 	}
-	return mock.MySQLFunc(ctx)
+	return mock.PrometheusFunc(ctx)
 }
 
-// MySQLCalls gets all the calls that were made to MySQL.
+// PrometheusCalls gets all the calls that were made to Prometheus.
 // Check the length with:
 //
-//	len(mockeddatasource.Runner.MySQLCalls())
-func (mock *Runner) MySQLCalls() []struct {
+//	len(mockedRunner.PrometheusCalls())
+func (mock *Runner) PrometheusCalls() []struct {
 	Ctx context.Context
 } {
 	var calls []struct {
 		Ctx context.Context
 	}
-	mock.lockMySQL.RLock()
-	calls = mock.calls.MySQL
-	mock.lockMySQL.RUnlock()
+	mock.lockPrometheus.RLock()
+	calls = mock.calls.Prometheus
+	mock.lockPrometheus.RUnlock()
 	return calls
 }
 
@@ -300,7 +234,7 @@ func (mock *Runner) SQL(ctx context.Context) (datasource.SQL, error) {
 // SQLCalls gets all the calls that were made to SQL.
 // Check the length with:
 //
-//	len(mockeddatasource.Runner.SQLCalls())
+//	len(mockedRunner.SQLCalls())
 func (mock *Runner) SQLCalls() []struct {
 	Ctx context.Context
 } {
@@ -310,5 +244,71 @@ func (mock *Runner) SQLCalls() []struct {
 	mock.lockSQL.RLock()
 	calls = mock.calls.SQL
 	mock.lockSQL.RUnlock()
+	return calls
+}
+
+// TestConnection calls TestConnectionFunc.
+func (mock *Runner) TestConnection(ctx context.Context) (processor.ConnectionStatus, error) {
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockTestConnection.Lock()
+	mock.calls.TestConnection = append(mock.calls.TestConnection, callInfo)
+	mock.lockTestConnection.Unlock()
+	if mock.TestConnectionFunc == nil {
+		var (
+			connectionStatusOut processor.ConnectionStatus
+			errOut              error
+		)
+		return connectionStatusOut, errOut
+	}
+	return mock.TestConnectionFunc(ctx)
+}
+
+// TestConnectionCalls gets all the calls that were made to TestConnection.
+// Check the length with:
+//
+//	len(mockedRunner.TestConnectionCalls())
+func (mock *Runner) TestConnectionCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockTestConnection.RLock()
+	calls = mock.calls.TestConnection
+	mock.lockTestConnection.RUnlock()
+	return calls
+}
+
+// Type calls TypeFunc.
+func (mock *Runner) Type() datasource.Type {
+	callInfo := struct {
+	}{}
+	mock.lockType.Lock()
+	mock.calls.Type = append(mock.calls.Type, callInfo)
+	mock.lockType.Unlock()
+	if mock.TypeFunc == nil {
+		var (
+			typeOut datasource.Type
+		)
+		return typeOut
+	}
+	return mock.TypeFunc()
+}
+
+// TypeCalls gets all the calls that were made to Type.
+// Check the length with:
+//
+//	len(mockedRunner.TypeCalls())
+func (mock *Runner) TypeCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockType.RLock()
+	calls = mock.calls.Type
+	mock.lockType.RUnlock()
 	return calls
 }

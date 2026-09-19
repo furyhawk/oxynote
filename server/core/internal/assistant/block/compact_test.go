@@ -394,12 +394,13 @@ func Test_Compact(t *testing.T) {
 				Attrs: map[string]any{"query": "up", "unit": "%"},
 			},
 		},
-		"Metric keeps an active simulation": {
+		"Metric keeps its preset and hides its simulation flag": {
 			Input: document.Block{
 				Type: document.BlockNodeMetricBlock,
 				Attrs: map[string]any{
 					"uid":              "m1",
 					"simulationPreset": "http_latency",
+					"simulationActive": true,
 				},
 			},
 			Expected: Block{

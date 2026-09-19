@@ -39,6 +39,7 @@ describe("defaultMetricConfig", () => {
 			unit: { type: null, custom: null },
 			axisBounds: { min: null, max: null },
 			simulationPreset: null,
+			simulationActive: false,
 		})
 	})
 
@@ -86,6 +87,7 @@ describe("buildConfigFromNodeAttrs", () => {
 			unit: { type: VisualizationTimeUnit.Seconds, custom: null },
 			axisBounds: { min: 0, max: 100 },
 			simulationPreset: null,
+			simulationActive: false,
 		})
 	})
 
@@ -113,6 +115,7 @@ describe("buildConfigFromNodeAttrs", () => {
 			unit: { type: null, custom: null },
 			axisBounds: { min: null, max: null },
 			simulationPreset: null,
+			simulationActive: false,
 		})
 	})
 
@@ -146,6 +149,7 @@ describe("buildConfigFromNodeAttrs", () => {
 			unit: { type: VisualizationDataUnit.Megabytes, custom: "reqs" },
 			axisBounds: { min: -1, max: 1 },
 			simulationPreset: null,
+			simulationActive: false,
 		})
 	})
 
@@ -156,6 +160,27 @@ describe("buildConfigFromNodeAttrs", () => {
 			}).simulationPreset,
 		).toBe(MetricSimulationPreset.HTTPLatency)
 	})
+
+	it.for([
+		{ name: "a set flag", input: true, expected: true },
+		{ name: "a cleared flag", input: false, expected: false },
+		{
+			name: "a block saved before the flag existed",
+			input: undefined,
+			expected: false,
+		},
+		{ name: "a flag that is not a boolean", input: "true", expected: false },
+	])(
+		"reads $name as simulating: $expected",
+		({ input, expected }, { expect }) => {
+			expect(
+				buildConfigFromNodeAttrs({
+					simulationPreset: MetricSimulationPreset.HTTPLatency,
+					simulationActive: input,
+				}).simulationActive,
+			).toBe(expected)
+		},
+	)
 
 	it("fills defaults when there are no attributes at all", ({ expect }) => {
 		expect(buildConfigFromNodeAttrs({})).toEqual({
@@ -171,6 +196,7 @@ describe("buildConfigFromNodeAttrs", () => {
 			unit: { type: null, custom: null },
 			axisBounds: { min: null, max: null },
 			simulationPreset: null,
+			simulationActive: false,
 		})
 	})
 })

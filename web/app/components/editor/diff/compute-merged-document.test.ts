@@ -105,6 +105,36 @@ describe("computeMergedDocument", () => {
 		])
 	})
 
+	it.for([
+		{
+			name: "a metric block whose only change is its simulation preset as modified",
+			original: { simulationPreset: "cpu_usage", simulationActive: false },
+			modified: { simulationPreset: "error_rate", simulationActive: false },
+			expected: DiffStatus.Modified,
+		},
+		{
+			name: "a metric block whose only change is its simulation flag as unchanged",
+			original: { simulationPreset: "cpu_usage", simulationActive: true },
+			modified: { simulationPreset: "cpu_usage", simulationActive: false },
+			expected: DiffStatus.Unchanged,
+		},
+	])("marks $name", ({ original, modified, expected }) => {
+		const grid = (attrs: Record<string, unknown>): JSONContent => ({
+			type: "metricGrid",
+			attrs: { uid: "g1" },
+			content: [{ type: "metricBlock", attrs: { uid: "m1", ...attrs } }],
+		})
+
+		const result = computeMergedDocument(
+			doc(grid(original)),
+			doc(grid(modified)),
+		)
+
+		expect(result.doc.content?.[0]?.content?.[0]?.attrs?.diffStatus).toBe(
+			expected,
+		)
+	})
+
 	it("matches blocks without uids by content through the LCS fallback", () => {
 		const original = doc(paragraph("same"), paragraph("gone"))
 		const modified = doc(paragraph("same"), paragraph("new"))

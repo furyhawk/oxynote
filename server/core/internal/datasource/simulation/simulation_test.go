@@ -45,6 +45,7 @@ func metricAttrs() document.Attributes {
 			map[string]any{"name": "Query 1", "query": "up", "legendFormat": ""},
 		},
 		document.AttrSimulationPreset: "cpu_usage",
+		document.AttrSimulationActive: true,
 	}
 }
 
@@ -368,8 +369,23 @@ func Test_Checker_Check(t *testing.T) {
 			}),
 			Prometheus: sampled(),
 		},
-		"The block is not simulating": {
+		"The block names no preset": {
 			Attrs:      withoutAttr(document.AttrSimulationPreset),
+			Prometheus: sampled(),
+			Err:        ErrNotSimulated,
+		},
+		"The simulation is switched off": {
+			Attrs:      withAttr(document.AttrSimulationActive, false),
+			Prometheus: sampled(),
+			Err:        ErrNotSimulated,
+		},
+		"The block carries a preset and no flag": {
+			Attrs:      withoutAttr(document.AttrSimulationActive),
+			Prometheus: sampled(),
+			Err:        ErrNotSimulated,
+		},
+		"The flag is not a boolean": {
+			Attrs:      withAttr(document.AttrSimulationActive, "true"),
 			Prometheus: sampled(),
 			Err:        ErrNotSimulated,
 		},
@@ -499,7 +515,7 @@ func Test_Checker_Check(t *testing.T) {
 
 				assert.JSONEq(
 					t,
-					`{"kind":"update_attrs","block_uid":"block-1","attrs":{"simulationPreset":null}}`,
+					`{"kind":"update_attrs","block_uid":"block-1","attrs":{"simulationActive":false}}`,
 					string(raw),
 				)
 			}

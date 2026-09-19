@@ -155,6 +155,24 @@ const isBoundsMaxModified = computed(() => {
 		props.oldConfig.axisBounds.max !== config.value.axisBounds.max
 	)
 })
+const isSimulationPresetModified = computed(() => {
+	return (
+		isDiffModified.value &&
+		!!props.oldConfig &&
+		props.oldConfig.simulationPreset !== config.value.simulationPreset
+	)
+})
+// outside a diff the section shows only while the block simulates.
+// A diff shows it when either side has a preset.
+const isSimulationSectionVisible = computed(() => {
+	if (props.diffStatus) {
+		return (
+			!!config.value.simulationPreset || !!props.oldConfig?.simulationPreset
+		)
+	}
+
+	return !!config.value.simulationPreset && config.value.simulationActive
+})
 
 interface ThresholdEntry {
 	value?: number
@@ -287,7 +305,7 @@ function removeThreshold(index: number) {
 			</div>
 			<div class="mt-1 h-px bg-border" />
 		</div>
-		<div v-if="config.simulationPreset">
+		<div v-if="isSimulationSectionVisible">
 			<div class="flex flex-col gap-1 px-1.75">
 				<span class="text-2sm font-medium">
 					{{ $t("editor.metrics.simulation.section-title") }}
@@ -301,10 +319,21 @@ function removeThreshold(index: number) {
 							{{ $t("editor.metrics.simulation.preset-label") }}
 						</span>
 					</template>
-					<SimulationPresetSelect v-model="config.simulationPreset" />
+					<SimulationPresetSelect
+						v-if="config.simulationPreset"
+						v-model="config.simulationPreset"
+						:diff-status="isSimulationPresetModified ? DiffStatus.Added : null"
+					/>
+					<SimulationPresetSelect
+						v-if="
+							isSimulationPresetModified && props.oldConfig?.simulationPreset
+						"
+						:model-value="props.oldConfig.simulationPreset"
+						:diff-status="DiffStatus.Removed"
+					/>
 				</ConfigField>
 				<ShadcnUiButton
-					v-if="!isEditingDisabled"
+					v-if="!isEditingDisabled && !props.diffStatus"
 					variant="outline-transparent"
 					size="custom"
 					class="h-[1.775rem]! justify-center px-1.5 text-2sm font-normal"

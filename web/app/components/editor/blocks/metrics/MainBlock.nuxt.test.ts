@@ -313,8 +313,65 @@ describe("<MetricMainBlock>", { concurrent: false }, () => {
 		)
 		await nextTick()
 
+		expect(updateAttributes).toHaveBeenCalledTimes(1)
 		expect(updateAttributes).toHaveBeenCalledWith({
 			simulationPreset: MetricSimulationPreset.HTTPLatency,
+			simulationActive: true,
+		})
+	})
+
+	// only the server switches the flag off. An edit that neither starts
+	// nor stops the simulation does not send it
+	it("changes only the preset of a block that is simulating", async ({
+		expect,
+	}) => {
+		const updateAttributes = vi.fn()
+		const uid = nextUid()
+		await mountBlock({
+			uid: uid,
+			updateAttributes: updateAttributes,
+			attrs: {
+				simulationPreset: MetricSimulationPreset.CPUUsage,
+				simulationActive: true,
+			},
+			underTooltipProvider: true,
+		})
+
+		const config = storedConfig(uid)
+		if (config) {
+			config.simulationPreset = MetricSimulationPreset.DiskUsage
+		}
+
+		expect(updateAttributes).toHaveBeenCalledTimes(1)
+		expect(updateAttributes).toHaveBeenCalledWith({
+			simulationPreset: MetricSimulationPreset.DiskUsage,
+		})
+	})
+
+	it("stops a simulation by unsetting the preset and the flag together", async ({
+		expect,
+	}) => {
+		const updateAttributes = vi.fn()
+		const uid = nextUid()
+		await mountBlock({
+			uid: uid,
+			updateAttributes: updateAttributes,
+			attrs: {
+				simulationPreset: MetricSimulationPreset.CPUUsage,
+				simulationActive: true,
+			},
+			underTooltipProvider: true,
+		})
+
+		const config = storedConfig(uid)
+		if (config) {
+			config.simulationPreset = null
+		}
+
+		expect(updateAttributes).toHaveBeenCalledTimes(1)
+		expect(updateAttributes).toHaveBeenCalledWith({
+			simulationPreset: null,
+			simulationActive: false,
 		})
 	})
 
@@ -325,13 +382,30 @@ describe("<MetricMainBlock>", { concurrent: false }, () => {
 
 		await mountBlock({
 			uid: uid,
-			attrs: { simulationPreset: MetricSimulationPreset.DiskUsage },
+			attrs: {
+				simulationPreset: MetricSimulationPreset.DiskUsage,
+				simulationActive: true,
+			},
 			underTooltipProvider: true,
 		})
 
 		expect(storedConfig(uid)?.simulationPreset).toBe(
 			MetricSimulationPreset.DiskUsage,
 		)
+		expect(storedConfig(uid)?.simulationActive).toBe(true)
+	})
+
+	it("reads a block without a simulation flag as not simulating", async ({
+		expect,
+	}) => {
+		const uid = nextUid()
+
+		await mountBlock({
+			uid: uid,
+			attrs: { simulationPreset: MetricSimulationPreset.DiskUsage },
+		})
+
+		expect(storedConfig(uid)?.simulationActive).toBe(false)
 	})
 
 	it("shows the simulation icon while the visualization simulates", async ({
@@ -384,6 +458,8 @@ describe("<MetricMainBlock>", { concurrent: false }, () => {
 				dataSourceId: "ds-1",
 				visualizationType: GenericQueryChartType.Gauge,
 				unitCustom: "req/s",
+				simulationPreset: null,
+				simulationActive: false,
 				config: null,
 			}),
 		)

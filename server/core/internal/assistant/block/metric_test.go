@@ -28,6 +28,156 @@ func Test_MetricEnums(t *testing.T) {
 	assert.Equal(t, "line_chart", MetricEnums()[document.AttrVisualizationType][0])
 }
 
+func Test_DeriveSimulation(t *testing.T) {
+	t.Parallel()
+
+	cc := map[string]struct {
+		Update   map[string]any
+		Stored   document.Attributes
+		Expected map[string]any
+	}{
+		"An update naming no preset leaves the flag alone": {
+			Update:   map[string]any{"title": "Requests"},
+			Stored:   document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": false},
+			Expected: map[string]any{"title": "Requests"},
+		},
+		"A flag the caller sent is dropped": {
+			Update:   map[string]any{"title": "Requests", "simulationActive": true},
+			Stored:   document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": false},
+			Expected: map[string]any{"title": "Requests"},
+		},
+		"The stored preset sent again leaves the flag alone": {
+			Update:   map[string]any{"simulationPreset": "cpu_usage"},
+			Stored:   document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": false},
+			Expected: map[string]any{"simulationPreset": "cpu_usage"},
+		},
+		"A first preset switches the simulation on": {
+			Update:   map[string]any{"simulationPreset": "cpu_usage"},
+			Stored:   document.Attributes{"simulationPreset": nil},
+			Expected: map[string]any{"simulationPreset": "cpu_usage", "simulationActive": true},
+		},
+		"Another preset switches the simulation on": {
+			Update:   map[string]any{"simulationPreset": "error_rate"},
+			Stored:   document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": false},
+			Expected: map[string]any{"simulationPreset": "error_rate", "simulationActive": true},
+		},
+		"A null preset switches the simulation off": {
+			Update:   map[string]any{"simulationPreset": nil},
+			Stored:   document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true},
+			Expected: map[string]any{"simulationPreset": nil, "simulationActive": false},
+		},
+		"A null preset on a block that names none changes nothing": {
+			Update:   map[string]any{"simulationPreset": nil},
+			Stored:   document.Attributes{},
+			Expected: map[string]any{"simulationPreset": nil},
+		},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			DeriveSimulation(c.Update, c.Stored)
+
+			assert.Equal(t, c.Expected, c.Update)
+		})
+	}
+}
+
+func Test_KeepSimulation(t *testing.T) {
+	t.Parallel()
+
+	metric := func(uid string, attrs document.Attributes) document.Block {
+		attrs[document.AttrUID] = uid
+
+		return document.Block{Type: document.BlockNodeMetricBlock, Attrs: attrs}
+	}
+
+	grid := func(items ...document.Block) document.Block {
+		return document.Block{Type: document.BlockNodeMetricGrid, Content: items}
+	}
+
+	cc := map[string]struct {
+		Next     document.Block
+		Stored   document.Block
+		Expected document.Block
+	}{
+		"The same preset keeps a simulation that was switched off": {
+			Next:     metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true}),
+			Stored:   metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": false}),
+			Expected: metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": false}),
+		},
+		"The same preset keeps a simulation that is running": {
+			Next:     metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true}),
+			Stored:   metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true}),
+			Expected: metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true}),
+		},
+		"The same preset stored without a flag drops the derived one": {
+			Next:     metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true}),
+			Stored:   metric("m1", document.Attributes{"simulationPreset": "cpu_usage"}),
+			Expected: metric("m1", document.Attributes{"simulationPreset": "cpu_usage"}),
+		},
+		"Another preset keeps what was derived": {
+			Next:     metric("m1", document.Attributes{"simulationPreset": "error_rate", "simulationActive": true}),
+			Stored:   metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": false}),
+			Expected: metric("m1", document.Attributes{"simulationPreset": "error_rate", "simulationActive": true}),
+		},
+		"A block naming no preset is left alone": {
+			Next:     metric("m1", document.Attributes{"simulationPreset": nil}),
+			Stored:   metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true}),
+			Expected: metric("m1", document.Attributes{"simulationPreset": nil}),
+		},
+		"A block the stored tree does not hold is left alone": {
+			Next:     metric("m2", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true}),
+			Stored:   metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": false}),
+			Expected: metric("m2", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true}),
+		},
+		"A block without a uid is left alone": {
+			Next: document.Block{
+				Type:  document.BlockNodeMetricBlock,
+				Attrs: document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true},
+			},
+			Stored: metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": false}),
+			Expected: document.Block{
+				Type:  document.BlockNodeMetricBlock,
+				Attrs: document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true},
+			},
+		},
+		"A uid the stored tree gives to another kind of block is left alone": {
+			Next: metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true}),
+			Stored: document.Block{
+				Type:  document.BlockNodeParagraph,
+				Attrs: document.Attributes{document.AttrUID: "m1"},
+			},
+			Expected: metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true}),
+		},
+		"A grid carries the flag of each metric it holds": {
+			Next: grid(
+				metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": true}),
+				metric("m2", document.Attributes{"simulationPreset": "error_rate", "simulationActive": true}),
+			),
+			Stored: grid(
+				metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": false}),
+				metric("m2", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": false}),
+			),
+			Expected: grid(
+				metric("m1", document.Attributes{"simulationPreset": "cpu_usage", "simulationActive": false}),
+				metric("m2", document.Attributes{"simulationPreset": "error_rate", "simulationActive": true}),
+			),
+		},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			KeepSimulation(c.Next, c.Stored)
+
+			assert.Equal(t, c.Expected, c.Next)
+		})
+	}
+}
+
 func Test_validateMetric(t *testing.T) {
 	t.Parallel()
 

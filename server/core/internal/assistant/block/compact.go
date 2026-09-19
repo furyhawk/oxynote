@@ -367,12 +367,14 @@ func compactFigma(b document.Block, uid string) Block {
 	}
 }
 
-// compactMetric preserves every non-uid attribute on the source
-// metric block — the configuration shape is opaque to the canonical
-// layer and the AI sees it through-pass.
+// compactMetric keeps every attribute of the source metric block except
+// its uid and its simulation flag. The configuration shape is opaque to
+// the canonical layer, so it passes through as is. The flag is internal
+// state that a reader never sees.
 func compactMetric(b document.Block, uid string) Block {
 	attrs := b.Attrs.Copy()
 	delete(attrs, document.AttrUID)
+	delete(attrs, document.AttrSimulationActive)
 
 	return Block{
 		Type:  BlockMetric,

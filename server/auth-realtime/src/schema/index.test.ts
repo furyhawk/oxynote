@@ -246,6 +246,28 @@ describe("editor schema", () => {
 			)
 		})
 
+		it("keeps a metric block's simulation flag", ({ expect }) => {
+			const block = metricBlock("m1")
+
+			const result = roundTrip({
+				...block,
+				attrs: {
+					...block.attrs,
+					simulationActive: true,
+				},
+			})
+
+			expect(result.attrs?.simulationActive).toBe(true)
+		})
+
+		it("reads a metric block without a simulation flag as not simulating", ({
+			expect,
+		}) => {
+			const result = roundTrip(metricBlock("m1"))
+
+			expect(result.attrs?.simulationActive).toBe(false)
+		})
+
 		it("keeps a mermaid block's source text", ({ expect }) => {
 			const result = roundTrip({
 				type: "mermaidBlock",

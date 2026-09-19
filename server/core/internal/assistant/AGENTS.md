@@ -42,7 +42,7 @@ for free.
   handler; `decodeHookSettings` switches on type into the processor's own
   struct.
 - **A block write reports from the operation, never a re-read** (the
-  realtime service persists on a debounce): `expandForWrite` once, ship the
+  realtime service persists on a debounce): `sanitizeBlock` once, ship the
   canonical uids, return `blockRows` of the expanded tree.
 - **Branches are addressed by id, always.** Every content tool requires
   `branch_id`; listings carry the ids; `FetchDocumentByBranchID` refuses a
@@ -65,7 +65,8 @@ for free.
   `DescribeInput` is its read-only half.
 - **A write owns its invariants** on the `Input` method that performs it
   (`MoveDocument` refuses a missing parent or a move under its own subtree),
-  not in `Execute`.
+  not in `Execute`. Block writes go through `ApplyEdit`, so their per-type
+  rules sit in `sanitizeBlock` and `sanitizeBlockAttrs` (`block.go`).
 - **`Traits()` says what a tool is**; the mixins
   `plainSummary`/`plainTraits`/`plainTitle` cover the defaults. `Write`
   gates behind confirmation and protects the result from context

@@ -358,10 +358,17 @@ func expandFigma(b Block) document.Block {
 // expandMetric builds a metricBlock. All caller-supplied attrs are
 // passed through unchanged (the metric configuration shape is
 // opaque to the canonical layer); the uid is taken from Block.UID
-// or freshly generated.
+// or freshly generated. A simulation flag the caller sent is dropped.
+// A block with a preset simulates, and any other does not.
 func expandMetric(b Block) document.Block {
 	attrs := b.Attrs.Copy()
 	attrs[document.AttrUID] = resolveUID(b.UID)
+
+	delete(attrs, document.AttrSimulationActive)
+
+	if _, ok := attrs.Value(document.AttrSimulationPreset); ok {
+		attrs[document.AttrSimulationActive] = true
+	}
 
 	return document.Block{
 		Type:  document.BlockNodeMetricBlock,

@@ -28,6 +28,7 @@ function metricConfig(title: string): MetricConfig {
 		unit: {},
 		axisBounds: {},
 		simulationPreset: null,
+		simulationActive: false,
 	}
 }
 

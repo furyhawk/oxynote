@@ -106,9 +106,13 @@ export interface MetricConfig {
 		min?: number | null
 		max?: number | null
 	}
-	// non-null while the block renders generated data instead of querying
-	// its data source
+	// the generated series the block draws while simulationActive is set.
+	// It stays after the simulation ends, so a block that simulates again
+	// reuses it. Null on a block nobody has simulated
 	simulationPreset: MetricSimulationPreset | null
+	// true while the block renders its preset instead of querying its data
+	// source. The server switches it off once real data answers
+	simulationActive: boolean
 }
 
 export function defaultMetricConfig(): MetricConfig {
@@ -135,6 +139,7 @@ export function defaultMetricConfig(): MetricConfig {
 			max: null,
 		},
 		simulationPreset: null,
+		simulationActive: false,
 	}
 }
 
@@ -171,6 +176,7 @@ export function buildConfigFromNodeAttrs(
 			},
 			// the legacy blob predates simulation, so it never carries one
 			simulationPreset: null,
+			simulationActive: false,
 		}
 	}
 
@@ -198,6 +204,7 @@ export function buildConfigFromNodeAttrs(
 		simulationPreset:
 			(attrs.simulationPreset as MetricSimulationPreset | null | undefined) ??
 			null,
+		simulationActive: attrs.simulationActive === true,
 	}
 }
 

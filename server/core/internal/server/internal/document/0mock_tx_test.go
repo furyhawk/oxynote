@@ -55,6 +55,9 @@ var _ Tx = &TxMock{}
 //			DeleteDocumentCommentsByBranchIDFunc: func(ctx context.Context, branchID xid.ID, organizationID string) error {
 //				panic("mock out the DeleteDocumentCommentsByBranchID method")
 //			},
+//			DetachDocumentHooksByBranchIDFunc: func(ctx context.Context, branchID xid.ID, organizationID string) error {
+//				panic("mock out the DetachDocumentHooksByBranchID method")
+//			},
 //			FetchBranchReviewerFunc: func(ctx context.Context, branchID xid.ID, userID string, organizationID string) (*documentCore.BranchReviewer, error) {
 //				panic("mock out the FetchBranchReviewer method")
 //			},
@@ -121,9 +124,6 @@ var _ Tx = &TxMock{}
 //			RollbackFunc: func() error {
 //				panic("mock out the Rollback method")
 //			},
-//			DetachDocumentHooksByBranchIDFunc: func(ctx context.Context, branchID xid.ID, organizationID string) error {
-//				panic("mock out the DetachDocumentHooksByBranchID method")
-//			},
 //			UpdateBranchReviewerFunc: func(ctx context.Context, reviewer documentCore.BranchReviewer) error {
 //				panic("mock out the UpdateBranchReviewer method")
 //			},
@@ -178,6 +178,9 @@ type TxMock struct {
 
 	// DeleteDocumentCommentsByBranchIDFunc mocks the DeleteDocumentCommentsByBranchID method.
 	DeleteDocumentCommentsByBranchIDFunc func(ctx context.Context, branchID xid.ID, organizationID string) error
+
+	// DetachDocumentHooksByBranchIDFunc mocks the DetachDocumentHooksByBranchID method.
+	DetachDocumentHooksByBranchIDFunc func(ctx context.Context, branchID xid.ID, organizationID string) error
 
 	// FetchBranchReviewerFunc mocks the FetchBranchReviewer method.
 	FetchBranchReviewerFunc func(ctx context.Context, branchID xid.ID, userID string, organizationID string) (*documentCore.BranchReviewer, error)
@@ -244,9 +247,6 @@ type TxMock struct {
 
 	// RollbackFunc mocks the Rollback method.
 	RollbackFunc func() error
-
-	// DetachDocumentHooksByBranchIDFunc mocks the DetachDocumentHooksByBranchID method.
-	DetachDocumentHooksByBranchIDFunc func(ctx context.Context, branchID xid.ID, organizationID string) error
 
 	// UpdateBranchReviewerFunc mocks the UpdateBranchReviewer method.
 	UpdateBranchReviewerFunc func(ctx context.Context, reviewer documentCore.BranchReviewer) error
@@ -351,6 +351,15 @@ type TxMock struct {
 		}
 		// DeleteDocumentCommentsByBranchID holds details about calls to the DeleteDocumentCommentsByBranchID method.
 		DeleteDocumentCommentsByBranchID []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// BranchID is the branchID argument value.
+			BranchID xid.ID
+			// OrganizationID is the organizationID argument value.
+			OrganizationID string
+		}
+		// DetachDocumentHooksByBranchID holds details about calls to the DetachDocumentHooksByBranchID method.
+		DetachDocumentHooksByBranchID []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// BranchID is the branchID argument value.
@@ -540,15 +549,6 @@ type TxMock struct {
 		// Rollback holds details about calls to the Rollback method.
 		Rollback []struct {
 		}
-		// DetachDocumentHooksByBranchID holds details about calls to the DetachDocumentHooksByBranchID method.
-		DetachDocumentHooksByBranchID []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// BranchID is the branchID argument value.
-			BranchID xid.ID
-			// OrganizationID is the organizationID argument value.
-			OrganizationID string
-		}
 		// UpdateBranchReviewer holds details about calls to the UpdateBranchReviewer method.
 		UpdateBranchReviewer []struct {
 			// Ctx is the ctx argument value.
@@ -612,6 +612,7 @@ type TxMock struct {
 	lockDeleteDocument                      sync.RWMutex
 	lockDeleteDocumentBranchByID            sync.RWMutex
 	lockDeleteDocumentCommentsByBranchID    sync.RWMutex
+	lockDetachDocumentHooksByBranchID       sync.RWMutex
 	lockFetchBranchReviewer                 sync.RWMutex
 	lockFetchBranchReviewers                sync.RWMutex
 	lockFetchDocument                       sync.RWMutex
@@ -634,7 +635,6 @@ type TxMock struct {
 	lockPromoteBranchApprovals              sync.RWMutex
 	lockReplaceBranchTags                   sync.RWMutex
 	lockRollback                            sync.RWMutex
-	lockDetachDocumentHooksByBranchID       sync.RWMutex
 	lockUpdateBranchReviewer                sync.RWMutex
 	lockUpdateDocument                      sync.RWMutex
 	lockUpdateDocumentBranchMetadata        sync.RWMutex
@@ -825,7 +825,9 @@ func (mock *TxMock) CopyBranchTags(ctx context.Context, organizationID string, f
 	mock.calls.CopyBranchTags = append(mock.calls.CopyBranchTags, callInfo)
 	mock.lockCopyBranchTags.Unlock()
 	if mock.CopyBranchTagsFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.CopyBranchTagsFunc(ctx, organizationID, fromBranchID, toBranchID)
@@ -1071,6 +1073,49 @@ func (mock *TxMock) DeleteDocumentCommentsByBranchIDCalls() []struct {
 	mock.lockDeleteDocumentCommentsByBranchID.RLock()
 	calls = mock.calls.DeleteDocumentCommentsByBranchID
 	mock.lockDeleteDocumentCommentsByBranchID.RUnlock()
+	return calls
+}
+
+// DetachDocumentHooksByBranchID calls DetachDocumentHooksByBranchIDFunc.
+func (mock *TxMock) DetachDocumentHooksByBranchID(ctx context.Context, branchID xid.ID, organizationID string) error {
+	callInfo := struct {
+		Ctx            context.Context
+		BranchID       xid.ID
+		OrganizationID string
+	}{
+		Ctx:            ctx,
+		BranchID:       branchID,
+		OrganizationID: organizationID,
+	}
+	mock.lockDetachDocumentHooksByBranchID.Lock()
+	mock.calls.DetachDocumentHooksByBranchID = append(mock.calls.DetachDocumentHooksByBranchID, callInfo)
+	mock.lockDetachDocumentHooksByBranchID.Unlock()
+	if mock.DetachDocumentHooksByBranchIDFunc == nil {
+		var (
+			errOut error
+		)
+		return errOut
+	}
+	return mock.DetachDocumentHooksByBranchIDFunc(ctx, branchID, organizationID)
+}
+
+// DetachDocumentHooksByBranchIDCalls gets all the calls that were made to DetachDocumentHooksByBranchID.
+// Check the length with:
+//
+//	len(mockedTx.DetachDocumentHooksByBranchIDCalls())
+func (mock *TxMock) DetachDocumentHooksByBranchIDCalls() []struct {
+	Ctx            context.Context
+	BranchID       xid.ID
+	OrganizationID string
+} {
+	var calls []struct {
+		Ctx            context.Context
+		BranchID       xid.ID
+		OrganizationID string
+	}
+	mock.lockDetachDocumentHooksByBranchID.RLock()
+	calls = mock.calls.DetachDocumentHooksByBranchID
+	mock.lockDetachDocumentHooksByBranchID.RUnlock()
 	return calls
 }
 
@@ -1940,7 +1985,9 @@ func (mock *TxMock) ReplaceBranchTags(ctx context.Context, organizationID string
 	mock.calls.ReplaceBranchTags = append(mock.calls.ReplaceBranchTags, callInfo)
 	mock.lockReplaceBranchTags.Unlock()
 	if mock.ReplaceBranchTagsFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.ReplaceBranchTagsFunc(ctx, organizationID, fromBranchID, toBranchID)
@@ -1995,49 +2042,6 @@ func (mock *TxMock) RollbackCalls() []struct {
 	mock.lockRollback.RLock()
 	calls = mock.calls.Rollback
 	mock.lockRollback.RUnlock()
-	return calls
-}
-
-// DetachDocumentHooksByBranchID calls DetachDocumentHooksByBranchIDFunc.
-func (mock *TxMock) DetachDocumentHooksByBranchID(ctx context.Context, branchID xid.ID, organizationID string) error {
-	callInfo := struct {
-		Ctx            context.Context
-		BranchID       xid.ID
-		OrganizationID string
-	}{
-		Ctx:            ctx,
-		BranchID:       branchID,
-		OrganizationID: organizationID,
-	}
-	mock.lockDetachDocumentHooksByBranchID.Lock()
-	mock.calls.DetachDocumentHooksByBranchID = append(mock.calls.DetachDocumentHooksByBranchID, callInfo)
-	mock.lockDetachDocumentHooksByBranchID.Unlock()
-	if mock.DetachDocumentHooksByBranchIDFunc == nil {
-		var (
-			errOut error
-		)
-		return errOut
-	}
-	return mock.DetachDocumentHooksByBranchIDFunc(ctx, branchID, organizationID)
-}
-
-// DetachDocumentHooksByBranchIDCalls gets all the calls that were made to DetachDocumentHooksByBranchID.
-// Check the length with:
-//
-//	len(mockedTx.DetachDocumentHooksByBranchIDCalls())
-func (mock *TxMock) DetachDocumentHooksByBranchIDCalls() []struct {
-	Ctx            context.Context
-	BranchID       xid.ID
-	OrganizationID string
-} {
-	var calls []struct {
-		Ctx            context.Context
-		BranchID       xid.ID
-		OrganizationID string
-	}
-	mock.lockDetachDocumentHooksByBranchID.RLock()
-	calls = mock.calls.DetachDocumentHooksByBranchID
-	mock.lockDetachDocumentHooksByBranchID.RUnlock()
 	return calls
 }
 

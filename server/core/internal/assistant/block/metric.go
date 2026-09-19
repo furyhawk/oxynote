@@ -96,6 +96,56 @@ func MetricEnums() map[string][]string {
 	return out
 }
 
+// DeriveSimulation sets the simulation flag on an attribute update. A
+// flag the caller sent is dropped. A changed preset switches the
+// simulation on, and a null preset switches it off. Any other update
+// leaves the stored flag alone.
+func DeriveSimulation(update map[string]any, stored document.Attributes) {
+	delete(update, document.AttrSimulationActive)
+
+	preset, named := update[document.AttrSimulationPreset]
+	if !named || preset == stored[document.AttrSimulationPreset] {
+		return
+	}
+
+	update[document.AttrSimulationActive] = preset != nil
+}
+
+// KeepSimulation copies the stored simulation flag onto each metric in
+// next that stored holds with the same uid and preset. A metric re-sent
+// after its data arrived then does not start simulating again. It
+// writes to next's attribute maps.
+func KeepSimulation(next, stored document.Block) {
+	if next.Type != document.BlockNodeMetricBlock {
+		for _, child := range next.Content {
+			KeepSimulation(child, stored)
+		}
+
+		return
+	}
+
+	uid, ok := next.UID()
+	if !ok {
+		return
+	}
+
+	old, found := stored.FindByUID(uid)
+	if !found || old.Type != document.BlockNodeMetricBlock {
+		return
+	}
+
+	preset, ok := next.Attrs.Value(document.AttrSimulationPreset)
+	if !ok || preset != old.Attrs[document.AttrSimulationPreset] {
+		return
+	}
+
+	delete(next.Attrs, document.AttrSimulationActive)
+
+	if active, set := old.Attrs.Value(document.AttrSimulationActive); set {
+		next.Attrs[document.AttrSimulationActive] = active
+	}
+}
+
 // validateMetric checks a metric block: no content, and every known
 // attribute it does carry is well-formed. Only present, non-null values
 // are checked — the editor stores null for "unset" and an older block

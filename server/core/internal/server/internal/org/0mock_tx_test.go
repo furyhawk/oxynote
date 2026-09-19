@@ -242,7 +242,9 @@ func (mock *TxMock) AssignBranchTag(ctx context.Context, organizationID string, 
 	mock.calls.AssignBranchTag = append(mock.calls.AssignBranchTag, callInfo)
 	mock.lockAssignBranchTag.Unlock()
 	if mock.AssignBranchTagFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.AssignBranchTagFunc(ctx, organizationID, documentID, branchID, tagID)
@@ -590,7 +592,9 @@ func (mock *TxMock) InsertTag(ctx context.Context, t tag.Tag) error {
 	mock.calls.InsertTag = append(mock.calls.InsertTag, callInfo)
 	mock.lockInsertTag.Unlock()
 	if mock.InsertTagFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.InsertTagFunc(ctx, t)

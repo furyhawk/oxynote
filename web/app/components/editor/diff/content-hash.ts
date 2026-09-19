@@ -1,6 +1,7 @@
 import type { JSONContent } from "@tiptap/core"
 import { COMMENT_MARK_NAME } from "~/components/editor/mark-names"
 import { NODE_COMMENT_ID_ATTR } from "~/components/editor/comments/node-comment-extension"
+import { SIMULATION_ACTIVE_ATTR } from "~/components/editor/blocks/metrics/simulation"
 
 export interface HashOptions {
 	/** mark types to strip before hashing (e.g. ['comment']) */
@@ -11,7 +12,7 @@ export interface HashOptions {
 
 const DEFAULT_OPTIONS: HashOptions = {
 	excludeMarks: [COMMENT_MARK_NAME],
-	excludeAttributes: [NODE_COMMENT_ID_ATTR],
+	excludeAttributes: [NODE_COMMENT_ID_ATTR, SIMULATION_ACTIVE_ATTR],
 }
 
 /**

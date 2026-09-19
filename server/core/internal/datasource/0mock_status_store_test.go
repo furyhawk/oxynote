@@ -40,8 +40,8 @@ type StatusStoreMock struct {
 		UpdateDataSourceStatus []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Id is the id argument value.
-			Id xid.ID
+			// ID is the id argument value.
+			ID xid.ID
 			// OrganizationID is the organizationID argument value.
 			OrganizationID string
 			// Status is the status argument value.
@@ -55,12 +55,12 @@ type StatusStoreMock struct {
 func (mock *StatusStoreMock) UpdateDataSourceStatus(ctx context.Context, id xid.ID, organizationID string, status processor.ConnectionStatus) error {
 	callInfo := struct {
 		Ctx            context.Context
-		Id             xid.ID
+		ID             xid.ID
 		OrganizationID string
 		Status         processor.ConnectionStatus
 	}{
 		Ctx:            ctx,
-		Id:             id,
+		ID:             id,
 		OrganizationID: organizationID,
 		Status:         status,
 	}
@@ -82,13 +82,13 @@ func (mock *StatusStoreMock) UpdateDataSourceStatus(ctx context.Context, id xid.
 //	len(mockedStatusStore.UpdateDataSourceStatusCalls())
 func (mock *StatusStoreMock) UpdateDataSourceStatusCalls() []struct {
 	Ctx            context.Context
-	Id             xid.ID
+	ID             xid.ID
 	OrganizationID string
 	Status         processor.ConnectionStatus
 } {
 	var calls []struct {
 		Ctx            context.Context
-		Id             xid.ID
+		ID             xid.ID
 		OrganizationID string
 		Status         processor.ConnectionStatus
 	}

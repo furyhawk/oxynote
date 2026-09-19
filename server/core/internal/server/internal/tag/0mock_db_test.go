@@ -192,7 +192,9 @@ func (mock *DBMock) AssignBranchTag(ctx context.Context, organizationID string, 
 	mock.calls.AssignBranchTag = append(mock.calls.AssignBranchTag, callInfo)
 	mock.lockAssignBranchTag.Unlock()
 	if mock.AssignBranchTagFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.AssignBranchTagFunc(ctx, organizationID, documentID, branchID, tagID)
@@ -237,7 +239,9 @@ func (mock *DBMock) DeleteTag(ctx context.Context, id xid.ID, organizationID str
 	mock.calls.DeleteTag = append(mock.calls.DeleteTag, callInfo)
 	mock.lockDeleteTag.Unlock()
 	if mock.DeleteTagFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.DeleteTagFunc(ctx, id, organizationID)
@@ -281,10 +285,10 @@ func (mock *DBMock) FetchBranchTagIDs(ctx context.Context, organizationID string
 	mock.lockFetchBranchTagIDs.Unlock()
 	if mock.FetchBranchTagIDsFunc == nil {
 		var (
-			idsOut []xid.ID
+			iDsOut []xid.ID
 			errOut error
 		)
-		return idsOut, errOut
+		return iDsOut, errOut
 	}
 	return mock.FetchBranchTagIDsFunc(ctx, organizationID, documentID, branchID)
 }
@@ -368,7 +372,9 @@ func (mock *DBMock) InsertTag(ctx context.Context, t tagCore.Tag) error {
 	mock.calls.InsertTag = append(mock.calls.InsertTag, callInfo)
 	mock.lockInsertTag.Unlock()
 	if mock.InsertTagFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.InsertTagFunc(ctx, t)
@@ -411,7 +417,9 @@ func (mock *DBMock) SetTagVisibility(ctx context.Context, organizationID string,
 	mock.calls.SetTagVisibility = append(mock.calls.SetTagVisibility, callInfo)
 	mock.lockSetTagVisibility.Unlock()
 	if mock.SetTagVisibilityFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.SetTagVisibilityFunc(ctx, organizationID, userID, id, inp)
@@ -460,7 +468,9 @@ func (mock *DBMock) UnassignBranchTag(ctx context.Context, organizationID string
 	mock.calls.UnassignBranchTag = append(mock.calls.UnassignBranchTag, callInfo)
 	mock.lockUnassignBranchTag.Unlock()
 	if mock.UnassignBranchTagFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.UnassignBranchTagFunc(ctx, organizationID, documentID, branchID, tagID)
@@ -505,7 +515,9 @@ func (mock *DBMock) UpdateTagTree(ctx context.Context, tree tagCore.Summaries, o
 	mock.calls.UpdateTagTree = append(mock.calls.UpdateTagTree, callInfo)
 	mock.lockUpdateTagTree.Unlock()
 	if mock.UpdateTagTreeFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.UpdateTagTreeFunc(ctx, tree, organizationID)

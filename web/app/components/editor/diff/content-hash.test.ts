@@ -35,6 +35,42 @@ describe("hashBlockContent", () => {
 		expect(hashBlockContent(commented)).toBe(hashBlockContent(clean))
 	})
 
+	// the server switches a simulation off on whichever branch is open.
+	// That is not a user change, so the hash ignores the flag
+	it("ignores a metric block's simulation flag by default", () => {
+		const simulating = {
+			type: "metricBlock",
+			attrs: {
+				uid: "m1",
+				simulationPreset: "cpu_usage",
+				simulationActive: true,
+			},
+		}
+		const answered = {
+			type: "metricBlock",
+			attrs: {
+				uid: "m1",
+				simulationPreset: "cpu_usage",
+				simulationActive: false,
+			},
+		}
+
+		expect(hashBlockContent(simulating)).toBe(hashBlockContent(answered))
+	})
+
+	it("keeps a metric block's simulation preset significant", () => {
+		const a = {
+			type: "metricBlock",
+			attrs: { uid: "m1", simulationPreset: "cpu_usage" },
+		}
+		const b = {
+			type: "metricBlock",
+			attrs: { uid: "m1", simulationPreset: "error_rate" },
+		}
+
+		expect(hashBlockContent(a)).not.toBe(hashBlockContent(b))
+	})
+
 	it("merges text runs split by a comment boundary", () => {
 		const split = paragraph([
 			text("hel", [{ type: "comment", attrs: { commentId: "c1" } }]),

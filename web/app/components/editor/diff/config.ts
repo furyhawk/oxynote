@@ -17,6 +17,7 @@ import Paragraph from "@tiptap/extension-paragraph"
 import HorizontalRule from "@tiptap/extension-horizontal-rule"
 import { COMMENT_MARK_NAME } from "~/components/editor/mark-names"
 import { NODE_COMMENT_ID_ATTR } from "~/components/editor/comments/node-comment-extension"
+import { SIMULATION_ACTIVE_ATTR } from "~/components/editor/blocks/metrics/simulation"
 import {
 	BulletList,
 	OrderedList,
@@ -56,7 +57,7 @@ export const MODIFIED_TEXT_CONTENT_TYPES = new Set<string>([MERMAID_BLOCK_NAME])
 
 export const DEFAULT_MERGE_OPTIONS: MergeOptions = {
 	excludeMarks: [COMMENT_MARK_NAME],
-	excludeAttributes: [NODE_COMMENT_ID_ATTR],
+	excludeAttributes: [NODE_COMMENT_ID_ATTR, SIMULATION_ACTIVE_ATTR],
 	useUidMatching: true,
 	uidAttribute: "uid",
 	unwrapTypes: [

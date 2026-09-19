@@ -114,6 +114,10 @@ export const MetricBlock = Node.create({
 			axisBoundsMin: { default: defaults.axisBounds.min ?? null },
 			axisBoundsMax: { default: defaults.axisBounds.max ?? null },
 			simulationPreset: { default: defaults.simulationPreset },
+			simulationActive: {
+				default: defaults.simulationActive,
+				rendered: false,
+			},
 			width: {
 				default: MetricBlockWidth.Standard,
 				parseHTML: (element) =>

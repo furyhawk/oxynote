@@ -5,9 +5,10 @@ package mock
 
 import (
 	"context"
+	"sync"
+
 	"github.com/oxynote/oxynote/server/core/internal/assistant/tools"
 	"github.com/oxynote/oxynote/server/core/internal/search"
-	"sync"
 )
 
 // Ensure, that Searcher does implement tools.Searcher.
@@ -18,14 +19,14 @@ var _ tools.Searcher = &Searcher{}
 //
 //	func TestSomethingThatUsesSearcher(t *testing.T) {
 //
-//		// make and configure a mocked Searcher
+//		// make and configure a mocked tools.Searcher
 //		mockedSearcher := &Searcher{
 //			SearchDocumentBlocksFunc: func(ctx context.Context, organizationID string, query string, limit int) ([]search.Block, error) {
 //				panic("mock out the SearchDocumentBlocks method")
 //			},
 //		}
 //
-//		// use mockedSearcher in code that requires Searcher
+//		// use mockedSearcher in code that requires tools.Searcher
 //		// and then make assertions.
 //
 //	}
@@ -68,10 +69,10 @@ func (mock *Searcher) SearchDocumentBlocks(ctx context.Context, organizationID s
 	mock.lockSearchDocumentBlocks.Unlock()
 	if mock.SearchDocumentBlocksFunc == nil {
 		var (
-			out0   []search.Block
-			errOut error
+			blocksOut []search.Block
+			errOut    error
 		)
-		return out0, errOut
+		return blocksOut, errOut
 	}
 	return mock.SearchDocumentBlocksFunc(ctx, organizationID, query, limit)
 }

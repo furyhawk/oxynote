@@ -17,12 +17,15 @@ var _ datasource.Prometheus = &Prometheus{}
 
 // Prometheus is a mock implementation of datasource.Prometheus.
 //
-//	func TestSomethingThatUsesdatasource.Prometheus(t *testing.T) {
+//	func TestSomethingThatUsesPrometheus(t *testing.T) {
 //
 //		// make and configure a mocked datasource.Prometheus
-//		mockeddatasource.Prometheus := &Prometheus{
-//			TestConnectionFunc: func(ctx context.Context) (processor.ConnectionStatus, error) {
-//				panic("mock out the TestConnection method")
+//		mockedPrometheus := &Prometheus{
+//			LabelNamesFunc: func(ctx context.Context, matchers []string, tr processor.TimeRange) (*processor.PrometheusLabelNamesResult, error) {
+//				panic("mock out the LabelNames method")
+//			},
+//			LabelValuesFunc: func(ctx context.Context, label string, matchers []string, tr processor.TimeRange) (*processor.PrometheusLabelValuesResult, error) {
+//				panic("mock out the LabelValues method")
 //			},
 //			MetadataFunc: func(ctx context.Context) (*processor.PrometheusMetadataResult, error) {
 //				panic("mock out the Metadata method")
@@ -30,24 +33,24 @@ var _ datasource.Prometheus = &Prometheus{}
 //			QueryRangeFunc: func(ctx context.Context, q string, tr processor.TimeRange) (*processor.PrometheusQueryResult, error) {
 //				panic("mock out the QueryRange method")
 //			},
-//			LabelNamesFunc: func(ctx context.Context, matchers []string, tr processor.TimeRange) (*processor.PrometheusLabelNamesResult, error) {
-//				panic("mock out the LabelNames method")
-//			},
-//			LabelValuesFunc: func(ctx context.Context, label string, matchers []string, tr processor.TimeRange) (*processor.PrometheusLabelValuesResult, error) {
-//				panic("mock out the LabelValues method")
-//			},
 //			SeriesFunc: func(ctx context.Context, matchers []string, tr processor.TimeRange) (*processor.PrometheusSeriesResult, error) {
 //				panic("mock out the Series method")
 //			},
+//			TestConnectionFunc: func(ctx context.Context) (processor.ConnectionStatus, error) {
+//				panic("mock out the TestConnection method")
+//			},
 //		}
 //
-//		// use mockeddatasource.Prometheus in code that requires datasource.Prometheus
+//		// use mockedPrometheus in code that requires datasource.Prometheus
 //		// and then make assertions.
 //
 //	}
 type Prometheus struct {
-	// TestConnectionFunc mocks the TestConnection method.
-	TestConnectionFunc func(ctx context.Context) (processor.ConnectionStatus, error)
+	// LabelNamesFunc mocks the LabelNames method.
+	LabelNamesFunc func(ctx context.Context, matchers []string, tr processor.TimeRange) (*processor.PrometheusLabelNamesResult, error)
+
+	// LabelValuesFunc mocks the LabelValues method.
+	LabelValuesFunc func(ctx context.Context, label string, matchers []string, tr processor.TimeRange) (*processor.PrometheusLabelValuesResult, error)
 
 	// MetadataFunc mocks the Metadata method.
 	MetadataFunc func(ctx context.Context) (*processor.PrometheusMetadataResult, error)
@@ -55,36 +58,14 @@ type Prometheus struct {
 	// QueryRangeFunc mocks the QueryRange method.
 	QueryRangeFunc func(ctx context.Context, q string, tr processor.TimeRange) (*processor.PrometheusQueryResult, error)
 
-	// LabelNamesFunc mocks the LabelNames method.
-	LabelNamesFunc func(ctx context.Context, matchers []string, tr processor.TimeRange) (*processor.PrometheusLabelNamesResult, error)
-
-	// LabelValuesFunc mocks the LabelValues method.
-	LabelValuesFunc func(ctx context.Context, label string, matchers []string, tr processor.TimeRange) (*processor.PrometheusLabelValuesResult, error)
-
 	// SeriesFunc mocks the Series method.
 	SeriesFunc func(ctx context.Context, matchers []string, tr processor.TimeRange) (*processor.PrometheusSeriesResult, error)
 
+	// TestConnectionFunc mocks the TestConnection method.
+	TestConnectionFunc func(ctx context.Context) (processor.ConnectionStatus, error)
+
 	// calls tracks calls to the methods.
 	calls struct {
-		// TestConnection holds details about calls to the TestConnection method.
-		TestConnection []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-		}
-		// Metadata holds details about calls to the Metadata method.
-		Metadata []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-		}
-		// QueryRange holds details about calls to the QueryRange method.
-		QueryRange []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// Q is the q argument value.
-			Q string
-			// Tr is the tr argument value.
-			Tr processor.TimeRange
-		}
 		// LabelNames holds details about calls to the LabelNames method.
 		LabelNames []struct {
 			// Ctx is the ctx argument value.
@@ -105,6 +86,20 @@ type Prometheus struct {
 			// Tr is the tr argument value.
 			Tr processor.TimeRange
 		}
+		// Metadata holds details about calls to the Metadata method.
+		Metadata []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
+		// QueryRange holds details about calls to the QueryRange method.
+		QueryRange []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q string
+			// Tr is the tr argument value.
+			Tr processor.TimeRange
+		}
 		// Series holds details about calls to the Series method.
 		Series []struct {
 			// Ctx is the ctx argument value.
@@ -114,129 +109,18 @@ type Prometheus struct {
 			// Tr is the tr argument value.
 			Tr processor.TimeRange
 		}
+		// TestConnection holds details about calls to the TestConnection method.
+		TestConnection []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
 	}
-	lockTestConnection sync.RWMutex
-	lockMetadata       sync.RWMutex
-	lockQueryRange     sync.RWMutex
 	lockLabelNames     sync.RWMutex
 	lockLabelValues    sync.RWMutex
+	lockMetadata       sync.RWMutex
+	lockQueryRange     sync.RWMutex
 	lockSeries         sync.RWMutex
-}
-
-// TestConnection calls TestConnectionFunc.
-func (mock *Prometheus) TestConnection(ctx context.Context) (processor.ConnectionStatus, error) {
-	callInfo := struct {
-		Ctx context.Context
-	}{
-		Ctx: ctx,
-	}
-	mock.lockTestConnection.Lock()
-	mock.calls.TestConnection = append(mock.calls.TestConnection, callInfo)
-	mock.lockTestConnection.Unlock()
-	if mock.TestConnectionFunc == nil {
-		var (
-			connectionStatusOut processor.ConnectionStatus
-			errOut              error
-		)
-		return connectionStatusOut, errOut
-	}
-	return mock.TestConnectionFunc(ctx)
-}
-
-// TestConnectionCalls gets all the calls that were made to TestConnection.
-// Check the length with:
-//
-//	len(mockeddatasource.Prometheus.TestConnectionCalls())
-func (mock *Prometheus) TestConnectionCalls() []struct {
-	Ctx context.Context
-} {
-	var calls []struct {
-		Ctx context.Context
-	}
-	mock.lockTestConnection.RLock()
-	calls = mock.calls.TestConnection
-	mock.lockTestConnection.RUnlock()
-	return calls
-}
-
-// Metadata calls MetadataFunc.
-func (mock *Prometheus) Metadata(ctx context.Context) (*processor.PrometheusMetadataResult, error) {
-	callInfo := struct {
-		Ctx context.Context
-	}{
-		Ctx: ctx,
-	}
-	mock.lockMetadata.Lock()
-	mock.calls.Metadata = append(mock.calls.Metadata, callInfo)
-	mock.lockMetadata.Unlock()
-	if mock.MetadataFunc == nil {
-		var (
-			prometheusMetadataResultOut *processor.PrometheusMetadataResult
-			errOut                      error
-		)
-		return prometheusMetadataResultOut, errOut
-	}
-	return mock.MetadataFunc(ctx)
-}
-
-// MetadataCalls gets all the calls that were made to Metadata.
-// Check the length with:
-//
-//	len(mockeddatasource.Prometheus.MetadataCalls())
-func (mock *Prometheus) MetadataCalls() []struct {
-	Ctx context.Context
-} {
-	var calls []struct {
-		Ctx context.Context
-	}
-	mock.lockMetadata.RLock()
-	calls = mock.calls.Metadata
-	mock.lockMetadata.RUnlock()
-	return calls
-}
-
-// QueryRange calls QueryRangeFunc.
-func (mock *Prometheus) QueryRange(ctx context.Context, q string, tr processor.TimeRange) (*processor.PrometheusQueryResult, error) {
-	callInfo := struct {
-		Ctx context.Context
-		Q   string
-		Tr  processor.TimeRange
-	}{
-		Ctx: ctx,
-		Q:   q,
-		Tr:  tr,
-	}
-	mock.lockQueryRange.Lock()
-	mock.calls.QueryRange = append(mock.calls.QueryRange, callInfo)
-	mock.lockQueryRange.Unlock()
-	if mock.QueryRangeFunc == nil {
-		var (
-			prometheusQueryResultOut *processor.PrometheusQueryResult
-			errOut                   error
-		)
-		return prometheusQueryResultOut, errOut
-	}
-	return mock.QueryRangeFunc(ctx, q, tr)
-}
-
-// QueryRangeCalls gets all the calls that were made to QueryRange.
-// Check the length with:
-//
-//	len(mockeddatasource.Prometheus.QueryRangeCalls())
-func (mock *Prometheus) QueryRangeCalls() []struct {
-	Ctx context.Context
-	Q   string
-	Tr  processor.TimeRange
-} {
-	var calls []struct {
-		Ctx context.Context
-		Q   string
-		Tr  processor.TimeRange
-	}
-	mock.lockQueryRange.RLock()
-	calls = mock.calls.QueryRange
-	mock.lockQueryRange.RUnlock()
-	return calls
+	lockTestConnection sync.RWMutex
 }
 
 // LabelNames calls LabelNamesFunc.
@@ -266,7 +150,7 @@ func (mock *Prometheus) LabelNames(ctx context.Context, matchers []string, tr pr
 // LabelNamesCalls gets all the calls that were made to LabelNames.
 // Check the length with:
 //
-//	len(mockeddatasource.Prometheus.LabelNamesCalls())
+//	len(mockedPrometheus.LabelNamesCalls())
 func (mock *Prometheus) LabelNamesCalls() []struct {
 	Ctx      context.Context
 	Matchers []string
@@ -312,7 +196,7 @@ func (mock *Prometheus) LabelValues(ctx context.Context, label string, matchers 
 // LabelValuesCalls gets all the calls that were made to LabelValues.
 // Check the length with:
 //
-//	len(mockeddatasource.Prometheus.LabelValuesCalls())
+//	len(mockedPrometheus.LabelValuesCalls())
 func (mock *Prometheus) LabelValuesCalls() []struct {
 	Ctx      context.Context
 	Label    string
@@ -328,6 +212,86 @@ func (mock *Prometheus) LabelValuesCalls() []struct {
 	mock.lockLabelValues.RLock()
 	calls = mock.calls.LabelValues
 	mock.lockLabelValues.RUnlock()
+	return calls
+}
+
+// Metadata calls MetadataFunc.
+func (mock *Prometheus) Metadata(ctx context.Context) (*processor.PrometheusMetadataResult, error) {
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockMetadata.Lock()
+	mock.calls.Metadata = append(mock.calls.Metadata, callInfo)
+	mock.lockMetadata.Unlock()
+	if mock.MetadataFunc == nil {
+		var (
+			prometheusMetadataResultOut *processor.PrometheusMetadataResult
+			errOut                      error
+		)
+		return prometheusMetadataResultOut, errOut
+	}
+	return mock.MetadataFunc(ctx)
+}
+
+// MetadataCalls gets all the calls that were made to Metadata.
+// Check the length with:
+//
+//	len(mockedPrometheus.MetadataCalls())
+func (mock *Prometheus) MetadataCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockMetadata.RLock()
+	calls = mock.calls.Metadata
+	mock.lockMetadata.RUnlock()
+	return calls
+}
+
+// QueryRange calls QueryRangeFunc.
+func (mock *Prometheus) QueryRange(ctx context.Context, q string, tr processor.TimeRange) (*processor.PrometheusQueryResult, error) {
+	callInfo := struct {
+		Ctx context.Context
+		Q   string
+		Tr  processor.TimeRange
+	}{
+		Ctx: ctx,
+		Q:   q,
+		Tr:  tr,
+	}
+	mock.lockQueryRange.Lock()
+	mock.calls.QueryRange = append(mock.calls.QueryRange, callInfo)
+	mock.lockQueryRange.Unlock()
+	if mock.QueryRangeFunc == nil {
+		var (
+			prometheusQueryResultOut *processor.PrometheusQueryResult
+			errOut                   error
+		)
+		return prometheusQueryResultOut, errOut
+	}
+	return mock.QueryRangeFunc(ctx, q, tr)
+}
+
+// QueryRangeCalls gets all the calls that were made to QueryRange.
+// Check the length with:
+//
+//	len(mockedPrometheus.QueryRangeCalls())
+func (mock *Prometheus) QueryRangeCalls() []struct {
+	Ctx context.Context
+	Q   string
+	Tr  processor.TimeRange
+} {
+	var calls []struct {
+		Ctx context.Context
+		Q   string
+		Tr  processor.TimeRange
+	}
+	mock.lockQueryRange.RLock()
+	calls = mock.calls.QueryRange
+	mock.lockQueryRange.RUnlock()
 	return calls
 }
 
@@ -358,7 +322,7 @@ func (mock *Prometheus) Series(ctx context.Context, matchers []string, tr proces
 // SeriesCalls gets all the calls that were made to Series.
 // Check the length with:
 //
-//	len(mockeddatasource.Prometheus.SeriesCalls())
+//	len(mockedPrometheus.SeriesCalls())
 func (mock *Prometheus) SeriesCalls() []struct {
 	Ctx      context.Context
 	Matchers []string
@@ -372,5 +336,41 @@ func (mock *Prometheus) SeriesCalls() []struct {
 	mock.lockSeries.RLock()
 	calls = mock.calls.Series
 	mock.lockSeries.RUnlock()
+	return calls
+}
+
+// TestConnection calls TestConnectionFunc.
+func (mock *Prometheus) TestConnection(ctx context.Context) (processor.ConnectionStatus, error) {
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockTestConnection.Lock()
+	mock.calls.TestConnection = append(mock.calls.TestConnection, callInfo)
+	mock.lockTestConnection.Unlock()
+	if mock.TestConnectionFunc == nil {
+		var (
+			connectionStatusOut processor.ConnectionStatus
+			errOut              error
+		)
+		return connectionStatusOut, errOut
+	}
+	return mock.TestConnectionFunc(ctx)
+}
+
+// TestConnectionCalls gets all the calls that were made to TestConnection.
+// Check the length with:
+//
+//	len(mockedPrometheus.TestConnectionCalls())
+func (mock *Prometheus) TestConnectionCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockTestConnection.RLock()
+	calls = mock.calls.TestConnection
+	mock.lockTestConnection.RUnlock()
 	return calls
 }

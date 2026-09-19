@@ -1,8 +1,12 @@
 <script lang="ts" setup>
 import { cn } from "~/lib/utils"
 import { MetricSimulationPreset } from "../utils"
+import { DiffStatus } from "~/components/editor/diff/position-map"
 
 const selectedPreset = defineModel<MetricSimulationPreset | null>()
+const props = defineProps<{
+	diffStatus?: DiffStatus | null
+}>()
 const { isEditable } = useEditorMeta()
 const editorStore = useEditorStore()
 
@@ -26,6 +30,8 @@ function selectPreset(preset: MetricSimulationPreset) {
 					cn(
 						'h-[1.775rem]! justify-between gap-1 px-1.5 text-2sm font-normal opacity-100!',
 						isEditingDisabled && 'pointer-events-none select-text',
+						props.diffStatus === DiffStatus.Added && 'bg-diff-field-added',
+						props.diffStatus === DiffStatus.Removed && 'bg-diff-field-removed',
 					)
 				"
 			>

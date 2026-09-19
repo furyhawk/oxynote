@@ -62,10 +62,10 @@ func (mock *SearcherMock) SearchDocuments(ctx context.Context, organizationID st
 	mock.lockSearchDocuments.Unlock()
 	if mock.SearchDocumentsFunc == nil {
 		var (
-			out0   []byte
-			errOut error
+			bytesOut []byte
+			errOut   error
 		)
-		return out0, errOut
+		return bytesOut, errOut
 	}
 	return mock.SearchDocumentsFunc(ctx, organizationID, query)
 }

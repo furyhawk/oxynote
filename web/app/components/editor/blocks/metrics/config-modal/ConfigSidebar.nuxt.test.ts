@@ -521,12 +521,27 @@ describe("<ConfigSidebar>", { concurrent: false }, () => {
 			expect(wrapper.findComponent(SimulationPresetSelect).exists()).toBe(false)
 		})
 
+		it("stays hidden once the real data has arrived", async ({ expect }) => {
+			const wrapper = await mountSidebar({
+				modelValue: configWith({
+					simulationPreset: MetricSimulationPreset.HTTPLatency,
+					simulationActive: false,
+				}),
+			})
+
+			expect(wrapper.text()).not.toContain(
+				t("editor.metrics.simulation.section-title"),
+			)
+			expect(wrapper.findComponent(SimulationPresetSelect).exists()).toBe(false)
+		})
+
 		it("explains the simulation and shows the chart it draws", async ({
 			expect,
 		}) => {
 			const wrapper = await mountSidebar({
 				modelValue: configWith({
 					simulationPreset: MetricSimulationPreset.HTTPLatency,
+					simulationActive: true,
 				}),
 			})
 
@@ -544,6 +559,7 @@ describe("<ConfigSidebar>", { concurrent: false }, () => {
 		it("switches the block to another preset", async ({ expect }) => {
 			const config = configWith({
 				simulationPreset: MetricSimulationPreset.CPUUsage,
+				simulationActive: true,
 			})
 			const wrapper = await mountSidebar({ modelValue: config })
 
@@ -561,6 +577,7 @@ describe("<ConfigSidebar>", { concurrent: false }, () => {
 		it("turns the simulation off again", async ({ expect }) => {
 			const config = configWith({
 				simulationPreset: MetricSimulationPreset.CPUUsage,
+				simulationActive: true,
 			})
 			const wrapper = await mountSidebar({ modelValue: config })
 
@@ -572,12 +589,133 @@ describe("<ConfigSidebar>", { concurrent: false }, () => {
 			expect(config.simulationPreset).toBeNull()
 		})
 
+		// a diff compares what each side chose. It shows the preset even
+		// when the simulation is already off
+		it("shows the preset a diff replaced beside the new one", async ({
+			expect,
+		}) => {
+			const wrapper = await mountSidebar({
+				modelValue: configWith({
+					simulationPreset: MetricSimulationPreset.DiskUsage,
+					simulationActive: false,
+				}),
+				diffStatus: DiffStatus.Modified,
+				oldConfig: configWith({
+					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: false,
+				}),
+			})
+
+			const selects = wrapper.findAllComponents(SimulationPresetSelect)
+
+			expect(selects).toHaveLength(2)
+			expect(at(selects, 0).text()).toContain(
+				t("editor.metrics.simulation.preset-options.disk_usage"),
+			)
+			expect(at(selects, 0).find("button").classes()).toContain(
+				"bg-diff-field-added",
+			)
+			expect(at(selects, 1).text()).toContain(
+				t("editor.metrics.simulation.preset-options.cpu_usage"),
+			)
+			expect(at(selects, 1).find("button").classes()).toContain(
+				"bg-diff-field-removed",
+			)
+		})
+
+		it("shows only the new side of a preset a diff added", async ({
+			expect,
+		}) => {
+			const wrapper = await mountSidebar({
+				modelValue: configWith({
+					simulationPreset: MetricSimulationPreset.DiskUsage,
+					simulationActive: true,
+				}),
+				diffStatus: DiffStatus.Modified,
+				oldConfig: configWith(),
+			})
+
+			const selects = wrapper.findAllComponents(SimulationPresetSelect)
+
+			expect(selects).toHaveLength(1)
+			expect(at(selects, 0).find("button").classes()).toContain(
+				"bg-diff-field-added",
+			)
+		})
+
+		it("shows only the old side of a preset a diff removed", async ({
+			expect,
+		}) => {
+			const wrapper = await mountSidebar({
+				modelValue: configWith(),
+				diffStatus: DiffStatus.Modified,
+				oldConfig: configWith({
+					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
+				}),
+			})
+
+			const selects = wrapper.findAllComponents(SimulationPresetSelect)
+
+			expect(wrapper.text()).toContain(
+				t("editor.metrics.simulation.section-title"),
+			)
+			expect(selects).toHaveLength(1)
+			expect(at(selects, 0).text()).toContain(
+				t("editor.metrics.simulation.preset-options.cpu_usage"),
+			)
+			expect(at(selects, 0).find("button").classes()).toContain(
+				"bg-diff-field-removed",
+			)
+		})
+
+		it("leaves a preset both sides share unmarked", async ({ expect }) => {
+			const wrapper = await mountSidebar({
+				modelValue: configWith({
+					title: "After",
+					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: false,
+				}),
+				diffStatus: DiffStatus.Modified,
+				oldConfig: configWith({
+					title: "Before",
+					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
+				}),
+			})
+
+			const selects = wrapper.findAllComponents(SimulationPresetSelect)
+
+			expect(selects).toHaveLength(1)
+			expect(at(selects, 0).find("button").classes()).not.toContain(
+				"bg-diff-field-added",
+			)
+		})
+
+		it("does not offer the switch-off button in a diff", async ({ expect }) => {
+			const wrapper = await mountSidebar({
+				modelValue: configWith({
+					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
+				}),
+				diffStatus: DiffStatus.Unchanged,
+			})
+
+			expect(wrapper.text()).toContain(
+				t("editor.metrics.simulation.section-title"),
+			)
+			expect(wrapper.text()).not.toContain(
+				t("editor.metrics.simulation.stop-button"),
+			)
+		})
+
 		it("does not offer a reader the switch-off button", async ({ expect }) => {
 			useEditorMeta().setEditable(false)
 
 			const wrapper = await mountSidebar({
 				modelValue: configWith({
 					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
 				}),
 			})
 

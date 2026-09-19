@@ -23,6 +23,9 @@ var _ Manager = &ManagerMock{}
 //			ChatFunc: func(ctx context.Context, orgID string, userID string, conn protocol.SessionConn) error {
 //				panic("mock out the Chat method")
 //			},
+//			ConfiguredFunc: func() bool {
+//				panic("mock out the Configured method")
+//			},
 //		}
 //
 //		// use mockedManager in code that requires Manager
@@ -30,17 +33,14 @@ var _ Manager = &ManagerMock{}
 //
 //	}
 type ManagerMock struct {
-	// ConfiguredFunc mocks the Configured method.
-	ConfiguredFunc func() bool
-
 	// ChatFunc mocks the Chat method.
 	ChatFunc func(ctx context.Context, orgID string, userID string, conn protocol.SessionConn) error
 
+	// ConfiguredFunc mocks the Configured method.
+	ConfiguredFunc func() bool
+
 	// calls tracks calls to the methods.
 	calls struct {
-		// Configured holds details about calls to the Configured method.
-		Configured []struct {
-		}
 		// Chat holds details about calls to the Chat method.
 		Chat []struct {
 			// Ctx is the ctx argument value.
@@ -52,9 +52,12 @@ type ManagerMock struct {
 			// Conn is the conn argument value.
 			Conn protocol.SessionConn
 		}
+		// Configured holds details about calls to the Configured method.
+		Configured []struct {
+		}
 	}
-	lockConfigured sync.RWMutex
 	lockChat       sync.RWMutex
+	lockConfigured sync.RWMutex
 }
 
 // Chat calls ChatFunc.

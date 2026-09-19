@@ -287,7 +287,7 @@ type Prometheus interface {
 
 // SQL represents a SQL-based data source processor.
 //
-//go:generate ../../scripts/codegen/mock SQL
+//go:generate ../../scripts/codegen/mock SQL sql
 type SQL interface {
 	connectionTester
 
@@ -300,7 +300,7 @@ type SQL interface {
 
 // PostgreSQL represents a PostgreSQL data source processor.
 //
-//go:generate ../../scripts/codegen/mock PostgreSQL
+//go:generate ../../scripts/codegen/mock PostgreSQL postgresql
 type PostgreSQL interface {
 	SQL
 
@@ -310,7 +310,7 @@ type PostgreSQL interface {
 
 // MySQL represents a MySQL data source processor.
 //
-//go:generate ../../scripts/codegen/mock MySQL
+//go:generate ../../scripts/codegen/mock MySQL mysql
 type MySQL interface {
 	SQL
 

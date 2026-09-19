@@ -30,7 +30,7 @@ var _ persist.HistoryStore = &HistoryStore{}
 //			SetFunc: func(ctx context.Context, key string, value []*schema.Message) error {
 //				panic("mock out the Set method")
 //			},
-//			StartFunc: func(ctx context.Context) {
+//			StartFunc: func(ctx context.Context)  {
 //				panic("mock out the Start method")
 //			},
 //		}

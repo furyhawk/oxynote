@@ -25,6 +25,9 @@ var _ Tx = &TxMock{}
 //			CommitFunc: func() error {
 //				panic("mock out the Commit method")
 //			},
+//			DeleteDocumentFunc: func(ctx context.Context, id xid.ID, organizationID string) ([]xid.ID, error) {
+//				panic("mock out the DeleteDocument method")
+//			},
 //			InsertDocumentFunc: func(ctx context.Context, doc document.Document) error {
 //				panic("mock out the InsertDocument method")
 //			},
@@ -140,6 +143,50 @@ func (mock *TxMock) CommitCalls() []struct {
 	mock.lockCommit.RLock()
 	calls = mock.calls.Commit
 	mock.lockCommit.RUnlock()
+	return calls
+}
+
+// DeleteDocument calls DeleteDocumentFunc.
+func (mock *TxMock) DeleteDocument(ctx context.Context, id xid.ID, organizationID string) ([]xid.ID, error) {
+	callInfo := struct {
+		Ctx            context.Context
+		ID             xid.ID
+		OrganizationID string
+	}{
+		Ctx:            ctx,
+		ID:             id,
+		OrganizationID: organizationID,
+	}
+	mock.lockDeleteDocument.Lock()
+	mock.calls.DeleteDocument = append(mock.calls.DeleteDocument, callInfo)
+	mock.lockDeleteDocument.Unlock()
+	if mock.DeleteDocumentFunc == nil {
+		var (
+			iDsOut []xid.ID
+			errOut error
+		)
+		return iDsOut, errOut
+	}
+	return mock.DeleteDocumentFunc(ctx, id, organizationID)
+}
+
+// DeleteDocumentCalls gets all the calls that were made to DeleteDocument.
+// Check the length with:
+//
+//	len(mockedTx.DeleteDocumentCalls())
+func (mock *TxMock) DeleteDocumentCalls() []struct {
+	Ctx            context.Context
+	ID             xid.ID
+	OrganizationID string
+} {
+	var calls []struct {
+		Ctx            context.Context
+		ID             xid.ID
+		OrganizationID string
+	}
+	mock.lockDeleteDocument.RLock()
+	calls = mock.calls.DeleteDocument
+	mock.lockDeleteDocument.RUnlock()
 	return calls
 }
 
@@ -295,49 +342,5 @@ func (mock *TxMock) UpsertDocumentMaintainersCalls() []struct {
 	mock.lockUpsertDocumentMaintainers.RLock()
 	calls = mock.calls.UpsertDocumentMaintainers
 	mock.lockUpsertDocumentMaintainers.RUnlock()
-	return calls
-}
-
-// DeleteDocument calls DeleteDocumentFunc.
-func (mock *TxMock) DeleteDocument(ctx context.Context, id xid.ID, organizationID string) ([]xid.ID, error) {
-	callInfo := struct {
-		Ctx            context.Context
-		ID             xid.ID
-		OrganizationID string
-	}{
-		Ctx:            ctx,
-		ID:             id,
-		OrganizationID: organizationID,
-	}
-	mock.lockDeleteDocument.Lock()
-	mock.calls.DeleteDocument = append(mock.calls.DeleteDocument, callInfo)
-	mock.lockDeleteDocument.Unlock()
-	if mock.DeleteDocumentFunc == nil {
-		var (
-			iDsOut []xid.ID
-			errOut error
-		)
-		return iDsOut, errOut
-	}
-	return mock.DeleteDocumentFunc(ctx, id, organizationID)
-}
-
-// DeleteDocumentCalls gets all the calls that were made to DeleteDocument.
-// Check the length with:
-//
-//	len(mockedTx.DeleteDocumentCalls())
-func (mock *TxMock) DeleteDocumentCalls() []struct {
-	Ctx            context.Context
-	ID             xid.ID
-	OrganizationID string
-} {
-	var calls []struct {
-		Ctx            context.Context
-		ID             xid.ID
-		OrganizationID string
-	}
-	mock.lockDeleteDocument.RLock()
-	calls = mock.calls.DeleteDocument
-	mock.lockDeleteDocument.RUnlock()
 	return calls
 }

@@ -433,13 +433,72 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			])
 		})
 
+		it("asks for the preset the block kept from its last simulation", async ({
+			expect,
+		}) => {
+			mockEndpoint("GET", QUERY_URL, () => ({
+				status: GenericQueryResultStatus.NoData,
+				data: [],
+			}))
+
+			const wrapper = await mountContainer(
+				metricConfig({ simulationPreset: MetricSimulationPreset.ErrorRate }),
+			)
+
+			await vi.waitFor(() => {
+				expect(wrapper.text()).toContain(
+					t("editor.metrics.status.no-data-loaded.simulate-action-button"),
+				)
+			}, WAIT_FOR_OPTIONS)
+			await findButtonByText(
+				wrapper,
+				t("editor.metrics.status.no-data-loaded.simulate-action-button"),
+			).trigger("click")
+
+			expect(wrapper.emitted("simulate")).toEqual([
+				[MetricSimulationPreset.ErrorRate],
+			])
+		})
+
+		// the preset stays after the simulation ends, so a preset alone does
+		// not mean the block simulates
+		it("queries like any block once its simulation is switched off", async ({
+			expect,
+		}) => {
+			const uid = nextUid()
+			const checks = mockEndpoint("POST", simulationCheckURL(uid), () => ({
+				cleared: false,
+			}))
+			const calls = mockEndpoint("GET", QUERY_URL, () => seriesResult())
+
+			const wrapper = await mountContainer(
+				metricConfig({
+					simulationPreset: MetricSimulationPreset.HTTPLatency,
+					simulationActive: false,
+				}),
+				{ uid: uid },
+			)
+
+			await vi.waitFor(() => {
+				expect(
+					wrapper.findComponent({ name: "LineChart" }).props("seriesData"),
+				).toHaveLength(1)
+			}, WAIT_FOR_OPTIONS)
+			expect(calls.length).toBeGreaterThan(0)
+			expect(simulationVisible(wrapper)).toBe(false)
+			expect(checks).toHaveLength(0)
+		})
+
 		it("draws generated data without querying the data source", async ({
 			expect,
 		}) => {
 			const calls = mockEndpoint("GET", QUERY_URL, () => seriesResult())
 
 			const wrapper = await mountContainer(
-				metricConfig({ simulationPreset: MetricSimulationPreset.HTTPLatency }),
+				metricConfig({
+					simulationPreset: MetricSimulationPreset.HTTPLatency,
+					simulationActive: true,
+				}),
 			)
 
 			expect(chartNames(wrapper)).toEqual(["LineChart"])
@@ -485,6 +544,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			const wrapper = await mountContainer(
 				metricConfig({
 					simulationPreset: "pie_of_the_day" as MetricSimulationPreset,
+					simulationActive: true,
 				}),
 			)
 
@@ -510,6 +570,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 				const wrapper = await mountContainer(
 					metricConfig({
 						simulationPreset: MetricSimulationPreset.CPUUsage,
+						simulationActive: true,
 					}),
 				)
 
@@ -526,7 +587,10 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			mockEndpoint("GET", QUERY_URL, () => seriesResult())
 
 			const wrapper = await mountContainer(
-				metricConfig({ simulationPreset: MetricSimulationPreset.CPUUsage }),
+				metricConfig({
+					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
+				}),
 			)
 
 			expect(simulationVisible(wrapper)).toBe(true)
@@ -539,6 +603,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 				metricConfig({
 					timeRange: TimeRangePreset.Last15Minutes,
 					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
 				}),
 			)
 
@@ -570,6 +635,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 					metricConfig({
 						visualizationType: type,
 						simulationPreset: MetricSimulationPreset.CPUUsage,
+						simulationActive: true,
 					}),
 				)
 
@@ -582,7 +648,10 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			mockEndpoint("GET", QUERY_URL, () => seriesResult())
 
 			const wrapper = await mountContainer(
-				metricConfig({ simulationPreset: MetricSimulationPreset.CPUUsage }),
+				metricConfig({
+					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
+				}),
 			)
 
 			expect(simulationVisible(wrapper)).toBe(true)
@@ -604,7 +673,10 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			mockEndpoint("GET", QUERY_URL, () => seriesResult())
 
 			await mountContainer(
-				metricConfig({ simulationPreset: MetricSimulationPreset.CPUUsage }),
+				metricConfig({
+					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
+				}),
 				{ uid: uid },
 			)
 
@@ -627,6 +699,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 				metricConfig({
 					refreshInterval: RefreshInterval.D1,
 					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
 				}),
 				{ uid: uid },
 			)
@@ -649,7 +722,10 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			useEditorStore().updateActiveBranchId(null)
 
 			await mountContainer(
-				metricConfig({ simulationPreset: MetricSimulationPreset.CPUUsage }),
+				metricConfig({
+					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
+				}),
 				{ uid: uid },
 			)
 
@@ -669,7 +745,10 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			}))
 
 			await mountContainer(
-				metricConfig({ simulationPreset: MetricSimulationPreset.CPUUsage }),
+				metricConfig({
+					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
+				}),
 				{ uid: uid, disableRefresh: true },
 			)
 
@@ -692,12 +771,13 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			})
 			const config = metricConfig({
 				simulationPreset: MetricSimulationPreset.HTTPLatency,
+				simulationActive: true,
 			})
 
 			const wrapper = await mountContainer(config)
 
 			await wrapper.setProps({
-				config: { ...config, simulationPreset: null },
+				config: { ...config, simulationActive: false },
 			})
 			await nextTick()
 
@@ -732,12 +812,13 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 					{ name: "Query 2", query: "", legendFormat: "" },
 				],
 				simulationPreset: MetricSimulationPreset.CPUUsage,
+				simulationActive: true,
 			})
 
 			const wrapper = await mountContainer(config)
 
 			await wrapper.setProps({
-				config: { ...config, simulationPreset: null },
+				config: { ...config, simulationActive: false },
 			})
 			await nextTick()
 
@@ -777,12 +858,13 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 				config: {
 					...config,
 					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
 				},
 			})
 			await nextTick()
 
 			await wrapper.setProps({
-				config: { ...config, simulationPreset: null },
+				config: { ...config, simulationActive: false },
 			})
 
 			await vi.waitFor(() => {
@@ -799,6 +881,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			const calls = mockEndpoint("GET", QUERY_URL, () => seriesResult())
 			const config = metricConfig({
 				simulationPreset: MetricSimulationPreset.CPUUsage,
+				simulationActive: true,
 			})
 
 			const wrapper = await mountContainer(config, { uid: uid })
@@ -808,7 +891,7 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			// core removes the attribute on the live document, which reaches
 			// the editor as a node attribute change
 			await wrapper.setProps({
-				config: { ...config, simulationPreset: null },
+				config: { ...config, simulationActive: false },
 			})
 
 			await vi.waitFor(() => {
@@ -826,7 +909,10 @@ describe("<VisualizationContainer>", { concurrent: false }, () => {
 			})
 
 			const wrapper = await mountContainer(
-				metricConfig({ simulationPreset: MetricSimulationPreset.CPUUsage }),
+				metricConfig({
+					simulationPreset: MetricSimulationPreset.CPUUsage,
+					simulationActive: true,
+				}),
 				{ uid: uid },
 			)
 

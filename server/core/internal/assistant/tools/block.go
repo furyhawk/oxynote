@@ -313,15 +313,11 @@ func (insertBlock) Execute(inp Input) (string, error) {
 		return "", fmt.Errorf("insert_block: %w", err)
 	}
 
-	if err := inp.CheckDataSources(in.Block.CollectAttributeValues(document.AttrDataSourceID)); err != nil {
-		return "", fmt.Errorf("insert_block: %w", err)
-	}
-
 	// uids are resolved at expansion, so expanding here rather than at
 	// wire time is what lets the tool report what it wrote without
 	// reading the document back, which the debounced persist would not
 	// reliably show yet.
-	expanded, err := block.Expand(in.Block)
+	expanded, err := sanitizeBlock(inp, in.Block, document.Block{})
 	if err != nil {
 		return "", fmt.Errorf("insert_block: %w", err)
 	}
@@ -462,11 +458,20 @@ func (replaceBlock) Execute(inp Input) (string, error) {
 		return "", fmt.Errorf("replace_block: %w", err)
 	}
 
-	if err := inp.CheckDataSources(in.Block.CollectAttributeValues(document.AttrDataSourceID)); err != nil {
+	content, err := inp.FetchDocumentContent(in.DocumentID, in.BranchID)
+	if err != nil {
 		return "", fmt.Errorf("replace_block: %w", err)
 	}
 
-	expanded, err := block.Expand(in.Block)
+	// an unknown uid leaves stored empty, so no flag is kept. ApplyEdit
+	// reports the unknown uid.
+	var stored document.Block
+
+	if b, ok := content.Content.FindByUID(in.BlockUID); ok {
+		stored = b
+	}
+
+	expanded, err := sanitizeBlock(inp, in.Block, stored)
 	if err != nil {
 		return "", fmt.Errorf("replace_block: %w", err)
 	}
@@ -715,21 +720,16 @@ func (updateBlockAttrs) Execute(inp Input) (string, error) {
 		return "", err
 	}
 
-	// the payload names attributes, not a block type, so a metric's
-	// data source arrives here on its own rather than inside a block
-	// the walk could find it in.
-	if id, ok := in.Attrs[document.AttrDataSourceID].(string); ok && id != "" {
-		if err := inp.CheckDataSources([]string{id}); err != nil {
-			return "", fmt.Errorf("update_block_attrs: %w", err)
-		}
-	}
-
 	if err := inp.ValidateAttrUpdate(in.DocumentID, in.BranchID, in.BlockUID, in.Attrs); err != nil {
 		return "", fmt.Errorf("update_block_attrs: %w", err)
 	}
 
 	b, err := inp.FetchDocumentBlock(in.DocumentID, in.BranchID, in.BlockUID)
 	if err != nil {
+		return "", fmt.Errorf("update_block_attrs: %w", err)
+	}
+
+	if err := sanitizeBlockAttrs(inp, in.Attrs, b); err != nil {
 		return "", fmt.Errorf("update_block_attrs: %w", err)
 	}
 
@@ -997,4 +997,42 @@ func (moveBlock) Execute(inp Input) (string, error) {
 	}
 
 	return result(blockWriteResult{Blocks: blockRows(b)})
+}
+
+// sanitizeBlock checks a block before a write and expands it. stored is
+// the block being replaced, or empty for an insert. A metric that stored
+// already holds keeps its simulation flag.
+func sanitizeBlock(inp Input, b block.Block, stored document.Block) (document.Block, error) {
+	if err := inp.CheckDataSources(b.CollectAttributeValues(document.AttrDataSourceID)); err != nil {
+		return document.Block{}, err
+	}
+
+	expanded, err := block.Expand(b)
+	if err != nil {
+		return document.Block{}, err
+	}
+
+	block.KeepSimulation(expanded, stored)
+
+	return expanded, nil
+}
+
+// sanitizeBlockAttrs checks an attribute update by the type of the
+// stored block. For a metric it checks the data source and sets the
+// simulation flag. It writes to attrs.
+func sanitizeBlockAttrs(inp Input, attrs map[string]any, stored document.Block) error {
+	if stored.Type != document.BlockNodeMetricBlock {
+		return nil
+	}
+
+	// an empty data source means unset, so there is nothing to check.
+	if id, ok := attrs[document.AttrDataSourceID].(string); ok && id != "" {
+		if err := inp.CheckDataSources([]string{id}); err != nil {
+			return err
+		}
+	}
+
+	block.DeriveSimulation(attrs, stored.Attrs)
+
+	return nil
 }

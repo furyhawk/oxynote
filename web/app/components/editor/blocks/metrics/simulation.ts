@@ -15,6 +15,10 @@ export const DEFAULT_SIMULATION_PRESET = MetricSimulationPreset.CPUUsage
 // metric went live.
 export const SIMULATION_CHECK_INTERVAL_MS = 10_000
 
+// the node attribute behind MetricConfig.simulationActive. The server
+// sets it, not a writer, so a branch diff leaves it out
+export const SIMULATION_ACTIVE_ATTR = "simulationActive"
+
 // how many points a simulated series aims for across its time range. The
 // step derived from it is what buckets are aligned to, so a window that
 // slides forward keeps the points it already showed.

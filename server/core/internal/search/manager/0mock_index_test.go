@@ -5,9 +5,10 @@ package manager
 
 import (
 	"context"
+	"sync"
+
 	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/rs/xid"
-	"sync"
 )
 
 // Ensure, that IndexMock does implement Index.

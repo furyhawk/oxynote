@@ -1503,9 +1503,12 @@ describe("pmBlockToY", () => {
 			},
 		})
 
+		// the simulation flag is the one metric attribute whose schema
+		// default is not null, so it is written out with the block
 		expect(attrsOf(attached(el))).toEqual({
 			uid: "metric",
 			queries: [{ query: "up", legend: "uptime" }],
+			simulationActive: false,
 		})
 	})
 

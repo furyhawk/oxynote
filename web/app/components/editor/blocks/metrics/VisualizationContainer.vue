@@ -58,12 +58,17 @@ const dataSourceUnavailable = computed(() => {
 	return !!dataSource && dataSource.status !== DataSourceStatus.Success
 })
 
-// an unknown preset reads as "not simulating", so a block carrying one
-// falls back to querying instead of breaking the render for every viewer
+// the preset the block is drawing, null when it queries instead. An
+// unknown preset reads as "not simulating", so a block carrying one falls
+// back to querying instead of breaking the render for every viewer
 const simulationPreset = computed(() => {
 	const preset: unknown = props.config.simulationPreset
 
-	if (dataSourceUnavailable.value || !isSimulationPreset(preset)) {
+	if (
+		!props.config.simulationActive ||
+		dataSourceUnavailable.value ||
+		!isSimulationPreset(preset)
+	) {
 		return null
 	}
 
@@ -418,7 +423,9 @@ async function checkSimulation() {
 }
 
 function startSimulation() {
-	emit("simulate", DEFAULT_SIMULATION_PRESET)
+	const kept: unknown = props.config.simulationPreset
+
+	emit("simulate", isSimulationPreset(kept) ? kept : DEFAULT_SIMULATION_PRESET)
 }
 
 function openModal() {

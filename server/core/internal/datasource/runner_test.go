@@ -344,7 +344,7 @@ func Test_connect(t *testing.T) {
 
 	ff := store.UpdateDataSourceStatusCalls()
 	require.Len(t, ff, 1)
-	assert.Equal(t, r.ds.ID, ff[0].Id)
+	assert.Equal(t, r.ds.ID, ff[0].ID)
 	assert.Equal(t, "org", ff[0].OrganizationID)
 	assert.Equal(t, processor.ConnectionStatusSuccess, ff[0].Status)
 

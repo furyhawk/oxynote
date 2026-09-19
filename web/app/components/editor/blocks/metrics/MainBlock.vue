@@ -86,6 +86,7 @@ function migrateLegacyIfNeeded(fieldAttrs: Record<string, any>) {
 		axisBoundsMin: legacy.axisBounds?.min ?? null,
 		axisBoundsMax: legacy.axisBounds?.max ?? null,
 		simulationPreset: null,
+		simulationActive: false,
 		// overlay caller's edit and clear legacy blob
 		...fieldAttrs,
 		config: null,
@@ -231,9 +232,27 @@ const config = reactive({
 			(props.node.attrs.simulationPreset as MetricConfig["simulationPreset"]) ??
 			null,
 		set: (v) => {
-			migrateLegacyIfNeeded({ simulationPreset: v })
+			if (v === null) {
+				migrateLegacyIfNeeded({
+					simulationPreset: null,
+					simulationActive: false,
+				})
+
+				return
+			}
+
+			if (props.node.attrs.simulationActive === true) {
+				migrateLegacyIfNeeded({ simulationPreset: v })
+
+				return
+			}
+
+			migrateLegacyIfNeeded({ simulationPreset: v, simulationActive: true })
 		},
 	}),
+	simulationActive: computed<MetricConfig["simulationActive"]>(
+		() => props.node.attrs.simulationActive === true,
+	),
 })
 
 const otherEditingUsers = editingUsersRef(() => props.node.attrs.uid as string)

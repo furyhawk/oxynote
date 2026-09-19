@@ -87,9 +87,15 @@ const (
 	AttrAxisBoundsMax = "axisBoundsMax"
 
 	// AttrSimulationPreset names the generated series a metric block
-	// draws while its data source has no real data to answer with. It
-	// is unset on a block that queries normally.
+	// draws while AttrSimulationActive is set. It is unset on a block
+	// nobody has simulated. Once set, it stays after the simulation ends.
 	AttrSimulationPreset = "simulationPreset"
+
+	// AttrSimulationActive is true while a metric block draws its
+	// AttrSimulationPreset because its data source has no real data yet.
+	// Only the editor and core use it. Tools and document readers never
+	// see it.
+	AttrSimulationActive = "simulationActive"
 )
 
 // MarkComment is the inline mark type anchoring a comment to a range of

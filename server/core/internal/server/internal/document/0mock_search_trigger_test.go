@@ -17,7 +17,7 @@ var _ SearchTrigger = &SearchTriggerMock{}
 //
 //		// make and configure a mocked SearchTrigger
 //		mockedSearchTrigger := &SearchTriggerMock{
-//			TriggerFunc: func() {
+//			TriggerFunc: func()  {
 //				panic("mock out the Trigger method")
 //			},
 //		}

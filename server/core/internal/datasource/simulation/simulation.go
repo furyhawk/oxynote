@@ -30,8 +30,8 @@ var ErrNotSimulated = errutil.New(
 
 // Result is what running a simulated metric block reports back.
 type Result struct {
-	// Cleared reports whether the block's real data has arrived and the
-	// simulation has been taken off it.
+	// Cleared indicates whether the block's real data has arrived and
+	// the simulation has been switched off.
 	Cleared bool `json:"cleared"`
 }
 
@@ -100,8 +100,8 @@ var _probeSpans = map[string]time.Duration{
 // rows.
 const _queryQuery = "query"
 
-// Checker probes the data source of a simulated metric block and takes
-// the simulation off the block once real data answers.
+// Checker probes the data source of a simulated metric block and
+// switches the simulation off once real data answers.
 type Checker struct {
 	// log is the component logger.
 	log *slog.Logger
@@ -112,7 +112,7 @@ type Checker struct {
 	// runners hands out the client that speaks to a data source.
 	runners Runners
 
-	// applier writes the cleared attribute onto the live document.
+	// applier writes the switched-off flag onto the live document.
 	applier Applier
 
 	// results remembers each block's last verdict for _resultTTL.
@@ -141,7 +141,7 @@ func (c *Checker) Start(ctx context.Context) {
 	c.results.Start(ctx)
 }
 
-// Check reports whether the simulation was taken off the block, probing
+// Check reports whether the block's simulation was switched off, probing
 // the block's data source when no recent verdict is remembered. A data
 // source that cannot be reached, or that answers with nothing, leaves the
 // block simulating and is not an error: it is the state the simulation
@@ -152,7 +152,7 @@ func (c *Checker) Check(
 	block document.Block,
 	organizationID string,
 ) (Result, error) {
-	if _, simulated := block.Attrs.Value(document.AttrSimulationPreset); !simulated {
+	if !simulated(block) {
 		return Result{}, ErrNotSimulated
 	}
 
@@ -304,7 +304,8 @@ func (c *Checker) query(
 	}
 }
 
-// clear takes the simulation off the block on the live document.
+// clear switches the block's simulation off on the live document. The
+// preset stays, so the block remembers which series it drew.
 func (c *Checker) clear(
 	ctx context.Context,
 	documentID, branchID xid.ID,
@@ -312,7 +313,7 @@ func (c *Checker) clear(
 ) error {
 	res, err := c.applier.Apply(ctx, documentID, branchID, []edit.Operation{
 		edit.UpdateAttrs(blockUID, map[string]any{
-			document.AttrSimulationPreset: nil,
+			document.AttrSimulationActive: false,
 		}),
 	}, true)
 	if err != nil {
@@ -340,6 +341,21 @@ func (c *Checker) remember(ctx context.Context, key string, cleared bool) {
 // it was written on, so the branch is part of its identity here.
 func cacheKey(documentID, branchID xid.ID, blockUID string) string {
 	return documentID.String() + "/" + branchID.String() + "/" + blockUID
+}
+
+// simulated reports whether the block draws generated data: it names a
+// preset and its simulation is switched on.
+func simulated(block document.Block) bool {
+	if _, ok := block.Attrs.Value(document.AttrSimulationPreset); !ok {
+		return false
+	}
+
+	active, ok := block.Attrs.Get(document.AttrSimulationActive)
+	if !ok {
+		return false
+	}
+
+	return active.Bool()
 }
 
 // probeSpan reads how far back the block's window reaches.

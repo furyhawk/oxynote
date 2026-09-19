@@ -18,16 +18,16 @@ var _ datasource.StatusStore = &StatusStore{}
 
 // StatusStore is a mock implementation of datasource.StatusStore.
 //
-//	func TestSomethingThatUsesdatasource.StatusStore(t *testing.T) {
+//	func TestSomethingThatUsesStatusStore(t *testing.T) {
 //
 //		// make and configure a mocked datasource.StatusStore
-//		mockeddatasource.StatusStore := &StatusStore{
+//		mockedStatusStore := &StatusStore{
 //			UpdateDataSourceStatusFunc: func(ctx context.Context, id xid.ID, organizationID string, status processor.ConnectionStatus) error {
 //				panic("mock out the UpdateDataSourceStatus method")
 //			},
 //		}
 //
-//		// use mockeddatasource.StatusStore in code that requires datasource.StatusStore
+//		// use mockedStatusStore in code that requires datasource.StatusStore
 //		// and then make assertions.
 //
 //	}
@@ -41,8 +41,8 @@ type StatusStore struct {
 		UpdateDataSourceStatus []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Id is the id argument value.
-			Id xid.ID
+			// ID is the id argument value.
+			ID xid.ID
 			// OrganizationID is the organizationID argument value.
 			OrganizationID string
 			// Status is the status argument value.
@@ -56,12 +56,12 @@ type StatusStore struct {
 func (mock *StatusStore) UpdateDataSourceStatus(ctx context.Context, id xid.ID, organizationID string, status processor.ConnectionStatus) error {
 	callInfo := struct {
 		Ctx            context.Context
-		Id             xid.ID
+		ID             xid.ID
 		OrganizationID string
 		Status         processor.ConnectionStatus
 	}{
 		Ctx:            ctx,
-		Id:             id,
+		ID:             id,
 		OrganizationID: organizationID,
 		Status:         status,
 	}
@@ -80,16 +80,16 @@ func (mock *StatusStore) UpdateDataSourceStatus(ctx context.Context, id xid.ID, 
 // UpdateDataSourceStatusCalls gets all the calls that were made to UpdateDataSourceStatus.
 // Check the length with:
 //
-//	len(mockeddatasource.StatusStore.UpdateDataSourceStatusCalls())
+//	len(mockedStatusStore.UpdateDataSourceStatusCalls())
 func (mock *StatusStore) UpdateDataSourceStatusCalls() []struct {
 	Ctx            context.Context
-	Id             xid.ID
+	ID             xid.ID
 	OrganizationID string
 	Status         processor.ConnectionStatus
 } {
 	var calls []struct {
 		Ctx            context.Context
-		Id             xid.ID
+		ID             xid.ID
 		OrganizationID string
 		Status         processor.ConnectionStatus
 	}

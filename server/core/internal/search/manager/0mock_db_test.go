@@ -5,10 +5,11 @@ package manager
 
 import (
 	"context"
+	"sync"
+
 	"github.com/oxynote/oxynote/server/core/internal/document"
 	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/rs/xid"
-	"sync"
 )
 
 // Ensure, that DBMock does implement DB.
@@ -150,10 +151,10 @@ func (mock *DBMock) FetchDocumentBranchesUnsafe(ctx context.Context, docID xid.I
 	mock.lockFetchDocumentBranchesUnsafe.Unlock()
 	if mock.FetchDocumentBranchesUnsafeFunc == nil {
 		var (
-			out0   []document.BranchSummary
-			errOut error
+			branchSummarysOut []document.BranchSummary
+			errOut            error
 		)
-		return out0, errOut
+		return branchSummarysOut, errOut
 	}
 	return mock.FetchDocumentBranchesUnsafeFunc(ctx, docID)
 }
@@ -190,10 +191,10 @@ func (mock *DBMock) FetchDocumentUnsafeByBranchID(ctx context.Context, branchID 
 	mock.lockFetchDocumentUnsafeByBranchID.Unlock()
 	if mock.FetchDocumentUnsafeByBranchIDFunc == nil {
 		var (
-			out0   *document.Document
-			errOut error
+			documentOut *document.Document
+			errOut      error
 		)
-		return out0, errOut
+		return documentOut, errOut
 	}
 	return mock.FetchDocumentUnsafeByBranchIDFunc(ctx, branchID)
 }
@@ -232,10 +233,10 @@ func (mock *DBMock) FetchSearchJobs(ctx context.Context, offsetID int64, limit i
 	mock.lockFetchSearchJobs.Unlock()
 	if mock.FetchSearchJobsFunc == nil {
 		var (
-			out0   []search.Job
-			errOut error
+			jobsOut []search.Job
+			errOut  error
 		)
-		return out0, errOut
+		return jobsOut, errOut
 	}
 	return mock.FetchSearchJobsFunc(ctx, offsetID, limit)
 }

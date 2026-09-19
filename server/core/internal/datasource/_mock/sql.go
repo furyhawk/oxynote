@@ -17,42 +17,37 @@ var _ datasource.SQL = &SQL{}
 
 // SQL is a mock implementation of datasource.SQL.
 //
-//	func TestSomethingThatUsesdatasource.SQL(t *testing.T) {
+//	func TestSomethingThatUsesSQL(t *testing.T) {
 //
 //		// make and configure a mocked datasource.SQL
-//		mockeddatasource.SQL := &SQL{
-//			TestConnectionFunc: func(ctx context.Context) (processor.ConnectionStatus, error) {
-//				panic("mock out the TestConnection method")
-//			},
+//		mockedSQL := &SQL{
 //			MetadataFunc: func(ctx context.Context) (*processor.SQLMetadataResult, error) {
 //				panic("mock out the Metadata method")
 //			},
 //			QueryLabelsFunc: func(ctx context.Context, q string, tr processor.TimeRange) (map[string]string, error) {
 //				panic("mock out the QueryLabels method")
 //			},
+//			TestConnectionFunc: func(ctx context.Context) (processor.ConnectionStatus, error) {
+//				panic("mock out the TestConnection method")
+//			},
 //		}
 //
-//		// use mockeddatasource.SQL in code that requires datasource.SQL
+//		// use mockedSQL in code that requires datasource.SQL
 //		// and then make assertions.
 //
 //	}
 type SQL struct {
-	// TestConnectionFunc mocks the TestConnection method.
-	TestConnectionFunc func(ctx context.Context) (processor.ConnectionStatus, error)
-
 	// MetadataFunc mocks the Metadata method.
 	MetadataFunc func(ctx context.Context) (*processor.SQLMetadataResult, error)
 
 	// QueryLabelsFunc mocks the QueryLabels method.
 	QueryLabelsFunc func(ctx context.Context, q string, tr processor.TimeRange) (map[string]string, error)
 
+	// TestConnectionFunc mocks the TestConnection method.
+	TestConnectionFunc func(ctx context.Context) (processor.ConnectionStatus, error)
+
 	// calls tracks calls to the methods.
 	calls struct {
-		// TestConnection holds details about calls to the TestConnection method.
-		TestConnection []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-		}
 		// Metadata holds details about calls to the Metadata method.
 		Metadata []struct {
 			// Ctx is the ctx argument value.
@@ -67,46 +62,15 @@ type SQL struct {
 			// Tr is the tr argument value.
 			Tr processor.TimeRange
 		}
+		// TestConnection holds details about calls to the TestConnection method.
+		TestConnection []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
 	}
-	lockTestConnection sync.RWMutex
 	lockMetadata       sync.RWMutex
 	lockQueryLabels    sync.RWMutex
-}
-
-// TestConnection calls TestConnectionFunc.
-func (mock *SQL) TestConnection(ctx context.Context) (processor.ConnectionStatus, error) {
-	callInfo := struct {
-		Ctx context.Context
-	}{
-		Ctx: ctx,
-	}
-	mock.lockTestConnection.Lock()
-	mock.calls.TestConnection = append(mock.calls.TestConnection, callInfo)
-	mock.lockTestConnection.Unlock()
-	if mock.TestConnectionFunc == nil {
-		var (
-			connectionStatusOut processor.ConnectionStatus
-			errOut              error
-		)
-		return connectionStatusOut, errOut
-	}
-	return mock.TestConnectionFunc(ctx)
-}
-
-// TestConnectionCalls gets all the calls that were made to TestConnection.
-// Check the length with:
-//
-//	len(mockeddatasource.SQL.TestConnectionCalls())
-func (mock *SQL) TestConnectionCalls() []struct {
-	Ctx context.Context
-} {
-	var calls []struct {
-		Ctx context.Context
-	}
-	mock.lockTestConnection.RLock()
-	calls = mock.calls.TestConnection
-	mock.lockTestConnection.RUnlock()
-	return calls
+	lockTestConnection sync.RWMutex
 }
 
 // Metadata calls MetadataFunc.
@@ -132,7 +96,7 @@ func (mock *SQL) Metadata(ctx context.Context) (*processor.SQLMetadataResult, er
 // MetadataCalls gets all the calls that were made to Metadata.
 // Check the length with:
 //
-//	len(mockeddatasource.SQL.MetadataCalls())
+//	len(mockedSQL.MetadataCalls())
 func (mock *SQL) MetadataCalls() []struct {
 	Ctx context.Context
 } {
@@ -172,7 +136,7 @@ func (mock *SQL) QueryLabels(ctx context.Context, q string, tr processor.TimeRan
 // QueryLabelsCalls gets all the calls that were made to QueryLabels.
 // Check the length with:
 //
-//	len(mockeddatasource.SQL.QueryLabelsCalls())
+//	len(mockedSQL.QueryLabelsCalls())
 func (mock *SQL) QueryLabelsCalls() []struct {
 	Ctx context.Context
 	Q   string
@@ -186,5 +150,41 @@ func (mock *SQL) QueryLabelsCalls() []struct {
 	mock.lockQueryLabels.RLock()
 	calls = mock.calls.QueryLabels
 	mock.lockQueryLabels.RUnlock()
+	return calls
+}
+
+// TestConnection calls TestConnectionFunc.
+func (mock *SQL) TestConnection(ctx context.Context) (processor.ConnectionStatus, error) {
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockTestConnection.Lock()
+	mock.calls.TestConnection = append(mock.calls.TestConnection, callInfo)
+	mock.lockTestConnection.Unlock()
+	if mock.TestConnectionFunc == nil {
+		var (
+			connectionStatusOut processor.ConnectionStatus
+			errOut              error
+		)
+		return connectionStatusOut, errOut
+	}
+	return mock.TestConnectionFunc(ctx)
+}
+
+// TestConnectionCalls gets all the calls that were made to TestConnection.
+// Check the length with:
+//
+//	len(mockedSQL.TestConnectionCalls())
+func (mock *SQL) TestConnectionCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockTestConnection.RLock()
+	calls = mock.calls.TestConnection
+	mock.lockTestConnection.RUnlock()
 	return calls
 }

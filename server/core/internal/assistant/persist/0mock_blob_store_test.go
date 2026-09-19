@@ -27,7 +27,7 @@ var _ BlobStore = &BlobStoreMock{}
 //			SetFunc: func(ctx context.Context, key string, value []byte) error {
 //				panic("mock out the Set method")
 //			},
-//			StartFunc: func(ctx context.Context) {
+//			StartFunc: func(ctx context.Context)  {
 //				panic("mock out the Start method")
 //			},
 //		}

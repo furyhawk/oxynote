@@ -544,14 +544,46 @@ func Test_Expand(t *testing.T) {
 				Attrs: map[string]any{"query": "up"},
 			},
 		},
-		"Metric keeps an active simulation": {
+		"Metric naming a preset simulates": {
 			Input: Block{
 				Type:  BlockMetric,
 				Attrs: map[string]any{"simulationPreset": "http_latency"},
 			},
 			Expected: document.Block{
+				Type: document.BlockNodeMetricBlock,
+				Attrs: map[string]any{
+					"simulationPreset": "http_latency",
+					"simulationActive": true,
+				},
+			},
+		},
+		"Metric naming a preset simulates whatever flag was sent": {
+			Input: Block{
+				Type: BlockMetric,
+				Attrs: map[string]any{
+					"simulationPreset": "http_latency",
+					"simulationActive": false,
+				},
+			},
+			Expected: document.Block{
+				Type: document.BlockNodeMetricBlock,
+				Attrs: map[string]any{
+					"simulationPreset": "http_latency",
+					"simulationActive": true,
+				},
+			},
+		},
+		"Metric naming no preset drops the flag it was sent": {
+			Input: Block{
+				Type: BlockMetric,
+				Attrs: map[string]any{
+					"simulationPreset": nil,
+					"simulationActive": true,
+				},
+			},
+			Expected: document.Block{
 				Type:  document.BlockNodeMetricBlock,
-				Attrs: map[string]any{"simulationPreset": "http_latency"},
+				Attrs: map[string]any{"simulationPreset": nil},
 			},
 		},
 		// the other half of the legacy round trip: what Compact read

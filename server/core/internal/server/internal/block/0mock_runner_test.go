@@ -72,10 +72,10 @@ func (mock *RunnerMock) Run(ctx context.Context, documentID xid.ID, branchID xid
 	mock.lockRun.Unlock()
 	if mock.RunFunc == nil {
 		var (
-			ifaceValOut any
-			errOut      error
+			vOut   any
+			errOut error
 		)
-		return ifaceValOut, errOut
+		return vOut, errOut
 	}
 	return mock.RunFunc(ctx, documentID, branchID, blockUID, organizationID)
 }

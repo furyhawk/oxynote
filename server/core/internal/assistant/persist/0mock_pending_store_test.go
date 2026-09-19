@@ -27,7 +27,7 @@ var _ PendingStore = &PendingStoreMock{}
 //			SetFunc: func(ctx context.Context, key string, value PendingConfirm) error {
 //				panic("mock out the Set method")
 //			},
-//			StartFunc: func(ctx context.Context) {
+//			StartFunc: func(ctx context.Context)  {
 //				panic("mock out the Start method")
 //			},
 //		}

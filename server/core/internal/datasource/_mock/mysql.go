@@ -17,61 +17,47 @@ var _ datasource.MySQL = &MySQL{}
 
 // MySQL is a mock implementation of datasource.MySQL.
 //
-//	func TestSomethingThatUsesdatasource.MySQL(t *testing.T) {
+//	func TestSomethingThatUsesMySQL(t *testing.T) {
 //
 //		// make and configure a mocked datasource.MySQL
-//		mockeddatasource.MySQL := &MySQL{
-//			TestConnectionFunc: func(ctx context.Context) (processor.ConnectionStatus, error) {
-//				panic("mock out the TestConnection method")
-//			},
+//		mockedMySQL := &MySQL{
 //			MetadataFunc: func(ctx context.Context) (*processor.SQLMetadataResult, error) {
 //				panic("mock out the Metadata method")
-//			},
-//			QueryLabelsFunc: func(ctx context.Context, q string, tr processor.TimeRange) (map[string]string, error) {
-//				panic("mock out the QueryLabels method")
 //			},
 //			QueryFunc: func(ctx context.Context, q string, tr processor.TimeRange) (*processor.MySQLQueryResult, error) {
 //				panic("mock out the Query method")
 //			},
+//			QueryLabelsFunc: func(ctx context.Context, q string, tr processor.TimeRange) (map[string]string, error) {
+//				panic("mock out the QueryLabels method")
+//			},
+//			TestConnectionFunc: func(ctx context.Context) (processor.ConnectionStatus, error) {
+//				panic("mock out the TestConnection method")
+//			},
 //		}
 //
-//		// use mockeddatasource.MySQL in code that requires datasource.MySQL
+//		// use mockedMySQL in code that requires datasource.MySQL
 //		// and then make assertions.
 //
 //	}
 type MySQL struct {
-	// TestConnectionFunc mocks the TestConnection method.
-	TestConnectionFunc func(ctx context.Context) (processor.ConnectionStatus, error)
-
 	// MetadataFunc mocks the Metadata method.
 	MetadataFunc func(ctx context.Context) (*processor.SQLMetadataResult, error)
-
-	// QueryLabelsFunc mocks the QueryLabels method.
-	QueryLabelsFunc func(ctx context.Context, q string, tr processor.TimeRange) (map[string]string, error)
 
 	// QueryFunc mocks the Query method.
 	QueryFunc func(ctx context.Context, q string, tr processor.TimeRange) (*processor.MySQLQueryResult, error)
 
+	// QueryLabelsFunc mocks the QueryLabels method.
+	QueryLabelsFunc func(ctx context.Context, q string, tr processor.TimeRange) (map[string]string, error)
+
+	// TestConnectionFunc mocks the TestConnection method.
+	TestConnectionFunc func(ctx context.Context) (processor.ConnectionStatus, error)
+
 	// calls tracks calls to the methods.
 	calls struct {
-		// TestConnection holds details about calls to the TestConnection method.
-		TestConnection []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-		}
 		// Metadata holds details about calls to the Metadata method.
 		Metadata []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-		}
-		// QueryLabels holds details about calls to the QueryLabels method.
-		QueryLabels []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// Q is the q argument value.
-			Q string
-			// Tr is the tr argument value.
-			Tr processor.TimeRange
 		}
 		// Query holds details about calls to the Query method.
 		Query []struct {
@@ -82,47 +68,25 @@ type MySQL struct {
 			// Tr is the tr argument value.
 			Tr processor.TimeRange
 		}
+		// QueryLabels holds details about calls to the QueryLabels method.
+		QueryLabels []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q string
+			// Tr is the tr argument value.
+			Tr processor.TimeRange
+		}
+		// TestConnection holds details about calls to the TestConnection method.
+		TestConnection []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
 	}
-	lockTestConnection sync.RWMutex
 	lockMetadata       sync.RWMutex
-	lockQueryLabels    sync.RWMutex
 	lockQuery          sync.RWMutex
-}
-
-// TestConnection calls TestConnectionFunc.
-func (mock *MySQL) TestConnection(ctx context.Context) (processor.ConnectionStatus, error) {
-	callInfo := struct {
-		Ctx context.Context
-	}{
-		Ctx: ctx,
-	}
-	mock.lockTestConnection.Lock()
-	mock.calls.TestConnection = append(mock.calls.TestConnection, callInfo)
-	mock.lockTestConnection.Unlock()
-	if mock.TestConnectionFunc == nil {
-		var (
-			connectionStatusOut processor.ConnectionStatus
-			errOut              error
-		)
-		return connectionStatusOut, errOut
-	}
-	return mock.TestConnectionFunc(ctx)
-}
-
-// TestConnectionCalls gets all the calls that were made to TestConnection.
-// Check the length with:
-//
-//	len(mockeddatasource.MySQL.TestConnectionCalls())
-func (mock *MySQL) TestConnectionCalls() []struct {
-	Ctx context.Context
-} {
-	var calls []struct {
-		Ctx context.Context
-	}
-	mock.lockTestConnection.RLock()
-	calls = mock.calls.TestConnection
-	mock.lockTestConnection.RUnlock()
-	return calls
+	lockQueryLabels    sync.RWMutex
+	lockTestConnection sync.RWMutex
 }
 
 // Metadata calls MetadataFunc.
@@ -148,7 +112,7 @@ func (mock *MySQL) Metadata(ctx context.Context) (*processor.SQLMetadataResult, 
 // MetadataCalls gets all the calls that were made to Metadata.
 // Check the length with:
 //
-//	len(mockeddatasource.MySQL.MetadataCalls())
+//	len(mockedMySQL.MetadataCalls())
 func (mock *MySQL) MetadataCalls() []struct {
 	Ctx context.Context
 } {
@@ -158,50 +122,6 @@ func (mock *MySQL) MetadataCalls() []struct {
 	mock.lockMetadata.RLock()
 	calls = mock.calls.Metadata
 	mock.lockMetadata.RUnlock()
-	return calls
-}
-
-// QueryLabels calls QueryLabelsFunc.
-func (mock *MySQL) QueryLabels(ctx context.Context, q string, tr processor.TimeRange) (map[string]string, error) {
-	callInfo := struct {
-		Ctx context.Context
-		Q   string
-		Tr  processor.TimeRange
-	}{
-		Ctx: ctx,
-		Q:   q,
-		Tr:  tr,
-	}
-	mock.lockQueryLabels.Lock()
-	mock.calls.QueryLabels = append(mock.calls.QueryLabels, callInfo)
-	mock.lockQueryLabels.Unlock()
-	if mock.QueryLabelsFunc == nil {
-		var (
-			stringToStringOut map[string]string
-			errOut            error
-		)
-		return stringToStringOut, errOut
-	}
-	return mock.QueryLabelsFunc(ctx, q, tr)
-}
-
-// QueryLabelsCalls gets all the calls that were made to QueryLabels.
-// Check the length with:
-//
-//	len(mockeddatasource.MySQL.QueryLabelsCalls())
-func (mock *MySQL) QueryLabelsCalls() []struct {
-	Ctx context.Context
-	Q   string
-	Tr  processor.TimeRange
-} {
-	var calls []struct {
-		Ctx context.Context
-		Q   string
-		Tr  processor.TimeRange
-	}
-	mock.lockQueryLabels.RLock()
-	calls = mock.calls.QueryLabels
-	mock.lockQueryLabels.RUnlock()
 	return calls
 }
 
@@ -232,7 +152,7 @@ func (mock *MySQL) Query(ctx context.Context, q string, tr processor.TimeRange) 
 // QueryCalls gets all the calls that were made to Query.
 // Check the length with:
 //
-//	len(mockeddatasource.MySQL.QueryCalls())
+//	len(mockedMySQL.QueryCalls())
 func (mock *MySQL) QueryCalls() []struct {
 	Ctx context.Context
 	Q   string
@@ -246,5 +166,85 @@ func (mock *MySQL) QueryCalls() []struct {
 	mock.lockQuery.RLock()
 	calls = mock.calls.Query
 	mock.lockQuery.RUnlock()
+	return calls
+}
+
+// QueryLabels calls QueryLabelsFunc.
+func (mock *MySQL) QueryLabels(ctx context.Context, q string, tr processor.TimeRange) (map[string]string, error) {
+	callInfo := struct {
+		Ctx context.Context
+		Q   string
+		Tr  processor.TimeRange
+	}{
+		Ctx: ctx,
+		Q:   q,
+		Tr:  tr,
+	}
+	mock.lockQueryLabels.Lock()
+	mock.calls.QueryLabels = append(mock.calls.QueryLabels, callInfo)
+	mock.lockQueryLabels.Unlock()
+	if mock.QueryLabelsFunc == nil {
+		var (
+			stringToStringOut map[string]string
+			errOut            error
+		)
+		return stringToStringOut, errOut
+	}
+	return mock.QueryLabelsFunc(ctx, q, tr)
+}
+
+// QueryLabelsCalls gets all the calls that were made to QueryLabels.
+// Check the length with:
+//
+//	len(mockedMySQL.QueryLabelsCalls())
+func (mock *MySQL) QueryLabelsCalls() []struct {
+	Ctx context.Context
+	Q   string
+	Tr  processor.TimeRange
+} {
+	var calls []struct {
+		Ctx context.Context
+		Q   string
+		Tr  processor.TimeRange
+	}
+	mock.lockQueryLabels.RLock()
+	calls = mock.calls.QueryLabels
+	mock.lockQueryLabels.RUnlock()
+	return calls
+}
+
+// TestConnection calls TestConnectionFunc.
+func (mock *MySQL) TestConnection(ctx context.Context) (processor.ConnectionStatus, error) {
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockTestConnection.Lock()
+	mock.calls.TestConnection = append(mock.calls.TestConnection, callInfo)
+	mock.lockTestConnection.Unlock()
+	if mock.TestConnectionFunc == nil {
+		var (
+			connectionStatusOut processor.ConnectionStatus
+			errOut              error
+		)
+		return connectionStatusOut, errOut
+	}
+	return mock.TestConnectionFunc(ctx)
+}
+
+// TestConnectionCalls gets all the calls that were made to TestConnection.
+// Check the length with:
+//
+//	len(mockedMySQL.TestConnectionCalls())
+func (mock *MySQL) TestConnectionCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockTestConnection.RLock()
+	calls = mock.calls.TestConnection
+	mock.lockTestConnection.RUnlock()
 	return calls
 }

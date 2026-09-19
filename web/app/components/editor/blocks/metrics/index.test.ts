@@ -238,6 +238,7 @@ describe("MetricBlock", () => {
 				axisBoundsMin: null,
 				axisBoundsMax: null,
 				simulationPreset: null,
+				simulationActive: false,
 				width: MetricBlockWidth.Standard,
 			})
 		})
@@ -273,6 +274,10 @@ describe("MetricBlock", () => {
 			expect(
 				widthAttribute().renderHTML?.({ width: MetricBlockWidth.Compact }),
 			).toEqual({ "data-width": MetricBlockWidth.Compact })
+		})
+
+		it("keeps the simulation flag out of the rendered HTML", ({ expect }) => {
+			expect(metricAttributes().simulationActive?.rendered).toBe(false)
 		})
 	})
 
@@ -331,42 +336,6 @@ describe("MetricBlock", () => {
 		})
 	})
 })
-
-// the width attribute owns the only parse/render pair among the block
-// attributes, so the tests reach it through the declaration
-function widthAttribute() {
-	const addAttributes = MetricBlock.config.addAttributes
-
-	if (!addAttributes) {
-		throw new Error("MetricBlock declares no attributes")
-	}
-
-	const attributes = addAttributes.call({} as never) as Record<
-		string,
-		{
-			parseHTML?: (element: HTMLElement) => unknown
-			renderHTML?: (attributes: Record<string, unknown>) => unknown
-		}
-	>
-
-	const width = attributes.width
-
-	if (!width) {
-		throw new Error("MetricBlock declares no width attribute")
-	}
-
-	return width
-}
-
-function metricBlockCommands() {
-	const addCommands = MetricBlock.config.addCommands
-
-	if (!addCommands) {
-		throw new Error("MetricBlock declares no commands")
-	}
-
-	return addCommands.call({} as never)
-}
 
 describe("setUpMetricBlock", () => {
 	it("wraps the metric block in a grid at the document root", ({ expect }) => {
@@ -478,3 +447,42 @@ describe("insertMetricBlock", () => {
 		])
 	})
 })
+
+// how an attribute reaches HTML is only visible on its declaration, so the
+// tests read it from there
+function metricAttributes() {
+	const addAttributes = MetricBlock.config.addAttributes
+
+	if (!addAttributes) {
+		throw new Error("MetricBlock declares no attributes")
+	}
+
+	return addAttributes.call({} as never) as Record<
+		string,
+		{
+			rendered?: boolean
+			parseHTML?: (element: HTMLElement) => unknown
+			renderHTML?: (attributes: Record<string, unknown>) => unknown
+		}
+	>
+}
+
+function widthAttribute() {
+	const width = metricAttributes().width
+
+	if (!width) {
+		throw new Error("MetricBlock declares no width attribute")
+	}
+
+	return width
+}
+
+function metricBlockCommands() {
+	const addCommands = MetricBlock.config.addCommands
+
+	if (!addCommands) {
+		throw new Error("MetricBlock declares no commands")
+	}
+
+	return addCommands.call({} as never)
+}
