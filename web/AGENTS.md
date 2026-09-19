@@ -184,6 +184,9 @@ sentinel or a restructure over a non-null assertion.
   `CalendarInput.vue` → `CalendarInput.nuxt.test.ts`), never a mirror tree.
   A test spanning two files lives with the one that initiates the
   behaviour. Top-level `describe`s follow the source file's order.
+- **Test file shape**: top-level constants and variables above the first
+  `describe`, never between tests; file-local helper functions below all
+  tests, at the bottom.
 - **The suffix encodes the environment**, never `.spec.ts`, never an
   `@vitest-environment` pragma:
 
@@ -336,9 +339,13 @@ test context).
 - **One assignment per statement** (`no-multi-assign`): no chaining, no
   assignment inside an expression such as `const group = (groups[key] ??=
   …)`. `??=` as its own statement is fine.
-- `<script setup>` order: imports; `defineProps`/`defineEmits`/`defineExpose`;
-  store and composable initializations; `ref`/`computed`; lifecycle hooks;
+- `<script setup>` order: imports; compiler macros (`defineProps`,
+  `defineEmits`, `defineModel`, `defineExpose`, …); store and composable
+  initializations; `ref`/`computed` and plain variables; lifecycle hooks;
   watchers; functions.
+- Plain `.ts` modules follow the same shape: imports, then constants and
+  module-level variables, then functions. No declarations between
+  functions.
 - Tailwind utilities by default; custom rules go in `main.css` and are
   applied by class. No `<style>` blocks or static inline `style=`.
 

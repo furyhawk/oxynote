@@ -52,36 +52,6 @@ const queryCache = useQueryCache()
 const wsState = useWebSocketStateStore()
 let unsubWsHooksChange: (() => void) | null | undefined = null
 
-// the hook menus refetch after their own writes, but a hook the assistant or
-// an MCP client adds arrives only on this topic: without it the indicators
-// would sit stale until the list expired
-watchImmediate(
-	() => editorStore.activeDocumentId,
-	(newId) => {
-		unsubWsHooksChange?.()
-		unsubWsHooksChange = null
-
-		if (!newId) {
-			return
-		}
-
-		unsubWsHooksChange = wsState.state?.subscribe(
-			makeWsHooksChangeTopic(newId),
-			(rawPayload) => {
-				const payload = rawPayload as WSHooksChangePayload
-
-				void queryCache.invalidateQueries({
-					key: DOCUMENT_HOOK_QUERY_KEYS.list(newId, payload.branchId),
-				})
-			},
-		)
-	},
-)
-
-onUnmounted(() => {
-	unsubWsHooksChange?.()
-})
-
 const userCaretDetails = computed(() => {
 	const caretColors = editorCaretColors()
 	const randomIndex = Math.floor(Math.random() * caretColors.length)
@@ -136,8 +106,6 @@ import.meta.hot?.accept(() => {
 	refreshGapDecorationsInBackground(contentEditor as Ref<Editor | null>)
 })
 
-onBeforeUnmount(destroyBranchProviders)
-
 // closing the tab never unmounts anything, so without this the provider is
 // only noticed as gone when its socket drops — and until then everyone else
 // still sees this user's caret. pagehide is the event that survives a tab
@@ -150,6 +118,38 @@ useEventListener(window, "pagehide", (event: PageTransitionEvent) => {
 
 	destroyBranchProviders()
 })
+
+onBeforeUnmount(destroyBranchProviders)
+
+onUnmounted(() => {
+	unsubWsHooksChange?.()
+})
+
+// the hook menus refetch after their own writes, but a hook the assistant or
+// an MCP client adds arrives only on this topic: without it the indicators
+// would sit stale until the list expired
+watchImmediate(
+	() => editorStore.activeDocumentId,
+	(newId) => {
+		unsubWsHooksChange?.()
+		unsubWsHooksChange = null
+
+		if (!newId) {
+			return
+		}
+
+		unsubWsHooksChange = wsState.state?.subscribe(
+			makeWsHooksChangeTopic(newId),
+			(rawPayload) => {
+				const payload = rawPayload as WSHooksChangePayload
+
+				void queryCache.invalidateQueries({
+					key: DOCUMENT_HOOK_QUERY_KEYS.list(newId, payload.branchId),
+				})
+			},
+		)
+	},
+)
 
 watchImmediate(
 	[

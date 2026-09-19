@@ -37,6 +37,19 @@ arbitrary and is not. Test: does it still earn its lines for someone reading
 the file a year from now with no idea what was asked? The same test applies
 to the prose in these AGENTS.md files.
 
+Keep comments as simple and short as possible, so one read is enough:
+short sentences, plain words, no nested clauses or dashes. Good:
+
+```ts
+// the simulation ends once the metric has data, but the cache may
+// still hold an empty result from before. Refetch, but only when the
+// query can run, because refetch does not check that itself.
+```
+
+Bad: "the cached answer is keyed by the time range and not by the window it
+resolves to, so the one waiting here was taken while the metric was still
+missing — which is what the block has just been told it no longer is."
+
 ## 5. Goal-driven execution
 
 Turn the task into a verifiable goal ("fix the bug" becomes a test that

@@ -73,6 +73,7 @@ const simulationPreset = computed(() => {
 // NOTE: the debounced config cannot be changed (the changes won't be saved)
 const debouncedConfig = ref(clone(props.config))
 watchDebounced(
+	// keep the watch here because it acts as a config modifier
 	() => props.config,
 	(newV) => {
 		debouncedConfig.value = clone(newV)
@@ -145,36 +146,12 @@ const fetchMetricData = useMultipleGenericQueries(
 // draw generated data for good.
 const clearedPreset = ref<MetricSimulationPreset | null>(null)
 
-watch(simulationPreset, (preset, previous) => {
-	if (preset) {
-		clearedPreset.value = null
-
-		return
-	}
-
-	if (previous) {
-		clearedPreset.value = previous
-
-		// the cached answer for this query is keyed by the block's time
-		// range and not by the window it resolves to, so the one waiting
-		// here was taken while the metric was still missing — which is
-		// what the block has just been told it no longer is. refetch
-		// ignores whether the query may run, so it is asked only when it
-		// may.
-		if (queryRunnable.value) {
-			void fetchMetricData.refetch()
-		}
-	}
-})
-
 // set on every refresh tick so the generated window re-resolves against
 // the current time and the chart slides forward like a live one
 const simulationNow = ref<Date>()
 
-// a block can only simulate what it will later query, so the same
-// configuration a real query needs has to be in place first
-// the same rows the query needs: a block that could simulate but never
-// query would be stranded on generated data once the simulation lifted
+// a block simulates only when its real query could run. Otherwise it would
+// be stuck on generated data after the simulation ends.
 const queryRunnable = computed(() => {
 	return canRunGenericQueries(
 		props.config.dataSourceId,
@@ -187,7 +164,7 @@ const canSimulate = computed(() => {
 })
 
 // what the block draws, which outlives the attribute by one load
-const drawnPreset = computed(() => {
+const drawnSimulationPreset = computed(() => {
 	return (
 		simulationPreset.value ??
 		(fetchMetricData.asyncStatus.value === "loading"
@@ -219,7 +196,7 @@ const data = computed<{
 	data?:
 		MultipleLineChartData | MultipleBarChartData | MultipleGaugeChartData | null
 }>(() => {
-	const preset = drawnPreset.value
+	const preset = drawnSimulationPreset.value
 	if (preset) {
 		return mergeVisualizationResults(
 			props.config.visualizationType,
@@ -257,6 +234,82 @@ const data = computed<{
 	)
 })
 
+useIntervalFn(
+	() => {
+		void refreshData()
+	},
+	() => refreshIntervalToMs(props.config.refreshInterval || RefreshInterval.M5),
+	{
+		immediate: true,
+		immediateCallback: false,
+	},
+)
+
+const simulationCheck = useIntervalFn(
+	() => {
+		void checkSimulation()
+	},
+	SIMULATION_CHECK_INTERVAL_MS,
+	{ immediate: false },
+)
+
+onMounted(async () => {
+	await refreshData()
+	setTimeout(() => {
+		canUseDebouncedConfigInParams.value = true
+	}, 3000)
+})
+
+watch(simulationPreset, (preset, previous) => {
+	if (preset) {
+		clearedPreset.value = null
+
+		return
+	}
+
+	if (previous) {
+		clearedPreset.value = previous
+
+		// the simulation ends once the metric has data, but the cache may
+		// still hold an empty result from before. Refetch, but only when the
+		// query can run, because refetch does not check that itself.
+		if (queryRunnable.value) {
+			void fetchMetricData.refetch()
+		}
+	}
+})
+
+// the document and branch ids arrive with the route, often after the
+// block has mounted, so the first check waits for them rather than being
+// skipped until the next tick
+watchImmediate(
+	[
+		simulationPreset,
+		() => editorStore.activeDocumentId,
+		() => editorStore.activeBranchId,
+	],
+	([preset]) => {
+		if (!preset) {
+			simulationCheck.pause()
+
+			return
+		}
+
+		void checkSimulation()
+		simulationCheck.resume()
+	},
+)
+
+watch(
+	() => props.uid,
+	() => {
+		canUseDebouncedConfigInParams.value = false
+		setTimeout(() => {
+			canUseDebouncedConfigInParams.value = true
+		}, 3000)
+	},
+)
+
 // labels series the query gave no legend format for, counting up per
 // merge call ("Line A", "Line B", ...)
 function orderedLegendLabel() {
@@ -282,63 +335,6 @@ function orderedLegendLabel() {
 		return res
 	}
 }
-
-useIntervalFn(
-	() => {
-		void refreshData()
-	},
-	() => refreshIntervalToMs(props.config.refreshInterval || RefreshInterval.M5),
-	{
-		immediate: true,
-		immediateCallback: false,
-	},
-)
-
-const simulationCheck = useIntervalFn(
-	() => {
-		void checkSimulation()
-	},
-	SIMULATION_CHECK_INTERVAL_MS,
-	{ immediate: false },
-)
-
-// the document and branch ids arrive with the route, often after the
-// block has mounted, so the first check waits for them rather than being
-// skipped until the next tick
-watchImmediate(
-	[
-		simulationPreset,
-		() => editorStore.activeDocumentId,
-		() => editorStore.activeBranchId,
-	],
-	([preset]) => {
-		if (!preset) {
-			simulationCheck.pause()
-
-			return
-		}
-
-		void checkSimulation()
-		simulationCheck.resume()
-	},
-)
-
-onMounted(async () => {
-	await refreshData()
-	setTimeout(() => {
-		canUseDebouncedConfigInParams.value = true
-	}, 3000)
-})
-
-watch(
-	() => props.uid,
-	() => {
-		canUseDebouncedConfigInParams.value = false
-		setTimeout(() => {
-			canUseDebouncedConfigInParams.value = true
-		}, 3000)
-	},
-)
 
 async function refreshData() {
 	if (
@@ -421,7 +417,7 @@ function openModal() {
 <template>
 	<div class="relative flex size-full min-w-0 items-center justify-center">
 		<div
-			v-if="drawnPreset"
+			v-if="drawnSimulationPreset"
 			class="pointer-events-none absolute top-2.5 left-1/2 z-1 flex -translate-x-1/2 items-center gap-1 text-2sm text-foreground/70"
 		>
 			<Icon name="lucide:hourglass" class="size-3" />
