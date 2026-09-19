@@ -75,6 +75,23 @@ const primaryMethod = computed(() => {
 		) ?? null
 	)
 })
+const conditionsKeypath = computed(() => {
+	const { termsOfServiceURL, privacyPolicyURL } = config.public
+
+	if (termsOfServiceURL && privacyPolicyURL) {
+		return "onboarding.signup.conditions.main"
+	}
+
+	if (termsOfServiceURL) {
+		return "onboarding.signup.conditions.terms-only"
+	}
+
+	if (privacyPolicyURL) {
+		return "onboarding.signup.conditions.privacy-only"
+	}
+
+	return null
+})
 const newAccountsAllowed = computed(() => {
 	return (
 		fetchOrganizationStats.state.value.data &&
@@ -389,8 +406,9 @@ function methodVariant(method: AuthMethod) {
 				</ShadcnUiButton>
 			</form>
 			<i18n-t
+				v-if="conditionsKeypath"
 				scope="global"
-				keypath="onboarding.signup.conditions.main"
+				:keypath="conditionsKeypath"
 				tag="div"
 				class="text-center text-xs text-accent-foreground"
 			>

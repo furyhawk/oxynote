@@ -14,6 +14,8 @@
 			},
 			"conditions": {
 				"main": "By signing up, you agree to our {terms-of-service} and {privacy-policy}.",
+				"terms-only": "By signing up, you agree to our {terms-of-service}.",
+				"privacy-only": "By signing up, you agree to our {privacy-policy}.",
 				"placeholders": {
 					"terms-of-service": "Terms of Service",
 					"privacy-policy": "Privacy Policy"
