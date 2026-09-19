@@ -1,5 +1,5 @@
 import { enableAutoUnmount } from "@vue/test-utils"
-import { afterEach, beforeEach, describe, it } from "vitest"
+import { afterEach, beforeEach, describe, it, vi } from "vitest"
 import BaseModal from "./BaseModal.client.vue"
 import ConfigSidebar from "./ConfigSidebar.vue"
 import VisualizationContainer from "../VisualizationContainer.vue"
@@ -25,6 +25,17 @@ import {
 	teleportedButton,
 } from "~/components/test-helpers"
 import { DiffStatus } from "~/components/editor/diff/position-map"
+
+// echarts measures text on a canvas, which happy-dom does not implement
+vi.mock("../visualizations/LineChart.vue", () => ({
+	default: { name: "LineChart", render: () => null },
+}))
+vi.mock("../visualizations/BarChart.vue", () => ({
+	default: { name: "BarChart", render: () => null },
+}))
+vi.mock("../visualizations/GaugeChart.vue", () => ({
+	default: { name: "GaugeChart", render: () => null },
+}))
 
 const DOCUMENT_ID = makeXid("doc")
 const BRANCH_ID = makeXid("branch")

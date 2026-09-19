@@ -23,6 +23,17 @@ import {
 } from "~/composables/api/test-helpers"
 import { emitFrom, renderedIconNames } from "~/components/test-helpers"
 
+// echarts measures text on a canvas, which happy-dom does not implement
+vi.mock("./visualizations/LineChart.vue", () => ({
+	default: { name: "LineChart", render: () => null },
+}))
+vi.mock("./visualizations/BarChart.vue", () => ({
+	default: { name: "BarChart", render: () => null },
+}))
+vi.mock("./visualizations/GaugeChart.vue", () => ({
+	default: { name: "GaugeChart", render: () => null },
+}))
+
 const DOCUMENT_ID = makeXid("doc")
 const BRANCH_ID = makeXid("branch")
 
