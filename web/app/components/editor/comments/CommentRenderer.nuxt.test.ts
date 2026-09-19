@@ -1,6 +1,11 @@
 import { mountSuspended } from "@nuxt/test-utils/runtime"
 import { Editor as TiptapEditor, type Editor } from "@tiptap/core"
-import { enableAutoUnmount, type VueWrapper } from "@vue/test-utils"
+import { ySyncPluginKey } from "@tiptap/y-tiptap"
+import {
+	enableAutoUnmount,
+	flushPromises,
+	type VueWrapper,
+} from "@vue/test-utils"
 import { setResponseStatus } from "h3"
 import { afterEach, beforeEach, describe, it, vi } from "vitest"
 import CommentRenderer from "./CommentRenderer.vue"
@@ -17,6 +22,8 @@ import {
 	seedQueryData,
 } from "~/composables/api/test-helpers"
 import {
+	clearTeleportedOverlays,
+	menuItem,
 	seedAuthOrganization,
 	seedAuthSession,
 	t,
@@ -64,7 +71,7 @@ let contentEditor: Editor | null = null
 // the renderer anchors comments in a live document, so the suite drives a
 // real editor holding the same mark and node comment extensions the app
 // gives its content editor
-function textDoc(text: string): Editor {
+function textDoc(...paragraphs: string[]): Editor {
 	const element = document.createElement("div")
 	document.body.appendChild(element)
 
@@ -76,7 +83,7 @@ function textDoc(text: string): Editor {
 			CommentMark,
 			NodeComment.configure({ types: ["paragraph"] }),
 		],
-		content: `<p>${text}</p>`,
+		content: paragraphs.map((text) => `<p>${text}</p>`).join(""),
 	})
 
 	return contentEditor
@@ -130,6 +137,21 @@ function api(wrapper: VueWrapper): CommentRendererApi {
 	return wrapper.vm as unknown as CommentRendererApi
 }
 
+function press(target: Element) {
+	target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))
+}
+
+// tiptap hangs its editor instance off the editable element
+function commentEditor(wrapper: VueWrapper): Editor {
+	const element = wrapper.find(".z-popover .ProseMirror").element as
+		(Element & { editor?: Editor }) | undefined
+	if (!element?.editor) {
+		throw new Error("no comment editor in the popover")
+	}
+
+	return element.editor
+}
+
 function popoverOpen(wrapper: VueWrapper): boolean {
 	return wrapper.find(".z-popover").exists()
 }
@@ -151,6 +173,7 @@ describe("<CommentRenderer>", { concurrent: false }, () => {
 	enableAutoUnmount(afterEach)
 
 	beforeEach(() => {
+		clearTeleportedOverlays()
 		stubThemeColorContext()
 		clearQueryCache()
 		useEditorMeta().setEditable(true)
@@ -330,6 +353,242 @@ describe("<CommentRenderer>", { concurrent: false }, () => {
 		).trigger("click")
 
 		expect(popoverOpen(wrapper)).toBe(false)
+	})
+
+	it("closes a text thread when a press lands outside the editor", async ({
+		expect,
+	}) => {
+		const editor = textDoc("hello world")
+		editor.commands.setTextSelection({ from: 1, to: 6 })
+		editor.commands.addCommentMark({ commentId: COMMENT_ID })
+		seedComments([serverComment()])
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).selectComment({ textComment: true, id: COMMENT_ID })
+		await nextTick()
+
+		press(document.body)
+		await nextTick()
+
+		expect(popoverOpen(wrapper)).toBe(false)
+	})
+
+	it("keeps a text thread open on a press in the editor until the click lands", async ({
+		expect,
+	}) => {
+		const editor = textDoc("hello world")
+		editor.commands.setTextSelection({ from: 1, to: 6 })
+		editor.commands.addCommentMark({ commentId: COMMENT_ID })
+		seedComments([serverComment()])
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).selectComment({ textComment: true, id: COMMENT_ID })
+		await nextTick()
+
+		press(editor.view.dom)
+		await nextTick()
+
+		expect(popoverOpen(wrapper)).toBe(true)
+	})
+
+	it("closes a block thread when a press lands on another block", async ({
+		expect,
+	}) => {
+		const editor = textDoc("first", "second")
+		editor.commands.addNodeComment(0, { nodeCommentId: COMMENT_ID })
+		seedComments([serverComment()])
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).selectComment({ textComment: false, id: COMMENT_ID })
+		await nextTick()
+
+		press(editor.view.nodeDOM(7) as Element)
+		await nextTick()
+
+		expect(popoverOpen(wrapper)).toBe(false)
+	})
+
+	it("keeps a block thread open while presses land inside its block", async ({
+		expect,
+	}) => {
+		const editor = textDoc("first", "second")
+		editor.commands.addNodeComment(0, { nodeCommentId: COMMENT_ID })
+		seedComments([serverComment()])
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).selectComment({ textComment: false, id: COMMENT_ID })
+		await nextTick()
+
+		press(editor.view.nodeDOM(0) as Element)
+		await nextTick()
+
+		expect(popoverOpen(wrapper)).toBe(true)
+	})
+
+	it("drops a draft block comment when a press lands beside the editor", async ({
+		expect,
+	}) => {
+		const editor = textDoc("hello world")
+		const handle = document.createElement("div")
+		editor.view.dom.parentElement?.appendChild(handle)
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).addNewComment(0)
+		await nextTick()
+
+		press(handle)
+		await nextTick()
+
+		expect.soft(popoverOpen(wrapper)).toBe(false)
+		expect.soft(editor.state.doc.firstChild?.attrs.nodeCommentId).toBeNull()
+	})
+
+	it("keeps the thread open while presses land inside it", async ({
+		expect,
+	}) => {
+		const editor = textDoc("hello world")
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).addNewComment(0)
+		await nextTick()
+
+		press(wrapper.find(".z-popover").element)
+		await nextTick()
+
+		expect(popoverOpen(wrapper)).toBe(true)
+	})
+
+	it("keeps the thread open while presses land on a comment indicator", async ({
+		expect,
+	}) => {
+		const editor = textDoc("hello world")
+		const indicator = document.createElement("button")
+		editor.view.dom.parentElement
+			?.querySelector(".node-comment-overlay-container")
+			?.appendChild(indicator)
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).addNewComment(0)
+		await nextTick()
+
+		press(indicator)
+		await nextTick()
+
+		expect(popoverOpen(wrapper)).toBe(true)
+	})
+
+	it("keeps the thread open while presses land on its actions menu", async ({
+		expect,
+	}) => {
+		const editor = textDoc("hello world")
+		editor.commands.addNodeComment(0, { nodeCommentId: COMMENT_ID })
+		seedComments([serverComment()])
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).selectComment({ textComment: false, id: COMMENT_ID })
+		await vi.waitFor(() => {
+			expect(wrapper.find("[data-slot='dropdown-menu-trigger']").exists()).toBe(
+				true,
+			)
+		}, WAIT_FOR_OPTIONS)
+		const trigger = wrapper.find("[data-slot='dropdown-menu-trigger']")
+		await trigger.trigger("pointerdown", { button: 0 })
+		await trigger.trigger("click")
+		await nextTick()
+
+		press(menuItem(t("editor.comment-thread.edit-start-button")))
+		await nextTick()
+
+		expect(popoverOpen(wrapper)).toBe(true)
+	})
+
+	it("closes a block thread when its block is deleted", async ({ expect }) => {
+		const editor = textDoc("first", "second")
+		editor.commands.addNodeComment(7, { nodeCommentId: COMMENT_ID })
+		seedComments([serverComment()])
+		editor.commands.setTextSelection(3)
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).selectComment({ textComment: false, id: COMMENT_ID })
+		await nextTick()
+
+		editor.chain().setTextSelection(6).deleteRange({ from: 7, to: 15 }).run()
+		await flushPromises()
+
+		expect.soft(popoverOpen(wrapper)).toBe(false)
+		// the cursor stays where the edit left it
+		expect.soft(editor.state.selection.from).toBe(6)
+	})
+
+	it("closes a text thread when its text is deleted", async ({ expect }) => {
+		const editor = textDoc("hello world")
+		editor.commands.setTextSelection({ from: 1, to: 6 })
+		editor.commands.addCommentMark({ commentId: COMMENT_ID })
+		seedComments([serverComment()])
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).selectComment({ textComment: true, id: COMMENT_ID })
+		await nextTick()
+
+		editor.commands.deleteRange({ from: 1, to: 6 })
+		await flushPromises()
+
+		expect(popoverOpen(wrapper)).toBe(false)
+	})
+
+	it("closes a block thread and restores the cursor when a collaborator deletes its block", async ({
+		expect,
+	}) => {
+		const editor = textDoc("first", "second")
+		editor.commands.addNodeComment(7, { nodeCommentId: COMMENT_ID })
+		seedComments([serverComment()])
+		editor.commands.setTextSelection(3)
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).selectComment({ textComment: false, id: COMMENT_ID })
+		await nextTick()
+
+		editor.view.dispatch(
+			editor.state.tr.delete(7, 15).setMeta(ySyncPluginKey, {}),
+		)
+		await flushPromises()
+
+		expect.soft(popoverOpen(wrapper)).toBe(false)
+		expect.soft(editor.state.selection.from).toBe(3)
+	})
+
+	it("keeps the thread open while the rest of the document changes", async ({
+		expect,
+	}) => {
+		const editor = textDoc("first", "second")
+		editor.commands.addNodeComment(0, { nodeCommentId: COMMENT_ID })
+		seedComments([serverComment()])
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).selectComment({ textComment: false, id: COMMENT_ID })
+		await nextTick()
+
+		editor.commands.deleteRange({ from: 7, to: 15 })
+		await flushPromises()
+
+		expect(popoverOpen(wrapper)).toBe(true)
+	})
+
+	it("keeps a new block thread open once the server gives it an id", async ({
+		expect,
+	}) => {
+		const editor = textDoc("hello world")
+		mockEndpoint("POST", `/api/documents/${DOCUMENT_ID}/comments`, () =>
+			serverComment(),
+		)
+		// saving refetches the thread list
+		mockEndpoint("GET", `/api/documents/${DOCUMENT_ID}/comments`, () => [
+			serverComment(),
+		])
+		const wrapper = await mountRenderer(editor)
+		await api(wrapper).addNewComment(0)
+		await nextTick()
+		commentEditor(wrapper).commands.setContent(commentBody("looks good"))
+		await flushPromises()
+
+		await popoverButton(
+			wrapper,
+			t("editor.comment-thread.comment-button"),
+		).trigger("click")
+
+		await vi.waitFor(() => {
+			expect(editor.state.doc.firstChild?.attrs.nodeCommentId).toBe(COMMENT_ID)
+		}, WAIT_FOR_OPTIONS)
+		await nextTick()
+		expect(popoverOpen(wrapper)).toBe(true)
 	})
 
 	it("keeps the comment button out of reach while the draft is empty", async ({

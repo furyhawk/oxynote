@@ -134,6 +134,7 @@ const popoverPosition = ref({
 	placement: "bottom-start",
 })
 const containerElem = useTemplateRef("editor-container")
+const linkBubbleMenuElem = useTemplateRef("link-bubble-menu")
 const scrollerElem = useTemplateRef<DynamicScrollerType>("comment-scroller")
 const canScrollToBottom = ref(false)
 const anchorElem = ref<Element | null>(null)
@@ -272,10 +273,11 @@ import.meta.hot?.dispose(() => {
 
 onMounted(() => {
 	if (!isDiffMode.value) {
-		activeEditor.value.on("transaction", handleRemoteDocChange)
+		activeEditor.value.on("transaction", handleDocChange)
 	}
 
 	activeEditor.value.view.dom.addEventListener("click", handleEditorClick)
+	document.addEventListener("pointerdown", handleDocumentPointerDown, true)
 	window.addEventListener("scroll", handleScrollOrResize, true)
 	window.addEventListener("resize", handleScrollOrResize)
 })
@@ -412,7 +414,7 @@ function removeEditorListeners() {
 	// unmounts — in that case listeners are already cleaned up
 	try {
 		if (!isDiffMode.value) {
-			activeEditor.value.off("transaction", handleRemoteDocChange)
+			activeEditor.value.off("transaction", handleDocChange)
 		}
 
 		activeEditor.value.view.dom.removeEventListener("click", handleEditorClick)
@@ -420,6 +422,7 @@ function removeEditorListeners() {
 		// editor already destroyed, listeners are gone
 	}
 
+	document.removeEventListener("pointerdown", handleDocumentPointerDown, true)
 	window.removeEventListener("scroll", handleScrollOrResize, true)
 	window.removeEventListener("resize", handleScrollOrResize)
 }
@@ -435,38 +438,79 @@ function handleEditorClick() {
 	})
 }
 
-/**
- * Handle remote document changes that may delete the currently viewed comment.
- */
-function handleRemoteDocChange({ transaction }: { transaction: Transaction }) {
-	// bail early if no comment is open
-	if (!selectedComment.value) {
+// closes the popover when a press lands outside it. Its own menus, its
+// link bubble and the comment indicators keep it open. Inside the editor
+// a text comment is left to handleEditorClick, and a node comment stays
+// open while the press is inside its node.
+function handleDocumentPointerDown(event: PointerEvent) {
+	const target = event.target
+	if (!selectedComment.value || !(target instanceof Element)) {
 		return
 	}
 
-	// bail if doc didn't change
-	if (!transaction.docChanged) {
+	if (
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- eslint's ts program resolves .vue imports as error typed, vue-tsc accepts this
+		popoverElem.value?.contains(target) ||
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- eslint's ts program resolves .vue imports as error typed, vue-tsc accepts this
+		linkBubbleMenuElem.value?.containsTarget(target) ||
+		target.closest(
+			'[role="menu"], .node-comment-overlay-container, .text-comment-indicator-container',
+		)
+	) {
 		return
 	}
 
-	// bail if this is a local change (user's own edit)
-	if (!isChangeOrigin(transaction)) {
-		return
-	}
-
-	// check if the comment's DOM element still exists (fast querySelector)
-	const id = selectedComment.value.id
-	const editorDom = activeEditor.value.view.dom
-
-	if (selectedComment.value.textComment) {
-		if (!editorDom.querySelector(`[data-comment-id="${id}"]`)) {
-			closePopover()
+	const { view, state } = activeEditor.value
+	if (view.dom.contains(target)) {
+		if (selectedComment.value.textComment) {
+			return
 		}
-	} else if (selectedComment.value.nodeComment) {
-		if (!editorDom.querySelector(`[data-node-comment-id="${id}"]`)) {
-			closePopover()
+
+		const match = findNodeCommentById(state, selectedComment.value.id)
+		if (match && view.nodeDOM(match.pos)?.contains(target)) {
+			return
 		}
 	}
+
+	// the press moves focus and the selection itself, so neither is
+	// restored
+	savedContentEditorSelection.value = null
+	closePopover(true)
+}
+
+// closes the popover once its comment is gone from the document, whether
+// a collaborator or the user removed it. The check waits a tick because
+// swapping a pending id for the server one changes the document before
+// selectedComment follows.
+function handleDocChange({ transaction }: { transaction: Transaction }) {
+	if (!selectedComment.value || !transaction.docChanged) {
+		return
+	}
+
+	const remote = isChangeOrigin(transaction)
+
+	void nextTick(() => {
+		const selected = selectedComment.value
+		if (!selected) {
+			return
+		}
+
+		const { state } = activeEditor.value
+		const found = selected.textComment
+			? findCommentMarkById(state, selected.id)
+			: findNodeCommentById(state, selected.id)
+		if (found) {
+			return
+		}
+
+		// the user's own edit has placed the cursor, so the selection saved
+		// when the popover opened is stale
+		if (!remote) {
+			savedContentEditorSelection.value = null
+		}
+
+		closePopover()
+	})
 }
 
 function handleScrollOrResize() {

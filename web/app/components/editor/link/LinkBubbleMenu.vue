@@ -255,6 +255,10 @@ function handlePopoverFocusOut(e: FocusEvent) {
 	handlePopoverMouseLeave()
 }
 
+function containsTarget(target: Node) {
+	return !!popoverElem.value?.contains(target)
+}
+
 function handleClickOutside(event?: MouseEvent) {
 	if (!isEditing.value || !popoverElem.value) {
 		return
@@ -510,6 +514,7 @@ onKeyStroke("Escape", () => {
 
 defineExpose({
 	editSelection,
+	containsTarget,
 })
 </script>
 <template>
