@@ -16,6 +16,7 @@ import (
 	"github.com/oxynote/oxynote/server/core/internal/document/file"
 	"github.com/oxynote/oxynote/server/core/internal/server/internal/auth"
 	"github.com/oxynote/oxynote/server/core/internal/storage"
+	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/testutil"
 	"github.com/rs/xid"
 	"github.com/stretchr/testify/assert"
@@ -320,6 +321,21 @@ func Test_Handler_UploadDocumentFile(t *testing.T) {
 				hasResp(http.StatusBadRequest, `{"code":"storage.size_limit_exceeded","message":"file size exceeds limit"}`),
 				wasInsertCalled(0),
 				wasUploadCalled(0),
+			),
+		},
+		"Existing file id": {
+			DB: &DBMock{
+				InsertDocumentFileFunc: func(context.Context, file.File) error {
+					return errutil.New(http.StatusConflict, "document_file.exists", "file id is already in use")
+				},
+			},
+			Storer: &StorerMock{},
+			Query:  "?id=f1xxxxxxxxxxxxxxxxxxx&location=document&kind=image",
+			Checks: checks(
+				hasResp(http.StatusConflict, `{"code":"document_file.exists","message":"file id is already in use"}`),
+				wasInsertCalled(1),
+				wasUploadCalled(0),
+				wasDeleteCalled(0),
 			),
 		},
 		"DB insert error": {

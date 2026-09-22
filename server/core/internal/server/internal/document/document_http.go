@@ -14,6 +14,7 @@ import (
 	"github.com/oxynote/oxynote/server/core/internal/apps/webchange"
 	documentCore "github.com/oxynote/oxynote/server/core/internal/document"
 	"github.com/oxynote/oxynote/server/core/internal/document/file"
+	"github.com/oxynote/oxynote/server/core/internal/document/history"
 	"github.com/oxynote/oxynote/server/core/internal/document/hook"
 	"github.com/oxynote/oxynote/server/core/internal/notification"
 	"github.com/oxynote/oxynote/server/core/internal/search"
@@ -1015,6 +1016,9 @@ type DocumentsDBAgent interface {
 
 	// UpdateDocument should update the document.
 	UpdateDocument(ctx context.Context, doc documentCore.Document) error
+
+	// InsertDocumentBranchHistoryEntry should record a snapshot of a branch.
+	InsertDocumentBranchHistoryEntry(ctx context.Context, entry history.Entry) error
 
 	// DeleteDocument should delete the document and report the ids of
 	// the document and of every cascade-deleted descendant.

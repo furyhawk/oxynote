@@ -124,80 +124,104 @@ func Test_DB_Close(t *testing.T) {
 }
 
 func Test_DetectError(t *testing.T) {
-	cc := map[string]struct {
+	type tcase struct {
 		Err    error
 		Result error
-	}{
-		"Not found": {
-			Err:    sql.ErrNoRows,
-			Result: errutil.ErrNotFound,
+	}
+
+	cc := map[string]func(*testing.T) tcase{
+		"Not found": func(*testing.T) tcase {
+			return tcase{
+				Err:    sql.ErrNoRows,
+				Result: errutil.ErrNotFound,
+			}
 		},
-		"Error pass through": {
-			Err:    sql.ErrConnDone,
-			Result: sql.ErrConnDone,
+		"Error pass through": func(*testing.T) tcase {
+			return tcase{
+				Err:    sql.ErrConnDone,
+				Result: sql.ErrConnDone,
+			}
 		},
-		"No error": {
-			Err:    nil,
-			Result: nil,
+		"No error": func(*testing.T) tcase {
+			return tcase{}
 		},
-		"Unmatched pgx constraint": {
-			Err: &pgconn.PgError{
-				Code: "123",
-			},
-			Result: &pgconn.PgError{
-				Code: "123",
-			},
+		"Unmatched pgx constraint": func(*testing.T) tcase {
+			return tcase{
+				Err: &pgconn.PgError{
+					Code: "123",
+				},
+				Result: &pgconn.PgError{
+					Code: "123",
+				},
+			}
 		},
-		"Unmatched constraint": {
-			Err:    errors.New("b"),
-			Result: errors.New("b"),
+		"Unmatched constraint": func(*testing.T) tcase {
+			return tcase{
+				Err:    errors.New("b"),
+				Result: errors.New("b"),
+			}
+		},
+		"Duplicate branch name": func(t *testing.T) tcase {
+			db := prepTempDB(t)
+
+			// renaming a branch onto a sibling's name trips the unique key
+			// that DetectError has to recognise.
+			branches := prepDocumentBranches(t, db, 2, nil)
+
+			second := branches[1]
+			second.BranchName = branches[0].BranchName
+
+			err := db.UpdateDocumentBranchMetadata(context.Background(), *second)
+			require.Error(t, err)
+
+			return tcase{
+				Err:    err,
+				Result: errutil.New(http.StatusBadRequest, "document_branch.duplicate_name", "branch name is already in use"),
+			}
+		},
+		"Duplicate file id": func(t *testing.T) tcase {
+			db := prepTempDB(t)
+
+			f := prepDocumentFiles(t, db, 1, nil)[0]
+
+			err := db.InsertDocumentFile(context.Background(), f)
+			require.Error(t, err)
+
+			return tcase{
+				Err:    err,
+				Result: errutil.New(http.StatusConflict, "document_file.exists", "file id is already in use"),
+			}
+		},
+		"Duplicate tag name": func(t *testing.T) tcase {
+			db := prepTempDB(t)
+
+			existing := prepTags(t, db, 1, nil)[0]
+
+			dup := tag.NewTag(
+				tag.CreateInput{TagName: existing.TagName, Color: "#000000"},
+				existing.OrganizationID,
+				prepUsers(t, db, 1)[0],
+			)
+
+			err := db.InsertTag(context.Background(), dup)
+			require.Error(t, err)
+
+			return tcase{
+				Err:    err,
+				Result: tag.ErrDuplicateTagName,
+			}
 		},
 	}
 
-	for cn, c := range cc {
+	for cn, cfn := range cc {
 		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			c := cfn(t)
+
 			assert.Equal(t, c.Result, DetectError(c.Err))
 		})
 	}
-
-	t.Run("Duplicate branch name", func(t *testing.T) {
-		t.Parallel()
-
-		db := prepTempDB(t)
-
-		// renaming a branch onto a sibling's name trips the unique key that
-		// DetectError has to recognise.
-		branches := prepDocumentBranches(t, db, 2, nil)
-
-		second := branches[1]
-		second.BranchName = branches[0].BranchName
-
-		err := db.UpdateDocumentBranchMetadata(context.Background(), *second)
-		require.Error(t, err)
-
-		mapped := DetectError(err)
-		assert.Equal(t, http.StatusBadRequest, errutil.StatusCode(mapped, false))
-		assert.Contains(t, mapped.Error(), "branch name is already in use")
-	})
-
-	t.Run("Duplicate tag name", func(t *testing.T) {
-		t.Parallel()
-
-		db := prepTempDB(t)
-
-		existing := prepTags(t, db, 1, nil)[0]
-
-		dup := tag.NewTag(
-			tag.CreateInput{TagName: existing.TagName, Color: "#000000"},
-			existing.OrganizationID,
-			prepUsers(t, db, 1)[0],
-		)
-
-		err := db.InsertTag(context.Background(), dup)
-		require.Error(t, err)
-
-		assert.Equal(t, tag.ErrDuplicateTagName, DetectError(err))
-	})
 }
 
 func Test_DB_BeginTx(t *testing.T) {

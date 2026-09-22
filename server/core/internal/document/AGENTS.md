@@ -15,18 +15,35 @@ Cross-service storage rules (Hocuspocus, Yjs) live in
   who edited in that persist; `UpsertDocumentMaintainers` only adds. There
   is no removal path.
 - **Duplication copies, never shares**: `Document.Duplicate` regenerates
-  every block uid, rewrites image/file `src` paths to the new document, and
-  returns old→new maps for files (copied server-side) and block uids (hooks
-  re-anchored; unmapped ones dropped).
-- History entries pin the files they reference, so
-  `DB_MAX_DOCUMENT_HISTORY_ENTRIES` and `DB_DOCUMENT_HISTORY_RETENTION` also
-  decide how long a removed image survives.
+  every block uid, rewrites image/file `src` paths to the new document (the
+  file id is read off the src), and returns old→new maps for files (copied
+  server-side) and block uids (hooks re-anchored; unmapped ones dropped).
+
+## History entries
+
+`document_branch_history_entries` are restorable snapshots: name, icon,
+content, the branch's live hook definitions (type, block, settings; never
+watcher state) and the author, written in the same transaction as the
+branch update through `InsertDocumentBranchHistoryEntry`. Rules:
+
+- Ordinary edits within one 30-minute bucket update the branch's newest
+  entry in place. A persist that changes nothing writes no entry; a system
+  write is unattributed (null author) and still takes the time of the
+  write.
+- Merge and fork write a **boundary** entry that never aggregates and closes
+  its bucket: the next edit starts a new entry. The merge entry lists the
+  source's hooks.
+- Entries pin the files they reference, so `DB_MAX_DOCUMENT_HISTORY_ENTRIES`
+  and `DB_DOCUMENT_HISTORY_RETENTION` also decide how long a removed image
+  survives.
 
 ## Files and hooks
 
-Files live at `organizations/{org}/documents/{doc}/files/{blockUID}` (the
-file id is the block uid, so a re-upload overwrites in place), tracked in
-`document_files` with name, size and sniffed content type. `GET
+Files live at `organizations/{org}/documents/{doc}/files/{fileId}`. The id
+is a nanoid the editor mints per upload, not the block uid, and an id that
+already has a row is refused with 409, so a history entry keeps its object
+when a block's file is replaced. Rows are `document_files` with name, size
+and sniffed content type. `GET
 /api/documents/{id}/files/{fileId}-{fileName}` cuts the 21-char nanoid off
 the front and ignores the name; `Content-Disposition` is `inline` only for
 `file.Viewable`. The key is an S3 object key or a path under the storage

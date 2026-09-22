@@ -19,12 +19,7 @@ import (
 	"github.com/rs/xid"
 )
 
-// _fileIDLength is the length of a block uid: every editor mints
-// 21-character nanoids, and the retrieval route relies on it to cut the
-// id off the front of "<id>-<file name>".
-const _fileIDLength = 21
-
-// _fileIDPattern matches a block uid. The charset shuts out the path
+// _fileIDPattern matches a file id. The charset shuts out the path
 // separators and dot segments that would otherwise let an id escape its
 // storage folder once joined into an object key.
 var _fileIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{21}$`)
@@ -172,11 +167,11 @@ func (h *Handler) UploadDocumentFile(w http.ResponseWriter, r *http.Request) {
 // fileID cuts the id off a "<id>-<file name>" route segment, reporting
 // whether the segment has that shape.
 func fileID(ref string) (string, bool) {
-	if len(ref) <= _fileIDLength || ref[_fileIDLength] != '-' {
+	if len(ref) <= document.FileIDLength || ref[document.FileIDLength] != '-' {
 		return "", false
 	}
 
-	id := ref[:_fileIDLength]
+	id := ref[:document.FileIDLength]
 	if !_fileIDPattern.MatchString(id) {
 		return "", false
 	}

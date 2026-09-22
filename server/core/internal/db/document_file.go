@@ -8,17 +8,13 @@ import (
 	"github.com/guregu/null/v5"
 	"github.com/jmoiron/sqlx"
 	"github.com/oxynote/oxynote/server/core/internal/document/file"
-	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/rs/xid"
 )
 
-// InsertDocumentFile inserts a new document file into the database.
-// Re-uploading into the same block reuses the file id, so the insert
-// refreshes the existing row instead of failing: created_at is bumped
-// to re-arm the retention grace period for what is a new object, and
-// the unreferenced mark is cleared. A row owned by another organization
-// is left alone and reported as errutil.ErrNotFound, since the id is
-// client-chosen and must not reassign a file across organizations.
+// InsertDocumentFile inserts a new document file into the database. The id
+// is client-chosen and unique across organizations: an id that already has
+// a row is refused, so an object a history entry points at is never
+// overwritten in place.
 func (a *agent) InsertDocumentFile(ctx context.Context, f file.File) error {
 	q, args := a.builder.Insert("document_files").
 		SetMap(map[string]any{
@@ -33,29 +29,11 @@ func (a *agent) InsertDocumentFile(ctx context.Context, f file.File) error {
 			"created_at":         f.CreatedAt,
 			"unreferenced_at":    f.UnreferencedAt,
 		}).
-		Suffix("ON CONFLICT (id) DO UPDATE SET " +
-			"location = excluded.location, storage_key = excluded.storage_key, " +
-			"fk_document_id = excluded.fk_document_id, fk_organization_id = excluded.fk_organization_id, " +
-			"name = excluded.name, size = excluded.size, content_type = excluded.content_type, " +
-			"created_at = excluded.created_at, unreferenced_at = NULL " +
-			"WHERE document_files.fk_organization_id = excluded.fk_organization_id").
 		MustSql()
 
-	res, err := a.sql.ExecContext(ctx, q, args...)
-	if err != nil {
-		return err
-	}
+	_, err := a.sql.ExecContext(ctx, q, args...)
 
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if n == 0 {
-		return errutil.ErrNotFound
-	}
-
-	return nil
+	return err
 }
 
 // FetchDocumentFile retrieves a document file by its block ID from the database.

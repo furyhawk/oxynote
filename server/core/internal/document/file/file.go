@@ -21,9 +21,8 @@ func Folder(organizationID string, documentID xid.ID) string {
 	return fmt.Sprintf(_folderFormat, organizationID, documentID)
 }
 
-// Key returns the storage key of the given document's file. The key
-// is the file id alone: a re-upload into the same block then overwrites
-// its object in place, so no object is ever left without a row naming it.
+// Key returns the storage key of the given document's file: the file id
+// under the document's folder.
 func Key(organizationID string, documentID xid.ID, id string) string {
 	return path.Join(Folder(organizationID, documentID), id)
 }

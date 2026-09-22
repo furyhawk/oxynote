@@ -711,33 +711,6 @@ func Test_agent_UpdateDocument(t *testing.T) {
 		assert.Equal(t, assert.AnError, err)
 	})
 
-	t.Run("HistoryEntries are kept per branch", func(t *testing.T) {
-		t.Parallel()
-
-		db := prepTempDB(t)
-
-		// two branches of one document, updated inside the same
-		// aggregation window.
-		branches := prepDocumentBranches(t, db, 2, nil)
-		now := timeutil.Now().Truncate(time.Second)
-
-		for _, b := range branches {
-			b.UpdatedAt = now
-
-			require.NoError(t, db.UpdateDocument(context.Background(), *b))
-		}
-
-		var logs uint64
-
-		q, args := db.builder.Select("COUNT(*)").From("document_branch_history_entries").
-			Where(sq.Eq{
-				"fk_document_id": branches[0].ID,
-			}).MustSql()
-
-		require.NoError(t, db.sql.Get(&logs, q, args...))
-		assert.Equal(t, uint64(2), logs)
-	})
-
 	type tcase struct {
 		Document document.Document
 		Err      error
@@ -783,18 +756,6 @@ func Test_agent_UpdateDocument(t *testing.T) {
 			err := db.sql.Get(&doc, q, args...)
 			require.NoError(t, err)
 			assert.Equal(t, c.Document, doc)
-
-			var logs uint64
-
-			q, args = db.builder.Select("COUNT(*)").From("document_branch_history_entries").
-				Where(sq.Eq{
-					"fk_document_id": c.Document.ID,
-				}).MustSql()
-
-			err = db.sql.Get(&logs, q, args...)
-			require.NoError(t, err)
-			assert.Equal(t, c.Document, doc)
-			assert.Equal(t, uint64(1), logs)
 		})
 	}
 }

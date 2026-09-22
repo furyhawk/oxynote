@@ -236,6 +236,12 @@ func DetectError(err error) error {
 			)
 		case "tags_fk_organization_id_tag_name_key":
 			return tag.ErrDuplicateTagName
+		case "document_files_pkey":
+			return errutil.New(
+				http.StatusConflict,
+				"document_file.exists",
+				"file id is already in use",
+			)
 		}
 	}
 

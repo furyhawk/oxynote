@@ -27,8 +27,8 @@ vi.mock("~/components/toast", () => ({
 // buildDocumentFileSrc is pulled in through a nuxt auto-import, so the
 // module itself is the only seam: the real one reaches for the nuxt app
 vi.mock("~/composables/api/useDocumentFileAPI", () => ({
-	buildDocumentFileSrc: (documentId: string, blockId: string, name: string) =>
-		`/files/${documentId}/${blockId}-${name}`,
+	buildDocumentFileSrc: (documentId: string, fileId: string, name: string) =>
+		`/files/${documentId}/${fileId}-${name}`,
 }))
 
 const extensions = [
@@ -135,6 +135,13 @@ function blockUid(doc: PMNode, typeName: string): string {
 	return blockAttrs(doc, typeName).uid as string
 }
 
+// the id every upload is sent under: a 21-character nanoid
+const FILE_ID_PATTERN = /^[A-Za-z0-9_-]{21}$/
+
+function uploadedFileId(): string {
+	return (uploadDocumentFile.mock.calls[0]?.[0] as { id: string }).id
+}
+
 // the upload chain is pure microtasks, so one macrotask boundary is
 // enough to settle it — no timers involved
 function flushUpload(): Promise<void> {
@@ -177,11 +184,15 @@ describe("createUploadFileHandler", { concurrent: false }, () => {
 			expect(uploadDocumentFile).toHaveBeenCalledTimes(1)
 			expect(uploadDocumentFile).toHaveBeenCalledWith({
 				documentId: "d1",
-				id: blockUid(editor.state.doc, IMAGE_BLOCK_NAME),
+				id: expect.stringMatching(FILE_ID_PATTERN) as string,
 				loc: DocumentFileLocation.Document,
 				kind: DocumentFileKind.Image,
 				file,
 			})
+			// the file id is the upload's own, not the block's uid
+			expect(uploadedFileId()).not.toBe(
+				blockUid(editor.state.doc, IMAGE_BLOCK_NAME),
+			)
 			expect(showToastMessage).toHaveBeenCalledTimes(0)
 		})
 
@@ -211,11 +222,14 @@ describe("createUploadFileHandler", { concurrent: false }, () => {
 			expect(uploadDocumentFile).toHaveBeenCalledTimes(1)
 			expect(uploadDocumentFile).toHaveBeenCalledWith({
 				documentId: "d1",
-				id: blockUid(editor.state.doc, FILE_BLOCK_NAME),
+				id: expect.stringMatching(FILE_ID_PATTERN) as string,
 				loc: DocumentFileLocation.Document,
 				kind: DocumentFileKind.File,
 				file,
 			})
+			expect(uploadedFileId()).not.toBe(
+				blockUid(editor.state.doc, FILE_BLOCK_NAME),
+			)
 			expect(showToastMessage).toHaveBeenCalledTimes(0)
 		})
 
@@ -250,13 +264,13 @@ describe("createUploadFileHandler", { concurrent: false }, () => {
 			const editor = makeEditor([paragraph("one")])
 			editor.commands.setTextSelection(2)
 			fileCallbacks({ documentId: "d1" }).onPaste(editor, [pngFile("a.png")])
-			const uid = blockUid(editor.state.doc, IMAGE_BLOCK_NAME)
+			const fileId = uploadedFileId()
 
 			await flushUpload()
 
 			expect(shape(editor.state.doc)).toEqual([
 				"paragraph",
-				`imageBlock:/files/d1/${uid}-a.zip:false`,
+				`imageBlock:/files/d1/${fileId}-a.zip:false`,
 			])
 			expect(showToastMessage).toHaveBeenCalledTimes(0)
 		})
@@ -274,13 +288,13 @@ describe("createUploadFileHandler", { concurrent: false }, () => {
 			fileCallbacks({ documentId: "d1" }).onPaste(editor, [
 				zipFile("notes.zip"),
 			])
-			const uid = blockUid(editor.state.doc, FILE_BLOCK_NAME)
+			const fileId = uploadedFileId()
 
 			await flushUpload()
 
 			expect(shape(editor.state.doc)).toEqual([
 				"paragraph",
-				`fileBlock:/files/d1/${uid}-renamed.zip:false`,
+				`fileBlock:/files/d1/${fileId}-renamed.zip:false`,
 			])
 			expect(blockAttrs(editor.state.doc, FILE_BLOCK_NAME)).toMatchObject({
 				name: "renamed.zip",

@@ -262,27 +262,58 @@ func Test_Document_ApplyBranchUpdate(t *testing.T) {
 	}
 }
 
-func Test_Document_HistoryEntry(t *testing.T) {
+func Test_Document_SnapshotEqual(t *testing.T) {
 	t.Parallel()
 
-	doc := stubDocument()
-	doc.UpdatedAt = time.Date(2026, 1, 1, 10, 44, 30, 0, time.UTC)
+	cc := map[string]struct {
+		Mutate func(d *Document)
+		Equal  bool
+	}{
+		"Identical": {
+			Mutate: func(_ *Document) {},
+			Equal:  true,
+		},
+		"Different name": {
+			Mutate: func(d *Document) {
+				d.DocumentName = "Other"
+			},
+		},
+		"Different icon": {
+			Mutate: func(d *Document) {
+				d.Icon = "📕"
+			},
+		},
+		"Different block": {
+			Mutate: func(d *Document) {
+				d.Content.Content = d.Content.Content[1:]
+			},
+		},
+		"Different attribute": {
+			Mutate: func(d *Document) {
+				d.Content.Content[0].Attrs = map[string]any{"uid": "changed"}
+			},
+		},
+		"Different raw content only": {
+			Mutate: func(d *Document) {
+				d.RawContent = []byte("other")
+			},
+			Equal: true,
+		},
+	}
 
-	entry := doc.HistoryEntry()
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
 
-	// the timestamp is truncated to the 30-minute aggregation window.
-	assert.Equal(t, doc.ID.String()+"-"+doc.BranchID.String()+"-2026-01-01T10:30:00", entry.ID)
-	assert.Equal(t, doc.ID, entry.DocumentID)
-	assert.Equal(t, doc.Content, entry.Content)
-	assert.Equal(t, doc.RawContent, entry.RawContent)
-	assert.Equal(t, doc.UpdatedAt, entry.CreatedAt)
+			doc := stubDocument()
+			other := stubDocument()
+			other.ID = doc.ID
+			other.BranchID = doc.BranchID
+			c.Mutate(&other)
 
-	// a second branch of the same document updated within the same window
-	// keeps an entry of its own.
-	other := doc
-	other.BranchID = xid.New()
-
-	assert.NotEqual(t, entry.ID, other.HistoryEntry().ID)
+			assert.Equal(t, c.Equal, doc.SnapshotEqual(other))
+		})
+	}
 }
 
 func Test_Document_Duplicate(t *testing.T) {
@@ -327,8 +358,8 @@ func Test_Document_Duplicate(t *testing.T) {
 			doc.Content.Content[0] = Block{
 				Type: BlockNodeImageBlock,
 				Attrs: Attributes{
-					"uid": "img1",
-					"src": "https://app.test/core" + FilePath(doc.ID, "img1", "shot.png"),
+					"uid": "img-1-aaaaaaaaaaaaaaa",
+					"src": "https://app.test/core" + FilePath(doc.ID, "img-1-aaaaaaaaaaaaaaa", "shot.png"),
 				},
 			}
 
@@ -337,7 +368,7 @@ func Test_Document_Duplicate(t *testing.T) {
 				Check: func(t *testing.T, _, dup Document, files map[string]string) {
 					require.Len(t, files, 1)
 
-					newID, ok := files["img1"]
+					newID, ok := files["img-1-aaaaaaaaaaaaaaa"]
 					require.True(t, ok)
 
 					// the duplicate refers to its own copy under its own document.

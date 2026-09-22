@@ -252,11 +252,7 @@ func (a *agent) UpdateDocument(ctx context.Context, doc document.Document) error
 			return err
 		}
 
-		if err := a.upsertDocumentBranch(ctx, tx, doc); err != nil {
-			return err
-		}
-
-		return a.insertDocumentBranchHistoryEntry(ctx, tx, doc.ID, doc.BranchID, doc.HistoryEntry())
+		return a.upsertDocumentBranch(ctx, tx, doc)
 	})
 }
 

@@ -78,6 +78,7 @@ function insertBlockWithUpload(
 	const isImage = IMAGE_MIME_TYPES.has(file.type)
 	const nodeName = isImage ? IMAGE_BLOCK_NAME : FILE_BLOCK_NAME
 	const blockId = nanoid()
+	const fileId = nanoid()
 	const { state, view } = editor
 	const { schema } = state
 
@@ -109,13 +110,13 @@ function insertBlockWithUpload(
 	uploadDocumentFile
 		.mutateAsync({
 			documentId,
-			id: blockId,
+			id: fileId,
 			loc: DocumentFileLocation.Document,
 			kind: isImage ? DocumentFileKind.Image : DocumentFileKind.File,
 			file,
 		})
 		.then((uploaded) => {
-			const src = buildDocumentFileSrc(documentId, blockId, uploaded.name)
+			const src = buildDocumentFileSrc(documentId, fileId, uploaded.name)
 
 			updateAttrsByUid(
 				editor,

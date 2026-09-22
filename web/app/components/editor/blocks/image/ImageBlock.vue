@@ -176,24 +176,24 @@ async function handleFileChange(event: Event) {
 		return
 	}
 
-	const blockId = (props.node.attrs.uid as string) || nanoid()
+	const fileId = nanoid()
 
 	props.updateAttributes({ uploading: true })
 
 	try {
 		const uploaded = await uploadDocumentFile.mutateAsync({
 			documentId: documentId.value,
-			id: blockId,
+			id: fileId,
 			loc: DocumentFileLocation.Document,
 			kind: DocumentFileKind.Image,
 			file,
 		})
 		const nextSrc = buildDocumentFileSrc(
 			documentId.value,
-			blockId,
+			fileId,
 			uploaded.name,
 		)
-		props.updateAttributes({ src: nextSrc, uid: blockId, uploading: false })
+		props.updateAttributes({ src: nextSrc, uploading: false })
 	} catch (error) {
 		props.updateAttributes({ uploading: false })
 		if (!handleStorageError(error, t)) {

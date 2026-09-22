@@ -10,12 +10,14 @@ import (
 	"github.com/guregu/null/v5"
 	"github.com/oxynote/oxynote/server/core/internal/apps/webchange"
 	documentCore "github.com/oxynote/oxynote/server/core/internal/document"
+	"github.com/oxynote/oxynote/server/core/internal/document/history"
 	"github.com/oxynote/oxynote/server/core/internal/document/hook"
 	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/oxynote/oxynote/server/core/internal/server/internal/auth"
 	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/httpserver"
 	"github.com/oxynote/oxynote/server/core/pkg/logutil"
+	"github.com/oxynote/oxynote/server/core/pkg/timeutil"
 	"github.com/rs/xid"
 )
 
@@ -200,6 +202,31 @@ func (h *Handler) UpdateDocumentBranchByIDUnsafe(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// a persist that changes nothing, such as the Yjs seed Hocuspocus
+	// sends on first load, leaves history alone. A system write is not
+	// attributed: no user made that change.
+	if !doc.SnapshotEqual(ndoc) {
+		var hooks []hook.Hook
+
+		hooks, err = tx.FetchDocumentHooksByBranchID(r.Context(), doc.BranchID, doc.OrganizationID)
+		if err != nil {
+			httpserver.RespondError(h.log, w, err)
+			return
+		}
+
+		var lastUpdatedBy null.String
+		if !ui.System {
+			lastUpdatedBy = ndoc.LastUpdatedBy
+		}
+
+		entry := history.NewEntry(ndoc, timeutil.Now(), lastUpdatedBy, history.NewHooks(hooks), false)
+
+		if err = tx.InsertDocumentBranchHistoryEntry(r.Context(), entry); err != nil {
+			httpserver.RespondError(h.log, w, err)
+			return
+		}
+	}
+
 	maintainers, err := tx.FetchDocumentMaintainers(r.Context(), doc.ID, doc.OrganizationID)
 	if err != nil {
 		httpserver.RespondError(h.log, w, err)
@@ -336,6 +363,11 @@ func (h *Handler) MergeBranches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.insertBoundaryEntry(r.Context(), tx, ndoc, fromDoc.BranchID, session); err != nil {
+		httpserver.RespondError(h.log, w, err)
+		return
+	}
+
 	if err := tx.ReplaceBranchTags(r.Context(), session.ActiveOrganizationID, fromDoc.BranchID, toDoc.BranchID); err != nil {
 		httpserver.RespondError(h.log, w, err)
 		return
@@ -462,6 +494,11 @@ func (h *Handler) CreateDocumentBranch(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback() //nolint:errcheck // error provides no meaningful info
 
 	if err = tx.InsertDocumentBranch(r.Context(), newDoc); err != nil {
+		httpserver.RespondError(h.log, w, err)
+		return
+	}
+
+	if err := h.insertBoundaryEntry(r.Context(), tx, newDoc, sourceDoc.BranchID, session); err != nil {
 		httpserver.RespondError(h.log, w, err)
 		return
 	}
@@ -668,4 +705,19 @@ func (h *Handler) copyHooksToBranch(
 			return
 		}
 	}
+}
+
+// insertBoundaryEntry records a boundary history entry of the document's
+// branch, attributed to the session user. The entry lists the hooks of the
+// branch the content came from, which are what the branch carries once
+// copyHooksToBranch has run after the commit.
+func (h *Handler) insertBoundaryEntry(ctx context.Context, tx Tx, doc documentCore.Document, sourceBranchID xid.ID, session auth.Session) error {
+	hooks, err := tx.FetchDocumentHooksByBranchID(ctx, sourceBranchID, session.ActiveOrganizationID)
+	if err != nil {
+		return err
+	}
+
+	entry := history.NewEntry(doc, timeutil.Now(), null.StringFrom(session.UserID), history.NewHooks(hooks), true)
+
+	return tx.InsertDocumentBranchHistoryEntry(ctx, entry)
 }

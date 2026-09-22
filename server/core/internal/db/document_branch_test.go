@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -12,7 +13,9 @@ import (
 	"github.com/guregu/null/v5"
 	"github.com/jmoiron/sqlx"
 	"github.com/oxynote/oxynote/server/core/internal/document"
+	"github.com/oxynote/oxynote/server/core/internal/document/history"
 	"github.com/oxynote/oxynote/server/core/internal/document/hook"
+	"github.com/oxynote/oxynote/server/core/internal/document/hook/processor"
 	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/sqlutil"
 	"github.com/oxynote/oxynote/server/core/pkg/testutil"
@@ -653,30 +656,50 @@ func Test_agent_FetchDocumentBranchesAfter(t *testing.T) {
 	testutil.AssertFilterEqual(t, all[2:], res, null.Value[xid.ID]{})
 }
 
-// prepHistoryEntries writes count entries of the document's branch, one per
-// aggregation bucket so each lands as its own entry, oldest first.
-func prepHistoryEntries(t *testing.T, db *DB, doc *document.Document, count int) []document.HistoryEntry {
+// prepHistoryEntries writes count ordinary entries of the document's branch,
+// one per aggregation bucket so each lands as its own row, oldest first.
+func prepHistoryEntries(t *testing.T, db *DB, doc *document.Document, count int) []history.Entry {
 	t.Helper()
 
-	res := make([]document.HistoryEntry, count)
+	res := make([]history.Entry, count)
 	base := timeutil.Now().Truncate(time.Second)
 
 	for i := range count {
-		doc.UpdatedAt = base.Add(-time.Duration(count-i) * time.Hour)
-		entry := doc.HistoryEntry()
+		entry := history.NewEntry(*doc,
+			base.Add(-time.Duration(count-i)*time.Hour),
+			null.String{},
+			history.Hooks{},
+			false,
+		)
 
-		require.NoError(t, db.insertDocumentBranchHistoryEntry(
-			context.Background(),
-			db.sql,
-			doc.ID,
-			doc.BranchID,
-			entry,
-		))
+		require.NoError(t, db.InsertDocumentBranchHistoryEntry(context.Background(), entry))
 
 		res[i] = entry
 	}
 
 	return res
+}
+
+// assertHistoryEntryEqual compares two entries, matching hook settings as
+// JSON since jsonb normalises their spacing.
+func assertHistoryEntryEqual(t *testing.T, exp, got history.Entry) {
+	t.Helper()
+
+	require.Len(t, got.Hooks, len(exp.Hooks))
+
+	// the hook slices are cloned: cases share their definitions and the
+	// subtests run in parallel.
+	exp.Hooks = slices.Clone(exp.Hooks)
+	got.Hooks = slices.Clone(got.Hooks)
+
+	for i := range exp.Hooks {
+		assert.JSONEq(t, string(exp.Hooks[i].Settings), string(got.Hooks[i].Settings))
+
+		exp.Hooks[i].Settings = nil
+		got.Hooks[i].Settings = nil
+	}
+
+	assert.Equal(t, exp, got)
 }
 
 // countHistoryEntries returns how many entries the branch currently has.
@@ -733,7 +756,7 @@ func Test_agent_trimDocumentBranchHistoryEntries(t *testing.T) {
 			}
 
 			// the survivors are the newest ones.
-			var ids []string
+			var ids []xid.ID
 
 			q, args := db.builder.Select("id").
 				From("document_branch_history_entries").
@@ -741,7 +764,7 @@ func Test_agent_trimDocumentBranchHistoryEntries(t *testing.T) {
 				MustSql()
 
 			require.NoError(t, db.sql.Select(&ids, q, args...))
-			assert.ElementsMatch(t, []string{entries[2].ID, entries[3].ID}, ids)
+			assert.ElementsMatch(t, []xid.ID{entries[2].ID, entries[3].ID}, ids)
 		})
 	}
 }
@@ -770,34 +793,110 @@ func Test_agent_DeleteExpiredDocumentBranchHistoryEntries(t *testing.T) {
 	assert.Equal(t, 1, countHistoryEntries(t, db, doc.BranchID))
 }
 
-func Test_agent_insertDocumentBranchHistoryEntry(t *testing.T) {
+func Test_agent_InsertDocumentBranchHistoryEntry(t *testing.T) {
 	type tcase struct {
-		DocumentID   xid.ID
-		BranchID     xid.ID
-		HistoryEntry document.HistoryEntry
-		Trimmed      int
-		Err          error
+		Entry history.Entry
+		// Rows is how many entries the branch holds afterwards.
+		Rows int
+		// Newest is the entry the branch's newest row is expected to
+		// equal afterwards.
+		Newest history.Entry
+		Err    error
+	}
+
+	base := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	hooks := history.Hooks{
+		{
+			Type:     hook.TypeURLWatcher,
+			BlockID:  null.StringFrom("b1"),
+			Settings: processor.Settings(`{"url":"https://example.com"}`),
+		},
 	}
 
 	cc := map[string]func(*testing.T, *DB) tcase{
 		"Non-existent branch": func(t *testing.T, db *DB) tcase {
 			doc := prepDocuments(t, db, 1, nil)[0]
-			entry := doc.HistoryEntry()
+			doc.BranchID = xid.New()
 
 			return tcase{
-				DocumentID:   doc.ID,
-				BranchID:     xid.New(),
-				HistoryEntry: entry,
-				Err:          assert.AnError,
+				Entry: history.NewEntry(*doc, base, null.String{}, hooks, false),
+				Err:   assert.AnError,
 			}
 		},
-		"Successful insert": func(t *testing.T, db *DB) tcase {
+		"First entry of a branch": func(t *testing.T, db *DB) tcase {
 			doc := prepDocuments(t, db, 1, nil)[0]
+			user := prepUsers(t, db, 1)[0]
+
+			entry := history.NewEntry(*doc, base.Add(5*time.Minute), null.StringFrom(user), hooks, false)
 
 			return tcase{
-				DocumentID:   doc.ID,
-				BranchID:     doc.BranchID,
-				HistoryEntry: doc.HistoryEntry(),
+				Entry:  entry,
+				Rows:   1,
+				Newest: entry,
+			}
+		},
+		"Edit in the same bucket updates the entry in place": func(t *testing.T, db *DB) tcase {
+			doc := prepDocuments(t, db, 1, nil)[0]
+			user := prepUsers(t, db, 1)[0]
+
+			first := history.NewEntry(*doc, base.Add(5*time.Minute), null.String{}, history.Hooks{}, false)
+			require.NoError(t, db.InsertDocumentBranchHistoryEntry(context.Background(), first))
+
+			doc.DocumentName = "Renamed"
+			doc.Icon = "📕"
+			doc.Content.Content[0].Text = "Edited."
+
+			entry := history.NewEntry(*doc, base.Add(29*time.Minute), null.StringFrom(user), hooks, false)
+
+			newest := entry
+			newest.ID = first.ID
+
+			return tcase{
+				Entry:  entry,
+				Rows:   1,
+				Newest: newest,
+			}
+		},
+		"Edit in the next bucket inserts": func(t *testing.T, db *DB) tcase {
+			doc := prepDocuments(t, db, 1, nil)[0]
+
+			first := history.NewEntry(*doc, base.Add(5*time.Minute), null.String{}, history.Hooks{}, false)
+			require.NoError(t, db.InsertDocumentBranchHistoryEntry(context.Background(), first))
+
+			entry := history.NewEntry(*doc, base.Add(31*time.Minute), null.String{}, hooks, false)
+
+			return tcase{
+				Entry:  entry,
+				Rows:   2,
+				Newest: entry,
+			}
+		},
+		"Boundary entry in an occupied bucket inserts": func(t *testing.T, db *DB) tcase {
+			doc := prepDocuments(t, db, 1, nil)[0]
+
+			first := history.NewEntry(*doc, base.Add(5*time.Minute), null.String{}, history.Hooks{}, false)
+			require.NoError(t, db.InsertDocumentBranchHistoryEntry(context.Background(), first))
+
+			entry := history.NewEntry(*doc, base.Add(6*time.Minute), null.String{}, hooks, true)
+
+			return tcase{
+				Entry:  entry,
+				Rows:   2,
+				Newest: entry,
+			}
+		},
+		"Edit after a boundary in the same bucket inserts": func(t *testing.T, db *DB) tcase {
+			doc := prepDocuments(t, db, 1, nil)[0]
+
+			boundary := history.NewEntry(*doc, base.Add(5*time.Minute), null.String{}, history.Hooks{}, true)
+			require.NoError(t, db.InsertDocumentBranchHistoryEntry(context.Background(), boundary))
+
+			entry := history.NewEntry(*doc, base.Add(6*time.Minute), null.String{}, hooks, false)
+
+			return tcase{
+				Entry:  entry,
+				Rows:   2,
+				Newest: entry,
 			}
 		},
 		"Insert trims the branch down to the retained entries": func(t *testing.T, db *DB) tcase {
@@ -806,32 +905,13 @@ func Test_agent_insertDocumentBranchHistoryEntry(t *testing.T) {
 			prepHistoryEntries(t, db, doc, 3)
 
 			db.opts.MaxDocumentHistoryEntries = 2
-			doc.UpdatedAt = timeutil.Now().Truncate(time.Second)
+
+			entry := history.NewEntry(*doc, timeutil.Now().Truncate(time.Second), null.String{}, hooks, false)
 
 			return tcase{
-				DocumentID:   doc.ID,
-				BranchID:     doc.BranchID,
-				HistoryEntry: doc.HistoryEntry(),
-				Trimmed:      2,
-			}
-		},
-		"Successful update of an existing entry": func(t *testing.T, db *DB) tcase {
-			doc := prepDocuments(t, db, 1, nil)[0]
-
-			require.NoError(t, db.insertDocumentBranchHistoryEntry(
-				context.Background(),
-				db.sql,
-				doc.ID,
-				doc.BranchID,
-				doc.HistoryEntry(),
-			))
-
-			doc.RawContent = []byte("updated raw content")
-
-			return tcase{
-				DocumentID:   doc.ID,
-				BranchID:     doc.BranchID,
-				HistoryEntry: doc.HistoryEntry(),
+				Entry:  entry,
+				Rows:   2,
+				Newest: entry,
 			}
 		},
 	}
@@ -843,33 +923,39 @@ func Test_agent_insertDocumentBranchHistoryEntry(t *testing.T) {
 			db := prepTempDB(t)
 			c := cfn(t, db)
 
-			err := db.insertDocumentBranchHistoryEntry(context.Background(), db.sql, c.DocumentID, c.BranchID, c.HistoryEntry)
+			err := db.InsertDocumentBranchHistoryEntry(context.Background(), c.Entry)
 			testutil.RequireEqualError(t, c.Err, err)
-
-			if c.Trimmed != 0 {
-				assert.Equal(t, c.Trimmed, countHistoryEntries(t, db, c.BranchID))
-			}
 
 			if err != nil {
 				return
 			}
 
-			var entry document.HistoryEntry
+			assert.Equal(t, c.Rows, countHistoryEntries(t, db, c.Entry.BranchID))
 
-			q, args := db.builder.Select(
-				`id AS "id"`,
-				`fk_document_id AS "fk_document_id"`,
-				`content AS "content"`,
-				`raw_content AS "raw_content"`,
-				`created_at AS "created_at"`,
-			).From("document_branch_history_entries").
-				Where(sq.Eq{
-					"id": c.HistoryEntry.ID,
-				}).MustSql()
-
-			err = db.sql.Get(&entry, q, args...)
+			newest, err := db.fetchNewestDocumentBranchHistoryEntry(context.Background(), db.sql, c.Entry.BranchID)
 			require.NoError(t, err)
-			testutil.AssertFilterEqual(t, c.HistoryEntry, entry)
+			require.NotNil(t, newest)
+			assertHistoryEntryEqual(t, c.Newest, *newest)
 		})
 	}
+}
+
+func Test_agent_fetchNewestDocumentBranchHistoryEntry(t *testing.T) {
+	t.Parallel()
+
+	db := prepTempDB(t)
+	doc := prepDocuments(t, db, 1, nil)[0]
+
+	// no entries
+	res, err := db.fetchNewestDocumentBranchHistoryEntry(context.Background(), db.sql, doc.BranchID)
+	require.NoError(t, err)
+	assert.Nil(t, res)
+
+	// the newest of several
+	entries := prepHistoryEntries(t, db, doc, 3)
+
+	res, err = db.fetchNewestDocumentBranchHistoryEntry(context.Background(), db.sql, doc.BranchID)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assertHistoryEntryEqual(t, entries[2], *res)
 }

@@ -99,21 +99,20 @@ async function handleFileChange(event: Event) {
 		return
 	}
 
-	const blockId = (props.node.attrs.uid as string) || nanoid()
+	const fileId = nanoid()
 
 	props.updateAttributes({ uploading: true, name: file.name, size: file.size })
 
 	try {
 		const uploaded = await uploadDocumentFile.mutateAsync({
 			documentId: documentId.value,
-			id: blockId,
+			id: fileId,
 			loc: DocumentFileLocation.Document,
 			kind: DocumentFileKind.File,
 			file,
 		})
 		props.updateAttributes({
-			src: buildDocumentFileSrc(documentId.value, blockId, uploaded.name),
-			uid: blockId,
+			src: buildDocumentFileSrc(documentId.value, fileId, uploaded.name),
 			name: uploaded.name,
 			size: uploaded.size,
 			contentType: uploaded.contentType,

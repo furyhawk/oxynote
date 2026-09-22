@@ -2,6 +2,7 @@
 package document
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -26,16 +27,6 @@ var (
 
 // DefaultBranch is the name of the default branch for a document.
 const DefaultBranch = "main"
-
-const (
-
-	// _aggregationDuration is the duration for which document changes are aggregated.
-	_aggregationDuration = 30 * time.Minute
-
-	// _historyEntryTimeLayout is the layout used for timestamps in history
-	// entry IDs.
-	_historyEntryTimeLayout = "2006-01-02T15:04:05"
-)
 
 // Branch holds branch-specific content and metadata for a document.
 type Branch struct {
@@ -276,46 +267,27 @@ func (d Document) Title() string {
 	return d.DocumentName + " on branch " + d.BranchName
 }
 
-// HistoryEntry returns a history entry for the current state of the document.
-// Entries aggregate per branch and per time bucket: the branch is part of the
-// ID so that two branches of one document edited within the same bucket keep
-// separate entries instead of overwriting each other.
-func (d Document) HistoryEntry() HistoryEntry {
-	id := fmt.Sprintf(
-		"%s-%s-%s",
-		d.ID,
-		d.BranchID,
-		d.UpdatedAt.Truncate(_aggregationDuration).
-			Format(_historyEntryTimeLayout),
-	)
-
-	return HistoryEntry{
-		ID:         id,
-		DocumentID: d.ID,
-		Content:    d.Content,
-		RawContent: d.RawContent,
-		CreatedAt:  d.UpdatedAt,
+// SnapshotEqual reports whether the other document would produce the same
+// snapshot: the same name, icon and content. Content is compared as
+// JSON, which encoding/json emits with sorted keys.
+func (d Document) SnapshotEqual(o Document) bool {
+	if d.DocumentName != o.DocumentName || d.Icon != o.Icon {
+		return false
 	}
-}
 
-// HistoryEntry represents one entry in a document's history.
-type HistoryEntry struct {
-	// ID is the unique identifier for the entry.
-	ID string `json:"id" db:"id"`
+	dc, err := json.Marshal(d.Content)
+	if err != nil {
+		// NOCOV: a block tree of plain values always marshals.
+		return false
+	}
 
-	// DocumentID is the identifier for the document associated
-	// with this entry.
-	DocumentID xid.ID `json:"documentId" db:"fk_document_id"`
+	oc, err := json.Marshal(o.Content)
+	if err != nil {
+		// NOCOV: a block tree of plain values always marshals.
+		return false
+	}
 
-	// Content is the content of the document at the time of the entry.
-	Content RootBlock `json:"content" db:"content"`
-
-	// RawContent is the raw content of the document, typically in
-	// a text format.
-	RawContent []byte `json:"rawContent" db:"raw_content"`
-
-	// CreatedAt is the timestamp when the entry was created.
-	CreatedAt time.Time `json:"createdAt" db:"created_at"`
+	return bytes.Equal(dc, oc)
 }
 
 // CreateInput is the input structure for document operations.

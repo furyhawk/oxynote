@@ -10,6 +10,7 @@ import (
 	"github.com/guregu/null/v5"
 	documentCore "github.com/oxynote/oxynote/server/core/internal/document"
 	"github.com/oxynote/oxynote/server/core/internal/document/file"
+	"github.com/oxynote/oxynote/server/core/internal/document/history"
 	"github.com/oxynote/oxynote/server/core/internal/document/hook"
 	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/rs/xid"
@@ -105,6 +106,9 @@ var _ DB = &DBMock{}
 //			},
 //			InsertDocumentBranchFunc: func(ctx context.Context, doc documentCore.Document) error {
 //				panic("mock out the InsertDocumentBranch method")
+//			},
+//			InsertDocumentBranchHistoryEntryFunc: func(ctx context.Context, entry history.Entry) error {
+//				panic("mock out the InsertDocumentBranchHistoryEntry method")
 //			},
 //			InsertDocumentFileFunc: func(ctx context.Context, f file.File) error {
 //				panic("mock out the InsertDocumentFile method")
@@ -226,6 +230,9 @@ type DBMock struct {
 
 	// InsertDocumentBranchFunc mocks the InsertDocumentBranch method.
 	InsertDocumentBranchFunc func(ctx context.Context, doc documentCore.Document) error
+
+	// InsertDocumentBranchHistoryEntryFunc mocks the InsertDocumentBranchHistoryEntry method.
+	InsertDocumentBranchHistoryEntryFunc func(ctx context.Context, entry history.Entry) error
 
 	// InsertDocumentFileFunc mocks the InsertDocumentFile method.
 	InsertDocumentFileFunc func(ctx context.Context, f file.File) error
@@ -501,6 +508,13 @@ type DBMock struct {
 			// Doc is the doc argument value.
 			Doc documentCore.Document
 		}
+		// InsertDocumentBranchHistoryEntry holds details about calls to the InsertDocumentBranchHistoryEntry method.
+		InsertDocumentBranchHistoryEntry []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Entry is the entry argument value.
+			Entry history.Entry
+		}
 		// InsertDocumentFile holds details about calls to the InsertDocumentFile method.
 		InsertDocumentFile []struct {
 			// Ctx is the ctx argument value.
@@ -624,6 +638,7 @@ type DBMock struct {
 	lockInsertBranchReviewer                sync.RWMutex
 	lockInsertDocument                      sync.RWMutex
 	lockInsertDocumentBranch                sync.RWMutex
+	lockInsertDocumentBranchHistoryEntry    sync.RWMutex
 	lockInsertDocumentFile                  sync.RWMutex
 	lockInsertDocumentHook                  sync.RWMutex
 	lockInsertSearchJob                     sync.RWMutex
@@ -1804,6 +1819,45 @@ func (mock *DBMock) InsertDocumentBranchCalls() []struct {
 	mock.lockInsertDocumentBranch.RLock()
 	calls = mock.calls.InsertDocumentBranch
 	mock.lockInsertDocumentBranch.RUnlock()
+	return calls
+}
+
+// InsertDocumentBranchHistoryEntry calls InsertDocumentBranchHistoryEntryFunc.
+func (mock *DBMock) InsertDocumentBranchHistoryEntry(ctx context.Context, entry history.Entry) error {
+	callInfo := struct {
+		Ctx   context.Context
+		Entry history.Entry
+	}{
+		Ctx:   ctx,
+		Entry: entry,
+	}
+	mock.lockInsertDocumentBranchHistoryEntry.Lock()
+	mock.calls.InsertDocumentBranchHistoryEntry = append(mock.calls.InsertDocumentBranchHistoryEntry, callInfo)
+	mock.lockInsertDocumentBranchHistoryEntry.Unlock()
+	if mock.InsertDocumentBranchHistoryEntryFunc == nil {
+		var (
+			errOut error
+		)
+		return errOut
+	}
+	return mock.InsertDocumentBranchHistoryEntryFunc(ctx, entry)
+}
+
+// InsertDocumentBranchHistoryEntryCalls gets all the calls that were made to InsertDocumentBranchHistoryEntry.
+// Check the length with:
+//
+//	len(mockedDB.InsertDocumentBranchHistoryEntryCalls())
+func (mock *DBMock) InsertDocumentBranchHistoryEntryCalls() []struct {
+	Ctx   context.Context
+	Entry history.Entry
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Entry history.Entry
+	}
+	mock.lockInsertDocumentBranchHistoryEntry.RLock()
+	calls = mock.calls.InsertDocumentBranchHistoryEntry
+	mock.lockInsertDocumentBranchHistoryEntry.RUnlock()
 	return calls
 }
 

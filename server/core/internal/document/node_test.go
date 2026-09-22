@@ -342,8 +342,8 @@ func Test_RootBlock_Duplicate(t *testing.T) {
 						{
 							Type: BlockNodeImageBlock,
 							Attrs: Attributes{
-								"uid": "img1",
-								"src": "https://app.test/core" + FilePath(oldDocumentID, "img1", "shot.png"),
+								"uid": "img-1-aaaaaaaaaaaaaaa",
+								"src": "https://app.test/core" + FilePath(oldDocumentID, "img-1-aaaaaaaaaaaaaaa", "shot.png"),
 							},
 						},
 						{
@@ -356,8 +356,8 @@ func Test_RootBlock_Duplicate(t *testing.T) {
 						{
 							Type: BlockNodeImageBlock,
 							Attrs: Attributes{
-								"uid": "img3",
-								"src": "https://app.test/core" + FilePath(xid.New(), "img3", "shot.png"),
+								"uid": "img-3-aaaaaaaaaaaaaaa",
+								"src": "https://app.test/core" + FilePath(xid.New(), "img-3-aaaaaaaaaaaaaaa", "shot.png"),
 							},
 						},
 						{
@@ -367,8 +367,8 @@ func Test_RootBlock_Duplicate(t *testing.T) {
 						{
 							Type: BlockNodeFileBlock,
 							Attrs: Attributes{
-								"uid":         "file1",
-								"src":         "https://app.test/core" + FilePath(oldDocumentID, "file1", "my notes.zip"),
+								"uid":         "file-1-aaaaaaaaaaaaaa",
+								"src":         "https://app.test/core" + FilePath(oldDocumentID, "file-1-aaaaaaaaaaaaaa", "my notes.zip"),
 								"name":        "notes.zip",
 								"size":        2048,
 								"contentType": "application/zip",
@@ -381,12 +381,16 @@ func Test_RootBlock_Duplicate(t *testing.T) {
 					// document are remapped.
 					require.Len(t, files, 2)
 
-					newID, ok := files["img1"]
+					newID, ok := files["img-1-aaaaaaaaaaaaaaa"]
 					require.True(t, ok)
+					assert.Len(t, newID, 21)
 
+					// the file gets an id of its own; the block's uid is
+					// regenerated separately.
 					uid, ok := dup.Content[0].UID()
 					require.True(t, ok)
-					assert.Equal(t, newID, uid)
+					assert.NotEqual(t, newID, uid)
+					assert.NotEqual(t, "img-1-aaaaaaaaaaaaaaa", uid)
 					assert.Equal(
 						t,
 						"https://app.test/core"+FilePath(newDocumentID, newID, "shot.png"),
@@ -403,12 +407,9 @@ func Test_RootBlock_Duplicate(t *testing.T) {
 					// the file block is remapped the way the image is, keeps
 					// the file name segment of its address, and keeps what
 					// it shows.
-					newFileID, ok := files["file1"]
+					newFileID, ok := files["file-1-aaaaaaaaaaaaaa"]
 					require.True(t, ok)
-
-					fileUID, ok := dup.Content[4].UID()
-					require.True(t, ok)
-					assert.Equal(t, newFileID, fileUID)
+					assert.Len(t, newFileID, 21)
 					assert.Equal(
 						t,
 						"https://app.test/core"+FilePath(newDocumentID, newFileID, "my notes.zip"),
@@ -419,8 +420,8 @@ func Test_RootBlock_Duplicate(t *testing.T) {
 					assert.Equal(t, "application/zip", dup.Content[4].Attrs["contentType"])
 
 					// the original is untouched.
-					assert.Equal(t, "img1", orig.Content[0].Attrs["uid"])
-					assert.Equal(t, "file1", orig.Content[4].Attrs["uid"])
+					assert.Equal(t, "img-1-aaaaaaaaaaaaaaa", orig.Content[0].Attrs["uid"])
+					assert.Equal(t, "file-1-aaaaaaaaaaaaaa", orig.Content[4].Attrs["uid"])
 				},
 			}
 		}(),

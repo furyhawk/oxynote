@@ -1552,8 +1552,8 @@ func Test_Handler_DuplicateDocument(t *testing.T) {
 				{
 					Type: documentCore.BlockNodeImageBlock,
 					Attrs: documentCore.Attributes{
-						"uid": "img1",
-						"src": "https://app.test/core" + documentCore.FilePath(_documentID, "img1", "shot.png"),
+						"uid": "img-1-aaaaaaaaaaaaaaa",
+						"src": "https://app.test/core" + documentCore.FilePath(_documentID, "img-1-aaaaaaaaaaaaaaa", "shot.png"),
 					},
 				},
 			},
@@ -1683,7 +1683,7 @@ func Test_Handler_DuplicateDocument(t *testing.T) {
 		"Hooks are copied along with the document": {
 			DB: func() *DBMock {
 				blockHook := storedHook(hookCore.TypeScheduledReminder)
-				blockHook.BlockID = null.StringFrom("img1")
+				blockHook.BlockID = null.StringFrom("img-1-aaaaaaaaaaaaaaa")
 
 				db := imageDB()
 				db.FetchDocumentHooksByBranchIDFunc = func(context.Context, xid.ID, string) ([]hookCore.Hook, error) {
@@ -1761,7 +1761,7 @@ func Test_Handler_DuplicateDocument(t *testing.T) {
 				// uid rather than pointing at the source's.
 				for _, call := range c.DB.InsertDocumentHookCalls() {
 					assert.Equal(t, null.ValueFrom(dupl.BranchID), call.Hk.BranchID)
-					assert.NotEqual(t, null.StringFrom("img1"), call.Hk.BlockID)
+					assert.NotEqual(t, null.StringFrom("img-1-aaaaaaaaaaaaaaa"), call.Hk.BlockID)
 					assert.True(t, call.Hk.BlockID.Valid)
 				}
 			}

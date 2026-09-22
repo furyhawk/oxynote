@@ -17,9 +17,14 @@ import (
 // router mounts the file routes on this very format.
 const FilePathFormat = "/api/documents/%s/files/%s"
 
+// FileIDLength is the exact length of a file id: a 21-character nanoid.
+// The id's alphabet includes the dash, so a "<id>-<file name>" segment is
+// split by length, never at the first dash.
+const FileIDLength = 21
+
 // FilePath returns the URL path a document's file is served under: the
 // file route with the id followed by a dash and the file name, so the
-// address reads as the file it is. Every uid is a 21-character nanoid,
+// address reads as the file it is. Every file id is a 21-character nanoid,
 // which is what lets the server cut the id off the front again.
 func FilePath(documentID xid.ID, id, name string) string {
 	return fmt.Sprintf(FilePathFormat, documentID, id+"-"+url.PathEscape(name))
@@ -351,21 +356,11 @@ func (d *duplication) regenerateUID(old any) string {
 	return uid
 }
 
-// rewriteFileRef points a duplicated image or file block at the
-// duplicate's own copy of the file and records the pair. Files served
-// from anywhere but the source document's file route are left as they
-// are: an externally hosted image has no object to copy.
+// rewriteFileRef points a duplicated block's src at the duplicate's own
+// copy of the file and records the pair. The file id is the fixed-length
+// segment after the source document's file route; a src served from
+// anywhere else has no object to copy and is left as it is.
 func (d *duplication) rewriteFileRef(attrs, newAttrs Attributes) {
-	oldID, ok := attrs[AttrUID].(string)
-	if !ok {
-		return
-	}
-
-	newID, ok := newAttrs[AttrUID].(string)
-	if !ok {
-		return
-	}
-
 	src, ok := attrs[AttrSrc].(string)
 	if !ok {
 		return
@@ -376,24 +371,27 @@ func (d *duplication) rewriteFileRef(attrs, newAttrs Attributes) {
 		return
 	}
 
-	// the id is followed by the dash and the file name.
-	oldPath := fmt.Sprintf(FilePathFormat, d.oldDocumentID, oldID)
-
-	idx := strings.Index(u.Path, oldPath)
-	if idx < 0 {
+	prefix, rest, ok := strings.Cut(u.Path, fmt.Sprintf(FilePathFormat, d.oldDocumentID, ""))
+	if !ok {
 		return
 	}
 
-	rest := u.Path[idx+len(oldPath):]
-	if !strings.HasPrefix(rest, "-") {
+	if len(rest) <= FileIDLength || rest[FileIDLength] != '-' {
 		return
+	}
+
+	oldID, name := rest[:FileIDLength], rest[FileIDLength+1:]
+
+	newID, ok := d.files[oldID]
+	if !ok {
+		newID = strutil.NanoID()
+		d.files[oldID] = newID
 	}
 
 	// only the path is swapped: the src was built by the frontend from its
 	// own api base url, which need not match this server's public url.
-	u.Path = u.Path[:idx] + fmt.Sprintf(FilePathFormat, d.newDocumentID, newID) + rest
+	u.Path = prefix + fmt.Sprintf(FilePathFormat, d.newDocumentID, newID) + "-" + name
 	u.RawPath = ""
 
 	newAttrs[AttrSrc] = u.String()
-	d.files[oldID] = newID
 }

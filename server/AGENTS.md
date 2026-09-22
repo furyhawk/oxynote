@@ -96,11 +96,10 @@ The README lists the public routes; update it when changing handlers.
 ## Database
 
 Postgres 18. Migrations are embedded from `core/internal/db/migrations/` and
-applied by `db.New` (`rubenv/sql-migrate`). **Until the first release there
-is only `001_initial.sql` and schema changes go into it in place**;
-afterwards, add `NNN_<name>.sql`. An existing dev volume keeps the old
-schema, so reset it with `docker compose -p oxynote -f
-docker/docker-compose.dev.yaml down -v` after editing.
+applied by `db.New` (`rubenv/sql-migrate`). **The system is live: every
+schema change is a new `NNN_<name>.sql`; an applied migration is never
+edited.** A dev volume behind on migrations can be reset with `docker
+compose -p oxynote -f docker/docker-compose.dev.yaml down -v`.
 
 **Core migrations own the Better Auth tables** (snake_case columns matching
 the `fields` mappings in `auth-realtime/src/auth.ts`).

@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"strconv"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/oxynote/oxynote/server/core/internal/document"
 	"github.com/oxynote/oxynote/server/core/internal/document/comment"
 	"github.com/oxynote/oxynote/server/core/internal/document/file"
+	"github.com/oxynote/oxynote/server/core/internal/document/history"
 	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/testutil"
 	"github.com/oxynote/oxynote/server/core/pkg/timeutil"
@@ -77,29 +79,20 @@ func Test_agent_InsertDocumentFile(t *testing.T) {
 	}
 
 	cc := map[string]func(*testing.T, *DB) tcase{
-		"Re-upload refreshes the existing row": func(t *testing.T, db *DB) tcase {
-			f := prepDocumentFiles(t, db, 1, func(_ int, f *file.File) {
-				f.UnreferencedAt = null.TimeFrom(timeutil.Now().Truncate(time.Second))
-			})[0]
-
-			f.Location = file.LocationComment
-			f.StorageKey = "organizations/org/documents/doc/files/replaced"
+		"Existing id": func(t *testing.T, db *DB) tcase {
+			f := prepDocumentFiles(t, db, 1, nil)[0]
 			f.Name = "notes.zip"
-			f.Size = 2048
-			f.ContentType = "application/zip"
-			f.CreatedAt = timeutil.Now().Truncate(time.Second)
-			f.UnreferencedAt = null.Time{}
 
-			return tcase{File: f}
+			return tcase{File: f, Err: errutil.New(http.StatusConflict, "document_file.exists", "file id is already in use")}
 		},
-		"Re-upload from another organization": func(t *testing.T, db *DB) tcase {
+		"Existing id from another organization": func(t *testing.T, db *DB) tcase {
 			f := prepDocumentFiles(t, db, 1, nil)[0]
 			doc := prepDocuments(t, db, 1, nil)[0]
 
 			f.DocumentID = null.ValueFrom(doc.ID)
 			f.OrganizationID = null.StringFrom(doc.OrganizationID)
 
-			return tcase{File: f, Err: errutil.ErrNotFound}
+			return tcase{File: f, Err: errutil.New(http.StatusConflict, "document_file.exists", "file id is already in use")}
 		},
 		"Missing document": func(_ *testing.T, _ *DB) tcase {
 			return tcase{
@@ -250,12 +243,9 @@ func Test_agent_CheckDocumentFileReferenced(t *testing.T) {
 			doc := prepDocuments(t, db, 1, nil)[0]
 			doc.Content.Content[0].Attrs = document.Attributes{"uid": "file-ref"}
 
-			require.NoError(t, db.insertDocumentBranchHistoryEntry(
+			require.NoError(t, db.InsertDocumentBranchHistoryEntry(
 				context.Background(),
-				db.sql,
-				doc.ID,
-				doc.BranchID,
-				doc.HistoryEntry(),
+				history.NewEntry(*doc, timeutil.Now(), null.String{}, nil, false),
 			))
 
 			return "file-ref", doc.ID, true

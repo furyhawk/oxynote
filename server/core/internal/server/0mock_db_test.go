@@ -13,6 +13,7 @@ import (
 	"github.com/oxynote/oxynote/server/core/internal/document"
 	"github.com/oxynote/oxynote/server/core/internal/document/comment"
 	"github.com/oxynote/oxynote/server/core/internal/document/file"
+	"github.com/oxynote/oxynote/server/core/internal/document/history"
 	"github.com/oxynote/oxynote/server/core/internal/document/hook"
 	notificationCore "github.com/oxynote/oxynote/server/core/internal/notification"
 	"github.com/oxynote/oxynote/server/core/internal/search"
@@ -207,6 +208,9 @@ var _ DB = &DBMock{}
 //			},
 //			InsertDocumentBranchFunc: func(ctx context.Context, doc document.Document) error {
 //				panic("mock out the InsertDocumentBranch method")
+//			},
+//			InsertDocumentBranchHistoryEntryFunc: func(ctx context.Context, entry history.Entry) error {
+//				panic("mock out the InsertDocumentBranchHistoryEntry method")
 //			},
 //			InsertDocumentCommentFunc: func(ctx context.Context, c comment.Comment) error {
 //				panic("mock out the InsertDocumentComment method")
@@ -493,6 +497,9 @@ type DBMock struct {
 
 	// InsertDocumentBranchFunc mocks the InsertDocumentBranch method.
 	InsertDocumentBranchFunc func(ctx context.Context, doc document.Document) error
+
+	// InsertDocumentBranchHistoryEntryFunc mocks the InsertDocumentBranchHistoryEntry method.
+	InsertDocumentBranchHistoryEntryFunc func(ctx context.Context, entry history.Entry) error
 
 	// InsertDocumentCommentFunc mocks the InsertDocumentComment method.
 	InsertDocumentCommentFunc func(ctx context.Context, c comment.Comment) error
@@ -1115,6 +1122,13 @@ type DBMock struct {
 			// Doc is the doc argument value.
 			Doc document.Document
 		}
+		// InsertDocumentBranchHistoryEntry holds details about calls to the InsertDocumentBranchHistoryEntry method.
+		InsertDocumentBranchHistoryEntry []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Entry is the entry argument value.
+			Entry history.Entry
+		}
 		// InsertDocumentComment holds details about calls to the InsertDocumentComment method.
 		InsertDocumentComment []struct {
 			// Ctx is the ctx argument value.
@@ -1457,6 +1471,7 @@ type DBMock struct {
 	lockInsertDataSource                          sync.RWMutex
 	lockInsertDocument                            sync.RWMutex
 	lockInsertDocumentBranch                      sync.RWMutex
+	lockInsertDocumentBranchHistoryEntry          sync.RWMutex
 	lockInsertDocumentComment                     sync.RWMutex
 	lockInsertDocumentCommentReply                sync.RWMutex
 	lockInsertDocumentFile                        sync.RWMutex
@@ -4036,6 +4051,45 @@ func (mock *DBMock) InsertDocumentBranchCalls() []struct {
 	mock.lockInsertDocumentBranch.RLock()
 	calls = mock.calls.InsertDocumentBranch
 	mock.lockInsertDocumentBranch.RUnlock()
+	return calls
+}
+
+// InsertDocumentBranchHistoryEntry calls InsertDocumentBranchHistoryEntryFunc.
+func (mock *DBMock) InsertDocumentBranchHistoryEntry(ctx context.Context, entry history.Entry) error {
+	callInfo := struct {
+		Ctx   context.Context
+		Entry history.Entry
+	}{
+		Ctx:   ctx,
+		Entry: entry,
+	}
+	mock.lockInsertDocumentBranchHistoryEntry.Lock()
+	mock.calls.InsertDocumentBranchHistoryEntry = append(mock.calls.InsertDocumentBranchHistoryEntry, callInfo)
+	mock.lockInsertDocumentBranchHistoryEntry.Unlock()
+	if mock.InsertDocumentBranchHistoryEntryFunc == nil {
+		var (
+			errOut error
+		)
+		return errOut
+	}
+	return mock.InsertDocumentBranchHistoryEntryFunc(ctx, entry)
+}
+
+// InsertDocumentBranchHistoryEntryCalls gets all the calls that were made to InsertDocumentBranchHistoryEntry.
+// Check the length with:
+//
+//	len(mockedDB.InsertDocumentBranchHistoryEntryCalls())
+func (mock *DBMock) InsertDocumentBranchHistoryEntryCalls() []struct {
+	Ctx   context.Context
+	Entry history.Entry
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Entry history.Entry
+	}
+	mock.lockInsertDocumentBranchHistoryEntry.RLock()
+	calls = mock.calls.InsertDocumentBranchHistoryEntry
+	mock.lockInsertDocumentBranchHistoryEntry.RUnlock()
 	return calls
 }
 
