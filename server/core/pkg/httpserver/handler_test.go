@@ -521,6 +521,12 @@ func Test_ExtractQueryID(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func Test_CacheBust(t *testing.T) {
+	t.Parallel()
+
+	assert.Regexp(t, `^/api/users/u1/image\?v=\d{14}$`, CacheBust("/api/users/u1/image"))
+}
+
 func Test_Timeout(t *testing.T) {
 	Timeout(time.Millisecond)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()

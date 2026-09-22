@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/blevesearch/bleve/v2/search/query"
+	"github.com/oxynote/oxynote/server/core/pkg/testutil"
 	"github.com/rs/xid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -141,6 +142,26 @@ func Test_Index_SearchDocumentBlocks(t *testing.T) {
 	assert.Nil(t, blocks)
 }
 
+func Test_ValidateQuery(t *testing.T) {
+	cc := map[string]struct {
+		Query string
+		Err   error
+	}{
+		"Empty query":      {Err: ErrInvalidQuery},
+		"Overlong query":   {Query: strings.Repeat("a", MaxQueryLength+1), Err: ErrInvalidQuery},
+		"Query at the cap": {Query: strings.Repeat("é", MaxQueryLength)},
+		"Plain query":      {Query: "deploy"},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			testutil.AssertEqualError(t, c.Err, ValidateQuery(c.Query))
+		})
+	}
+}
+
 func Test_Index_search(t *testing.T) {
 	t.Parallel()
 
@@ -152,7 +173,14 @@ func Test_Index_search(t *testing.T) {
 		Limit          int
 		Highlight      bool
 		Check          func(t *testing.T, blocks []Block)
+		Err            error
 	}{
+		"Overlong query": {
+			OrganizationID: "org-1",
+			Query:          strings.Repeat("a", MaxQueryLength+1),
+			Limit:          10,
+			Err:            ErrInvalidQuery,
+		},
 		"Stemming matches another form of the word": {
 			OrganizationID: "org-1",
 			Query:          "deploying",
@@ -330,7 +358,11 @@ func Test_Index_search(t *testing.T) {
 			t.Parallel()
 
 			blocks, err := idx.search(context.Background(), c.OrganizationID, c.Query, c.Limit, c.Highlight)
-			require.NoError(t, err)
+			testutil.AssertEqualError(t, c.Err, err)
+
+			if err != nil {
+				return
+			}
 
 			c.Check(t, blocks)
 		})

@@ -126,6 +126,16 @@ func RequireSession(log *slog.Logger, w http.ResponseWriter, r *http.Request) (S
 	return session, true
 }
 
+// HasActiveOrganization reports whether a validated identity may reach
+// the handlers: a user together with the organization their work is
+// scoped to. A session without an active organization (e.g. right after
+// signup, before one is selected) must not: every query is scoped by the
+// organization id, and a write would create rows under an empty one. The
+// cookie session path and the MCP bearer verifier both ask it.
+func HasActiveOrganization(userID, organizationID string) bool {
+	return userID != "" && organizationID != ""
+}
+
 // getSession forwards the request to the Better Auth server to retrieve session information.
 func getSession(ctx context.Context, client *http.Client, url string, cookies []*http.Cookie) (Session, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
@@ -161,11 +171,7 @@ func getSession(ctx context.Context, client *http.Client, url string, cookies []
 		return Session{}, err
 	}
 
-	// a session without an active organization (e.g. right after signup,
-	// before one is selected) must not reach the handlers: every query is
-	// scoped by the organization id, and a write would create rows under an
-	// empty one. The MCP bearer verifier applies the same rule.
-	if payload.Session.UserID == "" || payload.Session.ActiveOrganizationID == "" {
+	if !HasActiveOrganization(payload.Session.UserID, payload.Session.ActiveOrganizationID) {
 		return Session{}, httpserver.ErrNotAuthenticated
 	}
 

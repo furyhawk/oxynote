@@ -185,6 +185,27 @@ func Test_Middleware(t *testing.T) {
 	}
 }
 
+func Test_HasActiveOrganization(t *testing.T) {
+	cc := map[string]struct {
+		UserID         string
+		OrganizationID string
+		Result         bool
+	}{
+		"User and organization": {UserID: "u1", OrganizationID: "org1", Result: true},
+		"Empty user":            {OrganizationID: "org1"},
+		"Empty organization":    {UserID: "u1"},
+		"Both empty":            {},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, c.Result, HasActiveOrganization(c.UserID, c.OrganizationID))
+		})
+	}
+}
+
 func Test_FilterOrganization(t *testing.T) {
 	t.Parallel()
 

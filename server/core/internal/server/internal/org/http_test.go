@@ -107,7 +107,7 @@ func Test_NewHandler(t *testing.T) {
 	assert.Same(t, githubMan, hdl.githubMan)
 	assert.Same(t, webchangeClient, hdl.webchangeClient)
 	assert.Same(t, searchTrigger, hdl.searchTrigger)
-	assert.Equal(t, "loc", hdl.logoLocation)
+	assert.Equal(t, "loc", hdl.publicURL)
 }
 
 // assertSeededTags checks that the seeded tags were inserted in their
@@ -501,7 +501,7 @@ func Test_Handler_UploadOrganizationLogo(t *testing.T) {
 			}
 
 			assert.Equal(t, "org1", ff[0].OrganizationID)
-			assert.Regexp(t, `^loc\?v=\d{14}$`, ff[0].Logo)
+			assert.Regexp(t, `^loc/api/organizations/logo\?v=\d{14}$`, ff[0].Logo)
 		}
 	}
 
@@ -598,7 +598,7 @@ func Test_Handler_UploadOrganizationLogo(t *testing.T) {
 				func(t *testing.T, _ *DBMock, _ *StorerMock, rec *httptest.ResponseRecorder) {
 					assert.Equal(t, http.StatusCreated, rec.Code)
 					assert.Zero(t, rec.Body.Len(), rec.Body.String())
-					assert.Regexp(t, `^loc\?v=\d{14}$`, rec.Header().Get("Location"))
+					assert.Regexp(t, `^loc/api/organizations/logo\?v=\d{14}$`, rec.Header().Get("Location"))
 				},
 				wasUploadCalled(1),
 				wasUpdateLogoCalled(1),
@@ -612,10 +612,10 @@ func Test_Handler_UploadOrganizationLogo(t *testing.T) {
 			t.Parallel()
 
 			hdl := Handler{
-				log:          slog.New(slog.DiscardHandler),
-				db:           c.DB,
-				storer:       c.Storer,
-				logoLocation: "loc",
+				log:       slog.New(slog.DiscardHandler),
+				db:        c.DB,
+				storer:    c.Storer,
+				publicURL: "loc",
 			}
 
 			var (

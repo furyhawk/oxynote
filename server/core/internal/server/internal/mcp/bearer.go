@@ -9,6 +9,7 @@ import (
 	"time"
 
 	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"github.com/oxynote/oxynote/server/core/internal/server/internal/auth"
 	"github.com/oxynote/oxynote/server/core/pkg/httpserver"
 )
 
@@ -114,7 +115,7 @@ func fetchSession(ctx context.Context, client *http.Client, url, token string) (
 		return Session{}, err
 	}
 
-	if session.UserID == "" || session.OrganizationID == "" {
+	if !auth.HasActiveOrganization(session.UserID, session.OrganizationID) {
 		return Session{}, fmt.Errorf("%w: incomplete session payload", sdkauth.ErrInvalidToken)
 	}
 

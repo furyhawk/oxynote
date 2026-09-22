@@ -1,9 +1,9 @@
 # AGENTS.md — Go standards
 
 Mandatory for all Go code in `server/core` and `datagen`; this file wins
-over surrounding code for new and modified code. Shared helpers live in
-`pkg/`; supervisors come from `github.com/jellydator/xync`. Where this file
-names an exemplar file, copy its shape.
+over surrounding code for new and modified code. Supervisors come from
+`github.com/jellydator/xync`. Where this file names an exemplar file, copy
+its shape.
 
 ```sh
 make build          # goreleaser snapshot -> bin/ + ghcr.io/oxynote/core:dev
@@ -30,17 +30,17 @@ make lint           # golangci-lint run --fix;  check-lint = verify only
 **Comments.** Every comment ends with a period (godot). Doc comments on
 everything, unexported included: `// <Name> <indicative verb phrase>.`;
 interface methods use `should`, implementations indicative. `// NOCOV:
-<lowercase reason>.` is the first line of a branch that genuinely cannot be
-reproduced; it is a reviewer covenant, not a tool directive, and never
-excuses a testable path.
-`// NOTE: <why>.` for design rationale. `//nolint:<linter> // <lowercase
-reason>`, reason mandatory (deferred Rollback/Close: `errcheck // error
-provides no meaningful info`). Comments never narrate the next line, justify
-a diff, or point at design docs or agent-instruction files.
+<lowercase reason>.` heads a branch that genuinely cannot be reproduced; it
+never excuses a testable path. `// NOTE: <why>.` for design rationale.
+`//nolint:<linter> // <lowercase reason>`, reason mandatory (deferred
+Rollback/Close: `errcheck // error provides no meaningful info`). Comments
+never narrate the next line, justify a diff, or point at design docs or
+agent-instruction files.
 
 **Globals.** Every unexported package-level var/const is `_`-prefixed and
 doc-commented (`var` for values tests shorten). Exported globals: `Err*`
-sentinels only. `init()` is banned except for build-info parsing.
+sentinels and consts another package reads. `init()` is banned except for
+build-info parsing.
 Compile-time interface assertions (`var _ Iface = &Impl{}`) only when a
 human asks: interfaces are consumer-declared, so the assertion imports the
 consumer and risks a cycle.
@@ -48,9 +48,8 @@ consumer and risks a cycle.
 **Naming.** Receivers are 1–3 letters from the type's initials, consistent
 per type. Shorts: `cfg`, `opts`, `inp`, `supv`, `res`, `evt`; secondary
 errors `cerr`/`rerr`/`perr`. Acronyms stay uppercase (`httpClient`, `ID`),
-except `Ws` in compounds. `any`, never `interface{}`. Unused parameters are
-`_`. An exported identifier used only inside its package becomes unexported;
-an unused one is deleted.
+except `Ws` in compounds. Unused parameters are `_`. An exported identifier
+used only inside its package becomes unexported; an unused one is deleted.
 
 **Shape (wsl).** Guard clauses, no `else` after a returning `if`. `if err :=
 f(); err != nil {` when `err` is not reused. Blank line before every `return`
@@ -58,9 +57,8 @@ f(); err != nil {` when `err` is not reused. Blank line before every `return`
 `Lock`/`defer Unlock` pair. Multi-argument calls one parameter per line.
 Named returns only so a `defer` can observe or replace the result; naked
 returns are banned. `defer cancel()`/`defer mu.Unlock()`/`defer
-resp.Body.Close()` immediately after the acquiring call. Imports: one stdlib
-block, then one block of everything else; alias collisions as lowercase
-concatenations (`hookMan`), mocks as `<pkg>Mock`.
+resp.Body.Close()` immediately after the acquiring call. Import alias
+collisions are lowercase concatenations (`hookMan`), mocks `<pkg>Mock`.
 
 ## API design
 
@@ -81,7 +79,7 @@ resource-owning type has `Close() error`.
 configurable package, next to its constructor, every field doc-commented
 with units and zero-value behaviour. Options nest to mirror the dependency
 tree and `validate()` cascades (exported `Validate()` when a parent cascades
-into it). Config is environment only, read once in `main`.
+into it).
 
 **Structs.** Service structs: unexported fields ordered `log *slog.Logger`,
 dependencies, each mutex directly above the fields it guards (blank lines
@@ -189,8 +187,7 @@ slice; always a deterministic tiebreaker after the user sort. IDs are
 generated in the domain layer, no `RETURNING`. Soft deletes set
 `deleted_at`; hard deletes happen in `Cleanup*` sweeps. A sqlhooks error
 hook maps constraint violations → user errors; an empty result is a bare
-`sql.ErrNoRows`, so callers use `errutil.IsNotFound`. Migrations are
-`migrations/NNN_snake_case.sql`, embedded with `//go:embed`.
+`sql.ErrNoRows`, so callers use `errutil.IsNotFound`.
 
 ## HTTP & WebSocket
 
@@ -205,6 +202,9 @@ hook maps constraint violations → user errors; an empty result is a bare
   `FetchX`/`FetchXs` (not `ListX`), action verbs (`DuplicateDocument`),
   `CreateX`/`UpdateX`/`DeleteX`; `Handle` only where the route has no
   entity (`HandleChat`).
+- Handler packages hold no domain rules: a parser, allow-list, cap or key
+  layout lives in the domain package it describes; a handler decodes,
+  transacts, calls the domain and responds.
 - A session handler's first statement is `auth.RequireSession(h.log, w, r)`.
   Decoding only through `DecodeJSON`, `DecodeForm`, `ParseQuery`,
   `ExtractTargetID`; responding only through `Respond` and `RespondError`,
@@ -244,8 +244,8 @@ for known third-party leaks. Serialization types get `Test_X_UnmarshalJSON`,
 before the result assertions.
 
 - Case names are sentence case without punctuation (`"Successful
-  creation"`, `"Context cancelled"`); error paths name the collaborator
-  verbatim (`"Error returned by Tx.Commit"`). No `name` field.
+  creation"`); error paths name the collaborator verbatim (`"Error returned
+  by Tx.Commit"`). No `name` field.
 - Case fields are PascalCase, inputs and collaborators first (`DB`, `Tx`,
   `Inp`, `JSON`, `Context`), expectations (`Result`, `Err`, `Checks`,
   `RespCode`, `RespJSON`) last.
@@ -270,11 +270,11 @@ nondeterministic types; `assert.JSONEq` for JSON; decimals as strings.
 **Mocks.** `//go:generate ../../scripts/codegen/mock -t internal DB db`
 (in-package `DBMock`), `-t external` (importable `_mock/` package,
 `mock.DB`), `-t both`. All use `-stub`, so `&DBMock{}` is a valid don't-care
-collaborator that still records calls. `_mock/` holds only generated code;
-third-party mocks go in `internal/_mock`. Configure by struct literal with
-only the needed funcs; repeated shapes are local `stub*` closures
-parameterized by the errors to return. Assert calls only through recorders
-(`db.CreateItemCalls()`); test `On*` APIs by invoking the captured callback.
+collaborator that still records calls. Third-party mocks go in
+`internal/_mock`. Configure by struct literal with only the needed funcs;
+repeated shapes are local `stub*` closures parameterized by the errors to
+return. Assert calls only through recorders (`db.CreateItemCalls()`); test
+`On*` APIs by invoking the captured callback.
 
 **check/checks combinator.** For functions touching several mocks, a
 `Checks []check` field replaces per-field expectations: `type check
@@ -291,15 +291,14 @@ counts. Exemplar: `internal/assistant/tools/document_test.go`.
 
 **Database-layer tests** (`internal/db/db_test.go`): `TestMain` starts one
 gnomock Postgres per package run; `prepTempDB(t)` gives each subtest its own
-migrated database, which is what makes `t.Parallel()` safe. Tables are maps
-of case constructors `func(*testing.T, *DB) tcase`. Round times to
-microseconds before insert; verify by re-querying through the production
-select builders.
+migrated database. Tables are maps of case constructors `func(*testing.T,
+*DB) tcase`. Round times to microseconds before insert; verify by
+re-querying through the production select builders.
 
 **HTTP handlers.** Invoke methods directly, no router:
 `httptest.NewRequest` against `http://test.com/`, chi params via
-`testutil.AddChiCtx` (an `OmitID bool` case field drives the missing-param
-path). Assert `rec.Code` and `assert.JSONEq` against verbatim envelopes;
+`testutil.AddChiCtx`. Assert `rec.Code` and `assert.JSONEq` against verbatim
+envelopes;
 204s assert an empty body. Auth middleware is tested through real components
 over mocked stores. WS binder tests stub `OnFirstSubFunc`/`OnLastUnsubFunc`
 to invoke immediately, fire the captured callback, assert
@@ -318,6 +317,4 @@ Logging is asserted, not mocked: `slog.NewTextHandler` over a `bytes.Buffer`
 logs don't matter. Use `context.Background()`, not `t.Context()`.
 
 **Hygiene.** Golden files in `testdata/`. Package-level fixtures are
-`_`-prefixed. `t.Helper()` in named helpers. White-box construction is
-normal. Giant test functions are fine; prefer one exhaustive function over
-splitting a target's cases.
+`_`-prefixed. `t.Helper()` in named helpers.

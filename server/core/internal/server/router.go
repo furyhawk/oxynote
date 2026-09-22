@@ -15,12 +15,6 @@ import (
 )
 
 const (
-	// _userImageLocationFormat is the URL format for user images.
-	_userImageLocationFormat = "/api/users/%s/image"
-
-	// _organizationLogoLocation is the URL path for organization logos.
-	_organizationLogoLocation = "/api/organizations/logo"
-
 	// _requestTimeout bounds the processing of a single HTTP request.
 	_requestTimeout = 30 * time.Second
 
@@ -241,6 +235,8 @@ func (s *Server) router() chi.Router {
 		})
 	})
 
+	// the image and logo routes are mounted on user.ImagePathFormat and
+	// org.LogoPath: the rows store those paths.
 	r.Route("/users", func(sr chi.Router) {
 		sr.Put("/image", s.handlers.user.UploadUserImage)
 		sr.Get("/{userId}/image", s.handlers.user.RetrieveUserImage)

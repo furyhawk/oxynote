@@ -119,6 +119,15 @@ func Test_Handler_QueryDataSource(t *testing.T) {
 				wasExecutorQueryCalled(0, 0, 0),
 			),
 		},
+		"Invalid time range": {
+			DB:     stubDB(stubDataSource(datasourceCore.TypePrometheus), nil),
+			Target: "http://test.com/?q=up&chartType=line_chart&from=bogus",
+			ID:     _testID.String(),
+			Checks: checks(
+				hasResp(http.StatusBadRequest, `{"code":"from.invalid","message":"From parameter must be a valid RFC3339 timestamp."}`),
+				wasExecutorQueryCalled(0, 0, 0),
+			),
+		},
 		"Unsupported data source type": {
 			DB:     stubDB(stubDataSource(datasourceCore.Type("bogus")), nil),
 			Target: _testGenericQueryTarget,
@@ -126,6 +135,46 @@ func Test_Handler_QueryDataSource(t *testing.T) {
 			Checks: checks(
 				hasResp(http.StatusBadRequest, `{"code":"data_source.type_not_supported","message":"Generic query is not supported for this data source type."}`),
 				wasExecutorQueryCalled(0, 0, 0),
+			),
+		},
+		"Error returned by the query": {
+			DB:      stubDB(stubDataSource(datasourceCore.TypePrometheus), nil),
+			Clients: stubPrometheusQueryClients("", nil, assert.AnError),
+			Target:  _testGenericQueryTarget,
+			ID:      _testID.String(),
+			Checks: checks(
+				hasResp(http.StatusInternalServerError, `{"code":"general","message":"internal server error"}`),
+				wasExecutorQueryCalled(1, 0, 0),
+			),
+		},
+		"A connection the data source refused": {
+			DB:      stubDB(stubDataSource(datasourceCore.TypePrometheus), nil),
+			Clients: stubPrometheusQueryClients(processor.ConnectionStatusUnreachable, nil, nil),
+			Target:  _testGenericQueryTarget,
+			ID:      _testID.String(),
+			Checks: checks(
+				hasResp(http.StatusBadRequest, `{"code":"data_source.unreachable","message":"The data source is unreachable."}`),
+				wasExecutorQueryCalled(0, 0, 0),
+			),
+		},
+		"Successful query": {
+			DB: stubDB(stubDataSource(datasourceCore.TypePrometheus), nil),
+			Clients: stubPrometheusQueryClients(processor.ConnectionStatusSuccess, &processor.PrometheusQueryResult{
+				Type: model.ValMatrix,
+				Result: model.Matrix{
+					&model.SampleStream{
+						Metric: model.Metric{"job": "a"},
+						Values: []model.SamplePair{
+							{Timestamp: model.Time(1700000000000), Value: 10},
+						},
+					},
+				},
+			}, nil),
+			Target: _testGenericQueryTarget,
+			ID:     _testID.String(),
+			Checks: checks(
+				hasResp(http.StatusOK, `{"status":"ok","data":[{"labels":{"job":"a"},"metrics":[[1700000000,10]]}]}`),
+				wasExecutorQueryCalled(1, 0, 0),
 			),
 		},
 		"Prometheus dispatch": {
@@ -180,217 +229,6 @@ func Test_Handler_QueryDataSource(t *testing.T) {
 			rec := httptest.NewRecorder()
 
 			hdl.QueryDataSource(rec, req)
-
-			for _, ch := range c.Checks {
-				ch(t, db, exec, rec, logs)
-			}
-		})
-	}
-}
-
-func Test_Handler_queryPrometheusGeneric(t *testing.T) {
-	cc := map[string]struct {
-		DB      *DBMock
-		Clients *clientMocks
-		Target  string
-		Checks  []check
-	}{
-		"Invalid time range": {
-			Target: "http://test.com/?from=bogus",
-			Checks: checks(
-				hasResp(http.StatusBadRequest, `{"code":"from.invalid","message":"From parameter must be a valid RFC3339 timestamp."}`),
-			),
-		},
-		"Error returned by executor.PrometheusQuery": {
-			Clients: stubPrometheusQueryClients("", nil, assert.AnError),
-			Target:  _testQueryTarget,
-			Checks: checks(
-				hasResp(http.StatusInternalServerError, `{"code":"general","message":"internal server error"}`),
-				wasDBUpdateDataSourceCalled(0),
-			),
-		},
-		"A connection the data source refused": {
-			Clients: stubPrometheusQueryClients(processor.ConnectionStatusUnreachable, nil, nil),
-			Target:  _testQueryTarget,
-			Checks: checks(
-				hasResp(http.StatusBadRequest, `{"code":"data_source.unreachable","message":"The data source is unreachable."}`),
-				wasDBUpdateDataSourceCalled(0),
-			),
-		},
-		"Nil result returns no-data": {
-			Clients: stubPrometheusQueryClients(processor.ConnectionStatusSuccess, nil, nil),
-			Target:  _testQueryTarget,
-			Checks: checks(
-				hasResp(http.StatusOK, `{"status":"no-data"}`),
-				wasDBUpdateDataSourceCalled(0),
-			),
-		},
-		"Successful query": {
-			Clients: stubPrometheusQueryClients(processor.ConnectionStatusSuccess, &processor.PrometheusQueryResult{
-				Type: model.ValMatrix,
-				Result: model.Matrix{
-					&model.SampleStream{
-						Metric: model.Metric{"job": "a"},
-						Values: []model.SamplePair{
-							{Timestamp: model.Time(1700000000000), Value: 10},
-						},
-					},
-				},
-			}, nil),
-			Target: _testQueryTarget,
-			Checks: checks(
-				hasResp(http.StatusOK, `{"status":"ok","data":[{"labels":{"job":"a"},"metrics":[[1700000000,10]]}]}`),
-				wasDBUpdateDataSourceCalled(0),
-			),
-		},
-	}
-
-	for cn, c := range cc {
-		t.Run(cn, func(t *testing.T) {
-			t.Parallel()
-
-			hdl, db, exec, logs := prepHandler(c.DB, c.Clients)
-
-			req := prepRequest("GET", c.Target, "", true, "")
-			rec := httptest.NewRecorder()
-
-			hdl.queryPrometheusGeneric(rec, req, stubDataSource(datasourceCore.TypePrometheus), "up", processor.ChartTypeLine)
-
-			for _, ch := range c.Checks {
-				ch(t, db, exec, rec, logs)
-			}
-		})
-	}
-}
-
-func Test_Handler_queryMySQLGeneric(t *testing.T) {
-	cc := map[string]struct {
-		DB      *DBMock
-		Clients *clientMocks
-		Target  string
-		Checks  []check
-	}{
-		"Invalid time range": {
-			Target: "http://test.com/?from=bogus",
-			Checks: checks(
-				hasResp(http.StatusBadRequest, `{"code":"from.invalid","message":"From parameter must be a valid RFC3339 timestamp."}`),
-			),
-		},
-		"Error returned by executor.MySQLQuery": {
-			Clients: stubMySQLQueryClients("", nil, assert.AnError),
-			Target:  _testQueryTarget,
-			Checks: checks(
-				hasResp(http.StatusInternalServerError, `{"code":"general","message":"internal server error"}`),
-				wasDBUpdateDataSourceCalled(0),
-			),
-		},
-		"A connection the data source refused": {
-			Clients: stubMySQLQueryClients(processor.ConnectionStatusUnreachable, nil, nil),
-			Target:  _testQueryTarget,
-			Checks: checks(
-				hasResp(http.StatusBadRequest, `{"code":"data_source.unreachable","message":"The data source is unreachable."}`),
-				wasDBUpdateDataSourceCalled(0),
-			),
-		},
-		"Nil result returns no-data": {
-			Clients: stubMySQLQueryClients(processor.ConnectionStatusSuccess, nil, nil),
-			Target:  _testQueryTarget,
-			Checks: checks(
-				hasResp(http.StatusOK, `{"status":"no-data"}`),
-				wasDBUpdateDataSourceCalled(0),
-			),
-		},
-		"Successful query": {
-			Clients: stubMySQLQueryClients(processor.ConnectionStatusSuccess, &processor.MySQLQueryResult{
-				Columns: []string{"time", "value"},
-				Rows:    [][]any{{int64(1700000000), float64(10)}},
-			}, nil),
-			Target: _testQueryTarget,
-			Checks: checks(
-				hasResp(http.StatusOK, `{"status":"ok","data":[{"labels":{},"metrics":[[1700000000,10]]}]}`),
-				wasDBUpdateDataSourceCalled(0),
-			),
-		},
-	}
-
-	for cn, c := range cc {
-		t.Run(cn, func(t *testing.T) {
-			t.Parallel()
-
-			hdl, db, exec, logs := prepHandler(c.DB, c.Clients)
-
-			req := prepRequest("GET", c.Target, "", true, "")
-			rec := httptest.NewRecorder()
-
-			hdl.queryMySQLGeneric(rec, req, stubDataSource(datasourceCore.TypeMySQL), "SELECT 1", processor.ChartTypeLine)
-
-			for _, ch := range c.Checks {
-				ch(t, db, exec, rec, logs)
-			}
-		})
-	}
-}
-
-func Test_Handler_queryPostgreSQLGeneric(t *testing.T) {
-	cc := map[string]struct {
-		DB      *DBMock
-		Clients *clientMocks
-		Target  string
-		Checks  []check
-	}{
-		"Invalid time range": {
-			Target: "http://test.com/?from=bogus",
-			Checks: checks(
-				hasResp(http.StatusBadRequest, `{"code":"from.invalid","message":"From parameter must be a valid RFC3339 timestamp."}`),
-			),
-		},
-		"Error returned by executor.PostgreSQLQuery": {
-			Clients: stubPostgreSQLQueryClients("", nil, assert.AnError),
-			Target:  _testQueryTarget,
-			Checks: checks(
-				hasResp(http.StatusInternalServerError, `{"code":"general","message":"internal server error"}`),
-				wasDBUpdateDataSourceCalled(0),
-			),
-		},
-		"A connection the data source refused": {
-			Clients: stubPostgreSQLQueryClients(processor.ConnectionStatusUnreachable, nil, nil),
-			Target:  _testQueryTarget,
-			Checks: checks(
-				hasResp(http.StatusBadRequest, `{"code":"data_source.unreachable","message":"The data source is unreachable."}`),
-				wasDBUpdateDataSourceCalled(0),
-			),
-		},
-		"Nil result returns no-data": {
-			Clients: stubPostgreSQLQueryClients(processor.ConnectionStatusSuccess, nil, nil),
-			Target:  _testQueryTarget,
-			Checks: checks(
-				hasResp(http.StatusOK, `{"status":"no-data"}`),
-				wasDBUpdateDataSourceCalled(0),
-			),
-		},
-		"Successful query": {
-			Clients: stubPostgreSQLQueryClients(processor.ConnectionStatusSuccess, &processor.PostgreSQLQueryResult{
-				Columns: []string{"time", "value"},
-				Rows:    [][]any{{1700000000.0, 10.0}},
-			}, nil),
-			Target: _testQueryTarget,
-			Checks: checks(
-				hasResp(http.StatusOK, `{"status":"ok","data":[{"labels":{},"metrics":[[1700000000,10]]}]}`),
-				wasDBUpdateDataSourceCalled(0),
-			),
-		},
-	}
-
-	for cn, c := range cc {
-		t.Run(cn, func(t *testing.T) {
-			t.Parallel()
-
-			hdl, db, exec, logs := prepHandler(c.DB, c.Clients)
-
-			req := prepRequest("GET", c.Target, "", true, "")
-			rec := httptest.NewRecorder()
-
-			hdl.queryPostgreSQLGeneric(rec, req, stubDataSource(datasourceCore.TypePostgreSQL), "SELECT 1", processor.ChartTypeLine)
 
 			for _, ch := range c.Checks {
 				ch(t, db, exec, rec, logs)

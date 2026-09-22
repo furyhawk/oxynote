@@ -209,8 +209,11 @@ func (c *Checker) checkMetricActive(
 	now := timeutil.Now()
 	tr := processor.TimeRange{From: now.Add(-probeSpan(block)), To: now}
 
+	// the probe transforms as a gauge because that shape accepts every
+	// result a source can answer with, scalar, vector and matrix alike,
+	// and only asks whether anything came back, not how it would be drawn.
 	for _, q := range extractQueries(block) {
-		res, qerr := c.query(ctx, *ds, q, tr)
+		res, qerr := datasourceCore.Query(ctx, c.runners.Runner(*ds), q, tr, processor.ChartTypeGauge)
 		if qerr != nil {
 			c.log.DebugContext(ctx, "the block's query did not answer", "error", qerr)
 
@@ -247,61 +250,6 @@ func (c *Checker) fetchDataSource(
 	}
 
 	return c.db.FetchDataSource(ctx, id, organizationID)
-}
-
-// query runs one query against the data source and returns it in the
-// unified shape, whatever the source speaks. It transforms as a gauge
-// because that shape accepts every result a source can answer with —
-// scalar, vector and matrix alike — and the probe only asks whether
-// anything came back, not how it would be drawn.
-func (c *Checker) query(
-	ctx context.Context,
-	ds datasourceCore.DataSource,
-	q string,
-	tr processor.TimeRange,
-) (*processor.QueryResult, error) {
-	runner := c.runners.Runner(ds)
-
-	switch ds.Type {
-	case datasourceCore.TypePrometheus:
-		client, err := runner.Prometheus(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		res, err := client.QueryRange(ctx, q, tr)
-		if err != nil || res == nil {
-			return nil, err
-		}
-
-		return res.Transform(processor.ChartTypeGauge), nil
-	case datasourceCore.TypePostgreSQL:
-		client, err := runner.PostgreSQL(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		res, err := client.Query(ctx, q, tr)
-		if err != nil || res == nil {
-			return nil, err
-		}
-
-		return res.Transform(processor.ChartTypeGauge), nil
-	case datasourceCore.TypeMariaDB, datasourceCore.TypeMySQL:
-		client, err := runner.MySQL(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		res, err := client.Query(ctx, q, tr)
-		if err != nil || res == nil {
-			return nil, err
-		}
-
-		return res.Transform(processor.ChartTypeGauge), nil
-	default:
-		return nil, fmt.Errorf("data source type %q cannot be queried", ds.Type)
-	}
 }
 
 // clear switches the block's simulation off on the live document. The

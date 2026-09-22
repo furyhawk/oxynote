@@ -1,6 +1,7 @@
 package file
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/guregu/null/v5"
@@ -151,6 +152,34 @@ func Test_Key(t *testing.T) {
 		"organizations/org-1/documents/"+documentID.String()+"/files/file-1",
 		Key("org-1", documentID, "file-1"),
 	)
+}
+
+func Test_CleanName(t *testing.T) {
+	cc := map[string]struct {
+		Raw    string
+		Result string
+	}{
+		"Plain name":             {Raw: "notes.zip", Result: "notes.zip"},
+		"Unix path":              {Raw: "/home/me/notes.zip", Result: "notes.zip"},
+		"Windows path":           {Raw: `C:\Users\me\notes.zip`, Result: "notes.zip"},
+		"Surrounding whitespace": {Raw: "  notes.zip  ", Result: "notes.zip"},
+		"Empty name":             {Raw: "", Result: "file"},
+		"Whitespace only":        {Raw: "   ", Result: "file"},
+		"Dot":                    {Raw: ".", Result: "file"},
+		"Root":                   {Raw: "/", Result: "file"},
+		"Non-ASCII name":         {Raw: "résumé.pdf", Result: "résumé.pdf"},
+		"Name over the rune cap": {Raw: strings.Repeat("é", 300), Result: strings.Repeat("é", 255)},
+		"Name at the rune cap":   {Raw: strings.Repeat("a", 255), Result: strings.Repeat("a", 255)},
+		"Path with a long base":  {Raw: "dir/" + strings.Repeat("b", 256), Result: strings.Repeat("b", 255)},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, c.Result, CleanName(c.Raw))
+		})
+	}
 }
 
 func Test_File_Orphaned(t *testing.T) {

@@ -221,119 +221,93 @@ func Test_Sender_send(t *testing.T) {
 	}
 }
 
-func Test_Sender_SendEmailVerification(t *testing.T) {
-	t.Parallel()
+func Test_Sender_Send(t *testing.T) {
+	cc := map[string]struct {
+		Template Template
+		Data     Data
+		Subject  string
+		Contains []string
+		Err      error
+	}{
+		"Unknown template": {
+			Template: Template("nonexistent"),
+			Data:     Data{Email: "user@example.com"},
+			Err:      ErrInvalidTemplate,
+		},
+		"Email verification": {
+			Template: TemplateEmailVerification,
+			Data:     Data{Email: "user@example.com", Link: "https://example.com/verify"},
+			Subject:  "Verify your new email address",
+			Contains: []string{"https://example.com/verify"},
+		},
+		"Email change confirmation": {
+			Template: TemplateEmailChangeConfirmation,
+			Data:     Data{Email: "user@example.com", Link: "https://example.com/approve"},
+			Subject:  "Approve your email address change",
+			Contains: []string{"https://example.com/approve"},
+		},
+		"Organization invitation": {
+			Template: TemplateOrganizationInvitation,
+			Data:     Data{Email: "user@example.com", Organization: "Acme", Link: "https://example.com/join"},
+			Subject:  "Join Acme on Oxynote",
+			Contains: []string{"https://example.com/join", "Acme"},
+		},
+		"User deletion confirmation": {
+			Template: TemplateUserDeletion,
+			Data:     Data{Email: "user@example.com", Link: "https://example.com/delete"},
+			Subject:  "Confirm your account deletion",
+			Contains: []string{"https://example.com/delete"},
+		},
+		"Password reset": {
+			Template: TemplatePasswordReset,
+			Data:     Data{Email: "user@example.com", Link: "https://example.com/reset"},
+			Subject:  "Reset your password",
+			Contains: []string{"https://example.com/reset"},
+		},
+		"Signup verification": {
+			Template: TemplateSignupVerification,
+			Data:     Data{Email: "user@example.com", Link: "https://example.com/activate"},
+			Subject:  "Confirm your email address",
+			Contains: []string{"https://example.com/activate"},
+		},
+		"Account exists": {
+			Template: TemplateAccountExists,
+			Data:     Data{Email: "user@example.com", Link: "https://example.com/login"},
+			Subject:  "You already have an Oxynote account",
+			Contains: []string{"https://example.com/login"},
+		},
+	}
 
-	client := &clientMock{}
-	s := stubSender(client)
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
 
-	s.SendEmailVerification("user@example.com", "https://example.com/verify")
+			client := &clientMock{}
+			s := stubSender(client)
 
-	s.supv.Wait()
+			err := s.Send(c.Template, c.Data)
 
-	msg := sentMsg(t, client)
-	assert.Equal(t, "user@example.com", msgTo(t, msg))
-	assert.Equal(t, []string{"Verify your new email address"}, msg.GetGenHeader(mail.HeaderSubject))
-	assert.Contains(t, msgBody(t, msg), "https://example.com/verify")
-}
+			s.supv.Wait()
 
-func Test_Sender_SendEmailChangeConfirmation(t *testing.T) {
-	t.Parallel()
+			testutil.AssertEqualError(t, c.Err, err)
 
-	client := &clientMock{}
-	s := stubSender(client)
+			if err != nil {
+				assert.Empty(t, client.DialAndSendWithContextCalls())
 
-	s.SendEmailChangeConfirmation("user@example.com", "https://example.com/approve")
+				return
+			}
 
-	s.supv.Wait()
+			msg := sentMsg(t, client)
+			assert.Equal(t, c.Data.Email, msgTo(t, msg))
+			assert.Equal(t, []string{c.Subject}, msg.GetGenHeader(mail.HeaderSubject))
 
-	msg := sentMsg(t, client)
-	assert.Equal(t, "user@example.com", msgTo(t, msg))
-	assert.Equal(t, []string{"Approve your email address change"}, msg.GetGenHeader(mail.HeaderSubject))
-	assert.Contains(t, msgBody(t, msg), "https://example.com/approve")
-}
+			body := msgBody(t, msg)
 
-func Test_Sender_SendOrganizationInvitation(t *testing.T) {
-	t.Parallel()
-
-	client := &clientMock{}
-	s := stubSender(client)
-
-	s.SendOrganizationInvitation("user@example.com", "Acme", "https://example.com/join")
-
-	s.supv.Wait()
-
-	msg := sentMsg(t, client)
-	assert.Equal(t, "user@example.com", msgTo(t, msg))
-	assert.Equal(t, []string{"Join Acme on Oxynote"}, msg.GetGenHeader(mail.HeaderSubject))
-
-	body := msgBody(t, msg)
-	assert.Contains(t, body, "https://example.com/join")
-	assert.Contains(t, body, "Acme")
-}
-
-func Test_Sender_SendUserDeletionConfirmation(t *testing.T) {
-	t.Parallel()
-
-	client := &clientMock{}
-	s := stubSender(client)
-
-	s.SendUserDeletionConfirmation("user@example.com", "https://example.com/delete")
-
-	s.supv.Wait()
-
-	msg := sentMsg(t, client)
-	assert.Equal(t, "user@example.com", msgTo(t, msg))
-	assert.Equal(t, []string{"Confirm your account deletion"}, msg.GetGenHeader(mail.HeaderSubject))
-	assert.Contains(t, msgBody(t, msg), "https://example.com/delete")
-}
-
-func Test_Sender_SendPasswordReset(t *testing.T) {
-	t.Parallel()
-
-	client := &clientMock{}
-	s := stubSender(client)
-
-	s.SendPasswordReset("user@example.com", "https://example.com/reset")
-
-	s.supv.Wait()
-
-	msg := sentMsg(t, client)
-	assert.Equal(t, "user@example.com", msgTo(t, msg))
-	assert.Equal(t, []string{"Reset your password"}, msg.GetGenHeader(mail.HeaderSubject))
-	assert.Contains(t, msgBody(t, msg), "https://example.com/reset")
-}
-
-func Test_Sender_SendSignupVerification(t *testing.T) {
-	t.Parallel()
-
-	client := &clientMock{}
-	s := stubSender(client)
-
-	s.SendSignupVerification("user@example.com", "https://example.com/activate")
-
-	s.supv.Wait()
-
-	msg := sentMsg(t, client)
-	assert.Equal(t, "user@example.com", msgTo(t, msg))
-	assert.Equal(t, []string{"Confirm your email address"}, msg.GetGenHeader(mail.HeaderSubject))
-	assert.Contains(t, msgBody(t, msg), "https://example.com/activate")
-}
-
-func Test_Sender_SendAccountExists(t *testing.T) {
-	t.Parallel()
-
-	client := &clientMock{}
-	s := stubSender(client)
-
-	s.SendAccountExists("user@example.com", "https://example.com/login")
-
-	s.supv.Wait()
-
-	msg := sentMsg(t, client)
-	assert.Equal(t, "user@example.com", msgTo(t, msg))
-	assert.Equal(t, []string{"You already have an Oxynote account"}, msg.GetGenHeader(mail.HeaderSubject))
-	assert.Contains(t, msgBody(t, msg), "https://example.com/login")
+			for _, sub := range c.Contains {
+				assert.Contains(t, body, sub)
+			}
+		})
+	}
 }
 
 func Test_Sender_Close(t *testing.T) {
@@ -350,8 +324,7 @@ func Test_Sender_Close(t *testing.T) {
 	}
 	s := stubSender(client)
 
-	s.SendPasswordReset("user@example.com", "https://example.com/reset")
-
+	require.NoError(t, s.Send(TemplatePasswordReset, Data{Email: "user@example.com", Link: "https://example.com/reset"}))
 	require.NoError(t, s.Close())
 
 	// Close must drain the in-flight delivery before cancelling the

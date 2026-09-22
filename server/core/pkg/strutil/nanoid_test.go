@@ -15,7 +15,7 @@ func Test_NanoID(t *testing.T) {
 	for range 100 {
 		id := NanoID()
 
-		assert.Len(t, id, _nanoidLength)
+		assert.Len(t, id, NanoIDLength)
 
 		for _, r := range id {
 			assert.True(
@@ -29,4 +29,27 @@ func Test_NanoID(t *testing.T) {
 	}
 
 	assert.Len(t, seen, 100, "generated IDs should be unique")
+}
+
+func Test_IsNanoID(t *testing.T) {
+	cc := map[string]struct {
+		ID     string
+		Result bool
+	}{
+		"Generated id":     {ID: NanoID(), Result: true},
+		"Id with dashes":   {ID: "f1-x_-xxxxxxxxxxxxxxx", Result: true},
+		"Short":            {ID: "f1"},
+		"Long":             {ID: "f1xxxxxxxxxxxxxxxxxxxx"},
+		"Wrong charset":    {ID: "f1.................xx"},
+		"Multi-byte runes": {ID: "é" + "xxxxxxxxxxxxxxxxxxx"},
+		"Empty":            {},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, c.Result, IsNanoID(c.ID))
+		})
+	}
 }

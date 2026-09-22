@@ -60,6 +60,27 @@ func (info Info) Schema() map[string]any {
 	return out
 }
 
+// Available tool access constants.
+const (
+	// AccessNone is held by no surface outside this process: the tool
+	// addresses conversation state only the assistant has.
+	AccessNone Access = "none"
+
+	// AccessRead reads the organization's documents.
+	AccessRead Access = "read"
+
+	// AccessWrite mutates the organization's documents.
+	AccessWrite Access = "write"
+
+	// AccessDataSource reads one of the organization's outbound
+	// data-source connections, which is not the same permission as
+	// reading its documents.
+	AccessDataSource Access = "data-source"
+)
+
+// Access is the permission a surface must hold to offer a tool.
+type Access string
+
 // Traits are the facts about a tool that decide how the assistant
 // treats it. A tool states them in one place in its own file rather
 // than being interrogated for them from several.
@@ -100,6 +121,35 @@ type Traits struct {
 	// holds none of the conversation state such a tool addresses —
 	// never sees it offered.
 	Internal bool
+}
+
+// DestroysContent reports whether a write loses work the caller did not
+// name: an outright removal, or an overwrite that takes nested blocks,
+// uids, comments and hooks with it. Both are what a client deciding
+// whether to confirm first wants to know.
+func (t Traits) DestroysContent() bool {
+	return t.Destructive || t.Overwrites
+}
+
+// OpenWorld reports whether the tool reaches outside the organization's
+// own documents: a data-source tool reaches whatever the connection
+// points at.
+func (t Traits) OpenWorld() bool {
+	return t.DataSource
+}
+
+// Access reports the permission a surface must hold to offer the tool.
+func (t Traits) Access() Access {
+	switch {
+	case t.Internal:
+		return AccessNone
+	case t.DataSource:
+		return AccessDataSource
+	case t.Write:
+		return AccessWrite
+	default:
+		return AccessRead
+	}
 }
 
 // Tool is a tool the model can call. What a tool is — whether it

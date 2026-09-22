@@ -3,42 +3,37 @@ package user
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/oxynote/oxynote/server/core/internal/server/internal/auth"
 	"github.com/oxynote/oxynote/server/core/internal/storage"
+	userCore "github.com/oxynote/oxynote/server/core/internal/user"
 	"github.com/oxynote/oxynote/server/core/pkg/httpserver"
 	"github.com/oxynote/oxynote/server/core/pkg/sqlutil"
-	"github.com/oxynote/oxynote/server/core/pkg/timeutil"
 )
-
-// _userImageFolder is the folder where user images are stored. It is keyed
-// by user only: the avatar lives on the global user row, so an org-scoped
-// object would 404 for viewers with a different active organization.
-const _userImageFolder = "users/images"
 
 // Handler holds dependencies required for user-related operations.
 type Handler struct {
-	log                 *slog.Logger
-	db                  DB
-	storer              Storer
-	imageLocationFormat string
+	log       *slog.Logger
+	db        DB
+	storer    Storer
+	publicURL string
 }
 
-// NewHandler creates a new handler instance with the provided logger and database.
+// NewHandler creates a new handler instance with the provided logger and
+// database. publicURL is the origin the Location of an image is built on.
 func NewHandler(
 	log *slog.Logger,
 	db DB,
 	storer Storer,
-	imageLocationFormat string,
+	publicURL string,
 ) *Handler {
 	return &Handler{
-		log:                 log,
-		db:                  db,
-		storer:              storer,
-		imageLocationFormat: imageLocationFormat,
+		log:       log,
+		db:        db,
+		storer:    storer,
+		publicURL: publicURL,
 	}
 }
 
@@ -54,7 +49,7 @@ func (h *Handler) RetrieveUserImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	obj, found, err := h.storer.Retrieve(r.Context(), _userImageFolder, userID)
+	obj, found, err := h.storer.Retrieve(r.Context(), userCore.ImageFolder, userID)
 	if err != nil {
 		httpserver.RespondError(h.log, w, err)
 		return
@@ -97,18 +92,17 @@ func (h *Handler) UploadUserImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.storer.Upload(r.Context(), _userImageFolder, session.UserID, data, contentType)
+	err = h.storer.Upload(r.Context(), userCore.ImageFolder, session.UserID, data, contentType)
 	if err != nil {
 		httpserver.RespondError(h.log, w, err)
 		return
 	}
 
-	// Append a timestamp to the URL to prevent caching issues.
-	imageLocation := fmt.Sprintf(h.imageLocationFormat, session.UserID) + "?v=" + timeutil.Now().Format("20060102150405")
+	imageLocation := httpserver.CacheBust(h.publicURL + userCore.ImagePath(session.UserID))
 
 	err = h.db.UpdateUserImage(r.Context(), session.UserID, imageLocation)
 	if err != nil {
-		derr := h.storer.Delete(r.Context(), _userImageFolder, session.UserID)
+		derr := h.storer.Delete(r.Context(), userCore.ImageFolder, session.UserID)
 		if derr != nil {
 			h.log.Error("deleting object after DB failure", slog.String("error", derr.Error()))
 		}

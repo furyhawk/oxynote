@@ -5,6 +5,8 @@ package email
 
 import (
 	"sync"
+
+	emailCore "github.com/oxynote/oxynote/server/core/internal/email"
 )
 
 // Ensure, that SenderMock does implement Sender.
@@ -17,26 +19,8 @@ var _ Sender = &SenderMock{}
 //
 //		// make and configure a mocked Sender
 //		mockedSender := &SenderMock{
-//			SendAccountExistsFunc: func(eml string, link string)  {
-//				panic("mock out the SendAccountExists method")
-//			},
-//			SendEmailChangeConfirmationFunc: func(eml string, link string)  {
-//				panic("mock out the SendEmailChangeConfirmation method")
-//			},
-//			SendEmailVerificationFunc: func(eml string, link string)  {
-//				panic("mock out the SendEmailVerification method")
-//			},
-//			SendOrganizationInvitationFunc: func(eml string, org string, link string)  {
-//				panic("mock out the SendOrganizationInvitation method")
-//			},
-//			SendPasswordResetFunc: func(eml string, link string)  {
-//				panic("mock out the SendPasswordReset method")
-//			},
-//			SendSignupVerificationFunc: func(eml string, link string)  {
-//				panic("mock out the SendSignupVerification method")
-//			},
-//			SendUserDeletionConfirmationFunc: func(eml string, link string)  {
-//				panic("mock out the SendUserDeletionConfirmation method")
+//			SendFunc: func(tmpl emailCore.Template, d emailCore.Data) error {
+//				panic("mock out the Send method")
 //			},
 //		}
 //
@@ -45,342 +29,57 @@ var _ Sender = &SenderMock{}
 //
 //	}
 type SenderMock struct {
-	// SendAccountExistsFunc mocks the SendAccountExists method.
-	SendAccountExistsFunc func(eml string, link string)
-
-	// SendEmailChangeConfirmationFunc mocks the SendEmailChangeConfirmation method.
-	SendEmailChangeConfirmationFunc func(eml string, link string)
-
-	// SendEmailVerificationFunc mocks the SendEmailVerification method.
-	SendEmailVerificationFunc func(eml string, link string)
-
-	// SendOrganizationInvitationFunc mocks the SendOrganizationInvitation method.
-	SendOrganizationInvitationFunc func(eml string, org string, link string)
-
-	// SendPasswordResetFunc mocks the SendPasswordReset method.
-	SendPasswordResetFunc func(eml string, link string)
-
-	// SendSignupVerificationFunc mocks the SendSignupVerification method.
-	SendSignupVerificationFunc func(eml string, link string)
-
-	// SendUserDeletionConfirmationFunc mocks the SendUserDeletionConfirmation method.
-	SendUserDeletionConfirmationFunc func(eml string, link string)
+	// SendFunc mocks the Send method.
+	SendFunc func(tmpl emailCore.Template, d emailCore.Data) error
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// SendAccountExists holds details about calls to the SendAccountExists method.
-		SendAccountExists []struct {
-			// Eml is the eml argument value.
-			Eml string
-			// Link is the link argument value.
-			Link string
-		}
-		// SendEmailChangeConfirmation holds details about calls to the SendEmailChangeConfirmation method.
-		SendEmailChangeConfirmation []struct {
-			// Eml is the eml argument value.
-			Eml string
-			// Link is the link argument value.
-			Link string
-		}
-		// SendEmailVerification holds details about calls to the SendEmailVerification method.
-		SendEmailVerification []struct {
-			// Eml is the eml argument value.
-			Eml string
-			// Link is the link argument value.
-			Link string
-		}
-		// SendOrganizationInvitation holds details about calls to the SendOrganizationInvitation method.
-		SendOrganizationInvitation []struct {
-			// Eml is the eml argument value.
-			Eml string
-			// Org is the org argument value.
-			Org string
-			// Link is the link argument value.
-			Link string
-		}
-		// SendPasswordReset holds details about calls to the SendPasswordReset method.
-		SendPasswordReset []struct {
-			// Eml is the eml argument value.
-			Eml string
-			// Link is the link argument value.
-			Link string
-		}
-		// SendSignupVerification holds details about calls to the SendSignupVerification method.
-		SendSignupVerification []struct {
-			// Eml is the eml argument value.
-			Eml string
-			// Link is the link argument value.
-			Link string
-		}
-		// SendUserDeletionConfirmation holds details about calls to the SendUserDeletionConfirmation method.
-		SendUserDeletionConfirmation []struct {
-			// Eml is the eml argument value.
-			Eml string
-			// Link is the link argument value.
-			Link string
+		// Send holds details about calls to the Send method.
+		Send []struct {
+			// Tmpl is the tmpl argument value.
+			Tmpl emailCore.Template
+			// D is the d argument value.
+			D emailCore.Data
 		}
 	}
-	lockSendAccountExists            sync.RWMutex
-	lockSendEmailChangeConfirmation  sync.RWMutex
-	lockSendEmailVerification        sync.RWMutex
-	lockSendOrganizationInvitation   sync.RWMutex
-	lockSendPasswordReset            sync.RWMutex
-	lockSendSignupVerification       sync.RWMutex
-	lockSendUserDeletionConfirmation sync.RWMutex
+	lockSend sync.RWMutex
 }
 
-// SendAccountExists calls SendAccountExistsFunc.
-func (mock *SenderMock) SendAccountExists(eml string, link string) {
+// Send calls SendFunc.
+func (mock *SenderMock) Send(tmpl emailCore.Template, d emailCore.Data) error {
 	callInfo := struct {
-		Eml  string
-		Link string
+		Tmpl emailCore.Template
+		D    emailCore.Data
 	}{
-		Eml:  eml,
-		Link: link,
+		Tmpl: tmpl,
+		D:    d,
 	}
-	mock.lockSendAccountExists.Lock()
-	mock.calls.SendAccountExists = append(mock.calls.SendAccountExists, callInfo)
-	mock.lockSendAccountExists.Unlock()
-	if mock.SendAccountExistsFunc == nil {
-		return
+	mock.lockSend.Lock()
+	mock.calls.Send = append(mock.calls.Send, callInfo)
+	mock.lockSend.Unlock()
+	if mock.SendFunc == nil {
+		var (
+			errOut error
+		)
+		return errOut
 	}
-	mock.SendAccountExistsFunc(eml, link)
+	return mock.SendFunc(tmpl, d)
 }
 
-// SendAccountExistsCalls gets all the calls that were made to SendAccountExists.
+// SendCalls gets all the calls that were made to Send.
 // Check the length with:
 //
-//	len(mockedSender.SendAccountExistsCalls())
-func (mock *SenderMock) SendAccountExistsCalls() []struct {
-	Eml  string
-	Link string
+//	len(mockedSender.SendCalls())
+func (mock *SenderMock) SendCalls() []struct {
+	Tmpl emailCore.Template
+	D    emailCore.Data
 } {
 	var calls []struct {
-		Eml  string
-		Link string
+		Tmpl emailCore.Template
+		D    emailCore.Data
 	}
-	mock.lockSendAccountExists.RLock()
-	calls = mock.calls.SendAccountExists
-	mock.lockSendAccountExists.RUnlock()
-	return calls
-}
-
-// SendEmailChangeConfirmation calls SendEmailChangeConfirmationFunc.
-func (mock *SenderMock) SendEmailChangeConfirmation(eml string, link string) {
-	callInfo := struct {
-		Eml  string
-		Link string
-	}{
-		Eml:  eml,
-		Link: link,
-	}
-	mock.lockSendEmailChangeConfirmation.Lock()
-	mock.calls.SendEmailChangeConfirmation = append(mock.calls.SendEmailChangeConfirmation, callInfo)
-	mock.lockSendEmailChangeConfirmation.Unlock()
-	if mock.SendEmailChangeConfirmationFunc == nil {
-		return
-	}
-	mock.SendEmailChangeConfirmationFunc(eml, link)
-}
-
-// SendEmailChangeConfirmationCalls gets all the calls that were made to SendEmailChangeConfirmation.
-// Check the length with:
-//
-//	len(mockedSender.SendEmailChangeConfirmationCalls())
-func (mock *SenderMock) SendEmailChangeConfirmationCalls() []struct {
-	Eml  string
-	Link string
-} {
-	var calls []struct {
-		Eml  string
-		Link string
-	}
-	mock.lockSendEmailChangeConfirmation.RLock()
-	calls = mock.calls.SendEmailChangeConfirmation
-	mock.lockSendEmailChangeConfirmation.RUnlock()
-	return calls
-}
-
-// SendEmailVerification calls SendEmailVerificationFunc.
-func (mock *SenderMock) SendEmailVerification(eml string, link string) {
-	callInfo := struct {
-		Eml  string
-		Link string
-	}{
-		Eml:  eml,
-		Link: link,
-	}
-	mock.lockSendEmailVerification.Lock()
-	mock.calls.SendEmailVerification = append(mock.calls.SendEmailVerification, callInfo)
-	mock.lockSendEmailVerification.Unlock()
-	if mock.SendEmailVerificationFunc == nil {
-		return
-	}
-	mock.SendEmailVerificationFunc(eml, link)
-}
-
-// SendEmailVerificationCalls gets all the calls that were made to SendEmailVerification.
-// Check the length with:
-//
-//	len(mockedSender.SendEmailVerificationCalls())
-func (mock *SenderMock) SendEmailVerificationCalls() []struct {
-	Eml  string
-	Link string
-} {
-	var calls []struct {
-		Eml  string
-		Link string
-	}
-	mock.lockSendEmailVerification.RLock()
-	calls = mock.calls.SendEmailVerification
-	mock.lockSendEmailVerification.RUnlock()
-	return calls
-}
-
-// SendOrganizationInvitation calls SendOrganizationInvitationFunc.
-func (mock *SenderMock) SendOrganizationInvitation(eml string, org string, link string) {
-	callInfo := struct {
-		Eml  string
-		Org  string
-		Link string
-	}{
-		Eml:  eml,
-		Org:  org,
-		Link: link,
-	}
-	mock.lockSendOrganizationInvitation.Lock()
-	mock.calls.SendOrganizationInvitation = append(mock.calls.SendOrganizationInvitation, callInfo)
-	mock.lockSendOrganizationInvitation.Unlock()
-	if mock.SendOrganizationInvitationFunc == nil {
-		return
-	}
-	mock.SendOrganizationInvitationFunc(eml, org, link)
-}
-
-// SendOrganizationInvitationCalls gets all the calls that were made to SendOrganizationInvitation.
-// Check the length with:
-//
-//	len(mockedSender.SendOrganizationInvitationCalls())
-func (mock *SenderMock) SendOrganizationInvitationCalls() []struct {
-	Eml  string
-	Org  string
-	Link string
-} {
-	var calls []struct {
-		Eml  string
-		Org  string
-		Link string
-	}
-	mock.lockSendOrganizationInvitation.RLock()
-	calls = mock.calls.SendOrganizationInvitation
-	mock.lockSendOrganizationInvitation.RUnlock()
-	return calls
-}
-
-// SendPasswordReset calls SendPasswordResetFunc.
-func (mock *SenderMock) SendPasswordReset(eml string, link string) {
-	callInfo := struct {
-		Eml  string
-		Link string
-	}{
-		Eml:  eml,
-		Link: link,
-	}
-	mock.lockSendPasswordReset.Lock()
-	mock.calls.SendPasswordReset = append(mock.calls.SendPasswordReset, callInfo)
-	mock.lockSendPasswordReset.Unlock()
-	if mock.SendPasswordResetFunc == nil {
-		return
-	}
-	mock.SendPasswordResetFunc(eml, link)
-}
-
-// SendPasswordResetCalls gets all the calls that were made to SendPasswordReset.
-// Check the length with:
-//
-//	len(mockedSender.SendPasswordResetCalls())
-func (mock *SenderMock) SendPasswordResetCalls() []struct {
-	Eml  string
-	Link string
-} {
-	var calls []struct {
-		Eml  string
-		Link string
-	}
-	mock.lockSendPasswordReset.RLock()
-	calls = mock.calls.SendPasswordReset
-	mock.lockSendPasswordReset.RUnlock()
-	return calls
-}
-
-// SendSignupVerification calls SendSignupVerificationFunc.
-func (mock *SenderMock) SendSignupVerification(eml string, link string) {
-	callInfo := struct {
-		Eml  string
-		Link string
-	}{
-		Eml:  eml,
-		Link: link,
-	}
-	mock.lockSendSignupVerification.Lock()
-	mock.calls.SendSignupVerification = append(mock.calls.SendSignupVerification, callInfo)
-	mock.lockSendSignupVerification.Unlock()
-	if mock.SendSignupVerificationFunc == nil {
-		return
-	}
-	mock.SendSignupVerificationFunc(eml, link)
-}
-
-// SendSignupVerificationCalls gets all the calls that were made to SendSignupVerification.
-// Check the length with:
-//
-//	len(mockedSender.SendSignupVerificationCalls())
-func (mock *SenderMock) SendSignupVerificationCalls() []struct {
-	Eml  string
-	Link string
-} {
-	var calls []struct {
-		Eml  string
-		Link string
-	}
-	mock.lockSendSignupVerification.RLock()
-	calls = mock.calls.SendSignupVerification
-	mock.lockSendSignupVerification.RUnlock()
-	return calls
-}
-
-// SendUserDeletionConfirmation calls SendUserDeletionConfirmationFunc.
-func (mock *SenderMock) SendUserDeletionConfirmation(eml string, link string) {
-	callInfo := struct {
-		Eml  string
-		Link string
-	}{
-		Eml:  eml,
-		Link: link,
-	}
-	mock.lockSendUserDeletionConfirmation.Lock()
-	mock.calls.SendUserDeletionConfirmation = append(mock.calls.SendUserDeletionConfirmation, callInfo)
-	mock.lockSendUserDeletionConfirmation.Unlock()
-	if mock.SendUserDeletionConfirmationFunc == nil {
-		return
-	}
-	mock.SendUserDeletionConfirmationFunc(eml, link)
-}
-
-// SendUserDeletionConfirmationCalls gets all the calls that were made to SendUserDeletionConfirmation.
-// Check the length with:
-//
-//	len(mockedSender.SendUserDeletionConfirmationCalls())
-func (mock *SenderMock) SendUserDeletionConfirmationCalls() []struct {
-	Eml  string
-	Link string
-} {
-	var calls []struct {
-		Eml  string
-		Link string
-	}
-	mock.lockSendUserDeletionConfirmation.RLock()
-	calls = mock.calls.SendUserDeletionConfirmation
-	mock.lockSendUserDeletionConfirmation.RUnlock()
+	mock.lockSend.RLock()
+	calls = mock.calls.Send
+	mock.lockSend.RUnlock()
 	return calls
 }

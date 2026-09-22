@@ -25,6 +25,55 @@ func Test_plainTraits_Traits(t *testing.T) {
 	assert.Equal(t, Traits{}, plainTraits{}.Traits())
 }
 
+func Test_Traits_DestroysContent(t *testing.T) {
+	cc := map[string]struct {
+		Traits Traits
+		Result bool
+	}{
+		"Read":        {},
+		"Plain write": {Traits: Traits{Write: true}},
+		"Destructive": {Traits: Traits{Write: true, Destructive: true}, Result: true},
+		"Overwriting": {Traits: Traits{Write: true, Overwrites: true}, Result: true},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, c.Result, c.Traits.DestroysContent())
+		})
+	}
+}
+
+func Test_Traits_OpenWorld(t *testing.T) {
+	t.Parallel()
+
+	assert.False(t, Traits{}.OpenWorld())
+	assert.True(t, Traits{DataSource: true}.OpenWorld())
+}
+
+func Test_Traits_Access(t *testing.T) {
+	cc := map[string]struct {
+		Traits Traits
+		Result Access
+	}{
+		"Read":                   {Result: AccessRead},
+		"Write":                  {Traits: Traits{Write: true}, Result: AccessWrite},
+		"Data source":            {Traits: Traits{DataSource: true}, Result: AccessDataSource},
+		"Internal":               {Traits: Traits{Internal: true}, Result: AccessNone},
+		"Internal write":         {Traits: Traits{Write: true, Internal: true}, Result: AccessNone},
+		"Data source over write": {Traits: Traits{Write: true, DataSource: true}, Result: AccessDataSource},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, c.Result, c.Traits.Access())
+		})
+	}
+}
+
 func Test_plainTitle_Title(t *testing.T) {
 	t.Parallel()
 

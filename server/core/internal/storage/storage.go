@@ -67,6 +67,19 @@ func (p Policy) MaxUploadBytes() int64 {
 	return p.MaxSize + _uploadHeadroom
 }
 
+// PolicyForKind maps the kind of block an upload belongs to onto the
+// policy it is admitted under, reporting whether the kind is one at all.
+func PolicyForKind(kind string) (Policy, bool) {
+	switch kind {
+	case "image":
+		return ImagePolicy, true
+	case "file":
+		return FilePolicy, true
+	default:
+		return Policy{}, false
+	}
+}
+
 // ObjectInfo contains metadata about a retrieved object.
 type ObjectInfo struct {
 	// Body is the object's data stream.

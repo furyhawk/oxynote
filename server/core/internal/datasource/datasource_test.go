@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/guregu/null/v5"
+	"github.com/oxynote/oxynote/server/core/internal/datasource/demo"
 	"github.com/oxynote/oxynote/server/core/internal/datasource/processor"
 	"github.com/oxynote/oxynote/server/core/pkg/cryptoutil"
 	"github.com/oxynote/oxynote/server/core/pkg/testutil"
@@ -54,6 +55,20 @@ func Test_NewDataSource(t *testing.T) {
 	assert.Equal(t, processor.ConnectionStatusSuccess, ds.Status)
 	assert.WithinDuration(t, timeutil.Now(), ds.CreatedAt, time.Second)
 	assert.False(t, ds.UpdatedAt.Valid)
+}
+
+func Test_NewDemoDataSource(t *testing.T) {
+	t.Parallel()
+
+	ds := NewDemoDataSource("org-1")
+
+	require.NotNil(t, ds)
+	assert.False(t, ds.ID.IsNil())
+	assert.Equal(t, "org-1", ds.OrganizationID)
+	assert.Equal(t, "Demo", ds.Name)
+	assert.Equal(t, TypePrometheus, ds.Type)
+	assert.Equal(t, demo.URL, ds.URL)
+	assert.Equal(t, processor.NewCredentials([]byte(`{}`)), ds.Credentials)
 }
 
 func Test_DataSource_Info(t *testing.T) {

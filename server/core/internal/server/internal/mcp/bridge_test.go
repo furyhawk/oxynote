@@ -36,11 +36,17 @@ func Test_annotations(t *testing.T) {
 	cc := map[string]struct {
 		Entry       tools.Entry
 		ReadOnly    bool
+		OpenWorld   bool
 		Destructive *bool
 	}{
 		"Read tool": {
 			Entry:    tools.Entry{},
 			ReadOnly: true,
+		},
+		"Data-source tool reaches an open world": {
+			Entry:     tools.Entry{Traits: tools.Traits{DataSource: true}},
+			ReadOnly:  true,
+			OpenWorld: true,
 		},
 		"Additive write tool": {
 			Entry:       tools.Entry{Traits: tools.Traits{Write: true}},
@@ -71,7 +77,7 @@ func Test_annotations(t *testing.T) {
 			assert.Equal(t, c.ReadOnly, got.ReadOnlyHint)
 			assert.Equal(t, c.Destructive, got.DestructiveHint)
 			require.NotNil(t, got.OpenWorldHint)
-			assert.False(t, *got.OpenWorldHint)
+			assert.Equal(t, c.OpenWorld, *got.OpenWorldHint)
 		})
 	}
 }
@@ -115,13 +121,13 @@ func Test_Handler_toolHandler(t *testing.T) {
 			Entry:    tools.Entry{Tool: &stubRunner{out: `{"ok":true}`, docs: []tools.Touched{{DocumentID: doc1, BranchID: branch1}}}, Traits: tools.Traits{Write: true}},
 			Args:     `{"document_id":"` + doc1.String() + `"}`,
 			Text:     `{"ok":true}`,
-			LinkURIs: []string{_resourceURIPrefix + doc1.String() + _resourceBranchSegment + branch1.String()},
+			LinkURIs: []string{resourceURI(doc1, branch1)},
 		},
 		"A call links every document it changed": {
 			Entry:    tools.Entry{Tool: &stubRunner{out: `{"ok":true}`, docs: []tools.Touched{{DocumentID: doc1, BranchID: branch1}, {DocumentID: doc2, BranchID: branch2}}}, Traits: tools.Traits{Write: true}},
 			Args:     `{}`,
 			Text:     `{"ok":true}`,
-			LinkURIs: []string{_resourceURIPrefix + doc1.String() + _resourceBranchSegment + branch1.String(), _resourceURIPrefix + doc2.String() + _resourceBranchSegment + branch2.String()},
+			LinkURIs: []string{resourceURI(doc1, branch1), resourceURI(doc2, branch2)},
 		},
 		"A write that changed nothing has no link to offer": {
 			Entry: tools.Entry{Tool: &stubRunner{out: `{"ok":true}`}, Traits: tools.Traits{Write: true}},

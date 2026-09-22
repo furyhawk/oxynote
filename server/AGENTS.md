@@ -19,9 +19,9 @@ auth-realtime: [auth-realtime/AGENTS.md](auth-realtime/AGENTS.md).
   (`OXYNOTE_AUTH_REALTIME_BACKEND_URL`).
 - `datagen/`: separate Go module synthesising demo Postgres/MariaDB content.
 
-Go builds go through goreleaser: `make build` in `server/core` and `datagen`
-runs `goreleaser release --snapshot --clean`, producing `bin/` and the
-`ghcr.io/oxynote/{core,datagen}:dev` images the dev compose stack consumes.
+Go builds go through goreleaser (`make build` in `server/core` and
+`datagen`), producing `bin/` and the `ghcr.io/oxynote/{core,datagen}:dev`
+images the dev compose stack consumes.
 datagen shares core's test/lint workflow with its own copy of the
 golangci-lint profile; its `pgdemo`/`mariademo` suites start throwaway
 containers.
@@ -55,11 +55,9 @@ GitHub and Slack callback URLs point at `:8080/core/api/apps/...`.
   request is validated against `GET /api/internal/mcp/session` (JWKS +
   consent row, so revocation 401s immediately) and scoped by
   `documents:read`/`documents:write`/`data-sources:read`.
-- `/api/ws` topics (`wetsocks/wsserver`): `change@document-tree`,
-  `change@tag-tree`,
-  `change@documents.{documentId}.comments|metadata|reviewers|maintainers|tags|hooks`,
-  `post@slack.messages`, `creation@notifications`, `ping@version`. Binders
-  are `Handler.BindXxx` under `internal/server/internal/...`.
+- `/api/ws` topics (`wetsocks/wsserver`) are registered in `router.go` as
+  `<event>@<domain.path>`; binders are `Handler.BindXxx` under
+  `internal/server/internal/...`.
 
 The README lists the public routes; update it when changing handlers.
 

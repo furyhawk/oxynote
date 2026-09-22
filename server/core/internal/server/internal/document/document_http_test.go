@@ -1180,13 +1180,12 @@ func Test_Handler_SearchDocuments(t *testing.T) {
 			Query:     "?q=test",
 			RespCode:  http.StatusUnauthorized,
 		},
-		"Empty search query": {
-			Searcher: &SearcherMock{},
-			RespCode: http.StatusBadRequest,
-		},
-		"Overlong search query": {
-			Searcher: &SearcherMock{},
-			Query:    "?q=" + strings.Repeat("a", _searchQueryMaxLength+1),
+		"Invalid search query": {
+			Searcher: &SearcherMock{
+				SearchDocumentsFunc: func(context.Context, string, string) ([]byte, error) {
+					return nil, search.ErrInvalidQuery
+				},
+			},
 			RespCode: http.StatusBadRequest,
 		},
 		"Searcher error": {

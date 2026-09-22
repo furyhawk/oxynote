@@ -75,6 +75,27 @@ func Test_ChartType_IsValid(t *testing.T) {
 	}
 }
 
+func Test_ChartType_Validate(t *testing.T) {
+	cc := map[string]struct {
+		ChartType ChartType
+		Err       error
+	}{
+		"Line chart":         {ChartType: ChartTypeLine},
+		"Bar chart":          {ChartType: ChartTypeBar},
+		"Gauge chart":        {ChartType: ChartTypeGauge},
+		"Empty chart type":   {Err: ErrInvalidChartType},
+		"Unknown chart type": {ChartType: ChartType("bogus"), Err: ErrInvalidChartType},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			testutil.AssertEqualError(t, c.Err, c.ChartType.Validate())
+		})
+	}
+}
+
 func Test_QueryResult_HasData(t *testing.T) {
 	t.Parallel()
 

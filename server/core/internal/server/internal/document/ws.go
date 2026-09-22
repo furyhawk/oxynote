@@ -7,13 +7,10 @@ import (
 	"github.com/guregu/null/v5"
 	documentCore "github.com/oxynote/oxynote/server/core/internal/document"
 	"github.com/oxynote/oxynote/server/core/internal/server/internal/auth"
+	"github.com/oxynote/oxynote/server/core/pkg/httpserver"
 	"github.com/oxynote/wetsocks/wsserver"
 	"github.com/rs/xid"
 )
-
-// _publishTimeout bounds each WebSocket publish triggered by a domain
-// callback.
-const _publishTimeout = 5 * time.Second
 
 // TreeChangeMessage represents a change in the tree of a document.
 type TreeChangeMessage struct {
@@ -24,7 +21,7 @@ type TreeChangeMessage struct {
 // BindTreeChange binds a tree change event to the given topic.
 func (h *Handler) BindTreeChange(tpc wsserver.Topic) {
 	h.tree.changeCallback = func(organizationID string, parentId null.Value[xid.ID]) {
-		ctx, cancel := context.WithTimeout(context.Background(), _publishTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), httpserver.WSPublishTimeout)
 		defer cancel()
 
 		tpc.PublishMany(ctx, TreeChangeMessage{
@@ -85,7 +82,7 @@ func (h *Handler) BindMaintainersChange(tpc wsserver.Topic) {
 // callback slot it is assigned to.
 func publishDocumentChange(tpc wsserver.Topic) func(organizationID string, documentID xid.ID) {
 	return func(organizationID string, documentID xid.ID) {
-		ctx, cancel := context.WithTimeout(context.Background(), _publishTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), httpserver.WSPublishTimeout)
 		defer cancel()
 
 		tpc.PublishMany(ctx, struct{}{}, auth.FilterOrganizationDocument(organizationID, documentID))
@@ -128,7 +125,7 @@ func (h *Handler) BindMetadataChange(tpc wsserver.Topic) {
 	})
 
 	h.metadata.changeCallback = func(organizationID string, doc documentCore.Document) {
-		pubCtx, pubCancel := context.WithTimeout(context.Background(), _publishTimeout)
+		pubCtx, pubCancel := context.WithTimeout(context.Background(), httpserver.WSPublishTimeout)
 		defer pubCancel()
 
 		tpc.PublishMany(

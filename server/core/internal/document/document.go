@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"math/rand"
+	"slices"
 	"time"
 
 	"github.com/guregu/null/v5"
@@ -346,6 +347,39 @@ type UpdateInput struct {
 
 	// Branch is the target branch for the update (e.g. "main" or "feature-x").
 	Branch string `json:"branch"`
+}
+
+// AddsMaintainers reports whether the update names anyone the stored
+// maintainers do not include. The update carries the editors of one
+// persist, so the set is only ever added to: diffing it against the
+// stored maintainers would drop everyone who happens not to be editing
+// right now.
+func (ui UpdateInput) AddsMaintainers(stored []string) bool {
+	for _, maintainer := range ui.Maintainers {
+		if !slices.Contains(stored, maintainer) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// NewWelcomeDocument creates the document a fresh organization starts
+// with: the getting-started content, its charts reading the given data
+// source or dropped when there is none.
+func NewWelcomeDocument(organizationID, createdBy string, dataSourceID null.Value[xid.ID]) (Document, error) {
+	content, err := InitialDocumentContent(dataSourceID)
+	if err != nil {
+		return Document{}, err
+	}
+
+	doc := NewDocument(CreateInput{
+		Name: "Welcome to Oxynote!",
+		Icon: "mingcute:flag-4-fill",
+	}, organizationID, createdBy)
+	doc.Content = content
+
+	return doc, nil
 }
 
 // InitialDocumentContent returns the initial content for a new document.

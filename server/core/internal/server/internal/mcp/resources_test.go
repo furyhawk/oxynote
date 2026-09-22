@@ -179,8 +179,13 @@ func Test_Handler_readDocument(t *testing.T) {
 			ToolsDB: stubToolsDB(),
 			Err:     mcp.ResourceNotFoundError(_resourceURIPrefix + docID.String()),
 		},
+		"Document segment that is not an id": {
+			URI:     _resourceURIPrefix + "doc" + _resourceBranchSegment + _stubDraftBranchID.String(),
+			ToolsDB: stubToolsDB(),
+			Err:     mcp.ResourceNotFoundError(_resourceURIPrefix + "doc" + _resourceBranchSegment + _stubDraftBranchID.String()),
+		},
 		"Internal tool failure passes through": {
-			URI: _resourceURIPrefix + docID.String() + _resourceBranchSegment + _stubDraftBranchID.String(),
+			URI: resourceURI(docID, _stubDraftBranchID),
 			ToolsDB: &toolsMock.DB{
 				FetchDocumentByBranchIDFunc: stubDraftDocument(docID),
 				FetchDocumentBranchesFunc: func(context.Context, xid.ID, string) ([]document.BranchSummary, error) {
@@ -191,12 +196,12 @@ func Test_Handler_readDocument(t *testing.T) {
 			Passthru: true,
 		},
 		"Unknown branch maps to resource not found": {
-			URI: _resourceURIPrefix + docID.String() + _resourceBranchSegment + unknownBranchID.String(),
+			URI: resourceURI(docID, unknownBranchID),
 			ToolsDB: &toolsMock.DB{
 				FetchDocumentByBranchIDFunc: stubDraftDocument(docID),
 				FetchDocumentBranchesFunc:   stubBranches,
 			},
-			Err: mcp.ResourceNotFoundError(_resourceURIPrefix + docID.String() + _resourceBranchSegment + unknownBranchID.String()),
+			Err: mcp.ResourceNotFoundError(resourceURI(docID, unknownBranchID)),
 		},
 		"Branch segment that is not an id": {
 			URI:     _resourceURIPrefix + docID.String() + _resourceBranchSegment + "draft",
@@ -209,7 +214,7 @@ func Test_Handler_readDocument(t *testing.T) {
 			Err:     mcp.ResourceNotFoundError(_resourceURIPrefix + _resourceBranchSegment + _stubDraftBranchID.String()),
 		},
 		"Successful read": {
-			URI: _resourceURIPrefix + docID.String() + _resourceBranchSegment + _stubDraftBranchID.String(),
+			URI: resourceURI(docID, _stubDraftBranchID),
 			ToolsDB: &toolsMock.DB{
 				FetchDocumentByBranchIDFunc: stubDraftDocument(docID),
 				FetchDocumentBranchesFunc:   stubBranches,

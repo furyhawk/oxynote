@@ -165,7 +165,7 @@ func NewServer(
 		},
 	}
 
-	srv.handlers.user = user.NewHandler(log, db, storageClient, opts.PublicURL+_userImageLocationFormat)
+	srv.handlers.user = user.NewHandler(log, db, storageClient, opts.PublicURL)
 	srv.handlers.organization = org.NewHandler(
 		log,
 		db,
@@ -173,7 +173,7 @@ func NewServer(
 		githubMan,
 		webchangeClient,
 		searchTrigger,
-		opts.PublicURL+_organizationLogoLocation,
+		opts.PublicURL,
 	)
 	srv.handlers.document = document.NewHandler(log, db, githubMan, webchangeClient, searcher, searchTrigger, notifier, storageClient)
 	srv.handlers.tag = tag.NewHandler(log, db)

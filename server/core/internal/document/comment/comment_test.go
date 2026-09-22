@@ -138,6 +138,65 @@ func Test_Comment_Replace(t *testing.T) {
 	assert.Equal(t, empty, same)
 }
 
+func Test_Comment_Participants(t *testing.T) {
+	cc := map[string]struct {
+		Comment Comment
+		Result  []string
+	}{
+		"Author alone": {
+			Comment: Comment{UserID: null.StringFrom("user-1")},
+			Result:  []string{"user-1"},
+		},
+		"Author and repliers": {
+			Comment: Comment{
+				UserID: null.StringFrom("user-1"),
+				Replies: []Reply{
+					{UserID: null.StringFrom("user-2")},
+					{UserID: null.StringFrom("user-1")},
+					{UserID: null.String{}},
+					{UserID: null.StringFrom("user-3")},
+					{UserID: null.StringFrom("user-2")},
+				},
+			},
+			Result: []string{"user-1", "user-2", "user-3"},
+		},
+		"Deleted author": {
+			Comment: Comment{Replies: []Reply{{UserID: null.StringFrom("user-2")}}},
+			Result:  []string{"user-2"},
+		},
+		"Nobody": {},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, c.Result, c.Comment.Participants())
+		})
+	}
+}
+
+func Test_Recipients(t *testing.T) {
+	cc := map[string]struct {
+		UserIDs []string
+		Actor   string
+		Result  []string
+	}{
+		"Actor dropped":   {UserIDs: []string{"user-1", "user-2"}, Actor: "user-1", Result: []string{"user-2"}},
+		"Repeats dropped": {UserIDs: []string{"user-2", "user-3", "user-2"}, Actor: "user-1", Result: []string{"user-2", "user-3"}},
+		"Actor alone":     {UserIDs: []string{"user-1"}, Actor: "user-1"},
+		"Nobody":          {Actor: "user-1"},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, c.Result, Recipients(c.UserIDs, c.Actor))
+		})
+	}
+}
+
 func Test_NewReply(t *testing.T) {
 	t.Parallel()
 

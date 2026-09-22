@@ -17,10 +17,10 @@ import (
 // router mounts the file routes on this very format.
 const FilePathFormat = "/api/documents/%s/files/%s"
 
-// FileIDLength is the exact length of a file id: a 21-character nanoid.
-// The id's alphabet includes the dash, so a "<id>-<file name>" segment is
-// split by length, never at the first dash.
-const FileIDLength = 21
+// FileIDLength is the exact length of a file id, a nanoid. The id's
+// alphabet includes the dash, so a "<id>-<file name>" segment is split by
+// length, never at the first dash.
+const FileIDLength = strutil.NanoIDLength
 
 // FilePath returns the URL path a document's file is served under: the
 // file route with the id followed by a dash and the file name, so the
@@ -28,6 +28,24 @@ const FileIDLength = 21
 // which is what lets the server cut the id off the front again.
 func FilePath(documentID xid.ID, id, name string) string {
 	return fmt.Sprintf(FilePathFormat, documentID, id+"-"+url.PathEscape(name))
+}
+
+// ParseFileRef cuts a "<id>-<file name>" route segment, as FilePath
+// builds it, back into its id and name, reporting whether the segment
+// has that shape. The id must be a nanoid: its charset shuts out the
+// path separators and dot segments that would otherwise let an id
+// escape its storage folder once joined into an object key.
+func ParseFileRef(ref string) (id, name string, ok bool) {
+	if len(ref) <= FileIDLength || ref[FileIDLength] != '-' {
+		return "", "", false
+	}
+
+	id = ref[:FileIDLength]
+	if !strutil.IsNanoID(id) {
+		return "", "", false
+	}
+
+	return id, ref[FileIDLength+1:], true
 }
 
 // RootBlock represents a block in a document.
@@ -376,11 +394,10 @@ func (d *duplication) rewriteFileRef(attrs, newAttrs Attributes) {
 		return
 	}
 
-	if len(rest) <= FileIDLength || rest[FileIDLength] != '-' {
+	oldID, name, ok := ParseFileRef(rest)
+	if !ok {
 		return
 	}
-
-	oldID, name := rest[:FileIDLength], rest[FileIDLength+1:]
 
 	newID, ok := d.files[oldID]
 	if !ok {

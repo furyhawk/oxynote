@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"unicode/utf8"
 
 	"github.com/guregu/null/v5"
 	"github.com/oxynote/oxynote/server/core/internal/apps/github"
@@ -26,20 +25,9 @@ import (
 	"github.com/rs/xid"
 )
 
-// _searchQueryMaxLength caps a search query in characters. Every term
-// expands to a dictionary walk inside the process, so the query size
-// bounds the work one request can ask for.
-const _searchQueryMaxLength = 200
-
-// ErrInvalidSearchQuery is returned when the search query is invalid.
-var ErrInvalidSearchQuery = errutil.New(http.StatusBadRequest, "document.invalid_search_query", "invalid search query")
-
 // ErrBranchMismatch is returned when the requested branch does not belong to
 // the document identified by the request path.
 var ErrBranchMismatch = errutil.New(http.StatusNotFound, "document.branch_mismatch", "branch does not belong to the document")
-
-// ErrDefaultBranchRename is returned when a rename targets the default branch.
-var ErrDefaultBranchRename = errutil.New(http.StatusBadRequest, "document.default_branch_rename", "the default branch cannot be renamed")
 
 // ErrInvalidDocumentParent is returned when a document would be moved under
 // itself or one of its own descendants.
@@ -521,18 +509,7 @@ func (h *Handler) SearchDocuments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	q := r.URL.Query().Get("q")
-	if q == "" || utf8.RuneCountInString(q) > _searchQueryMaxLength {
-		httpserver.RespondError(
-			h.log,
-			w,
-			ErrInvalidSearchQuery,
-		)
-
-		return
-	}
-
-	data, err := h.searcher.SearchDocuments(r.Context(), session.ActiveOrganizationID, q)
+	data, err := h.searcher.SearchDocuments(r.Context(), session.ActiveOrganizationID, r.URL.Query().Get("q"))
 	if err != nil {
 		httpserver.RespondError(h.log, w, err)
 		return

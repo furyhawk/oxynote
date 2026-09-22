@@ -2,16 +2,12 @@ package tag
 
 import (
 	"context"
-	"time"
 
 	"github.com/oxynote/oxynote/server/core/internal/server/internal/auth"
+	"github.com/oxynote/oxynote/server/core/pkg/httpserver"
 	"github.com/oxynote/wetsocks/wsserver"
 	"github.com/rs/xid"
 )
-
-// _publishTimeout bounds each WebSocket publish triggered by a domain
-// callback.
-const _publishTimeout = 5 * time.Second
 
 // TreeChangeMessage represents a change in the tree of tags. The tree is
 // small and always fetched whole, so the message carries no payload: it
@@ -29,13 +25,13 @@ type BranchTagsChangeMessage struct {
 // BindTreeChange binds a tag tree change event to the given topic.
 func (h *Handler) BindTreeChange(tpc wsserver.Topic) {
 	h.tree.changeCallback = func(organizationID string) {
-		ctx, cancel := context.WithTimeout(context.Background(), _publishTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), httpserver.WSPublishTimeout)
 		defer cancel()
 
 		tpc.PublishMany(ctx, TreeChangeMessage{}, auth.FilterOrganization(organizationID))
 	}
 	h.tree.userChangeCallback = func(organizationID, userID string) {
-		ctx, cancel := context.WithTimeout(context.Background(), _publishTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), httpserver.WSPublishTimeout)
 		defer cancel()
 
 		tpc.PublishMany(ctx, TreeChangeMessage{}, auth.FilterUser(organizationID, userID))
@@ -46,7 +42,7 @@ func (h *Handler) BindTreeChange(tpc wsserver.Topic) {
 // topic, which is scoped to one document.
 func (h *Handler) BindBranchTagsChange(tpc wsserver.Topic) {
 	h.branchTags.changeCallback = func(organizationID string, documentID, branchID xid.ID) {
-		ctx, cancel := context.WithTimeout(context.Background(), _publishTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), httpserver.WSPublishTimeout)
 		defer cancel()
 
 		tpc.PublishMany(

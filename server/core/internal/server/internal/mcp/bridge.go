@@ -8,31 +8,18 @@ import (
 	"github.com/oxynote/oxynote/server/core/internal/assistant/tools"
 )
 
-// _resourceURIPrefix addresses a document in the oxynote resource
-// scheme; the id after the prefix is the document's xid.
-const _resourceURIPrefix = "oxynote://documents/"
-
-// _resourceBranchSegment separates a document id from a branch id in a
-// resource URI: oxynote://documents/{id}/branches/{branch_id} reads that
-// branch, and every resource names one.
-const _resourceBranchSegment = "/branches/"
-
 // annotations declares a tool's intent so MCP clients can gate calls:
-// reads are read-only, writes say whether they can destroy content. A
-// write counts as destructive here when it removes content outright and
-// also when it overwrites content the caller did not name — both lose
-// work a client would want to confirm first, which is the question the
-// hint answers. A document tool works on the organization's own
-// documents, so its world is closed; a data-source tool reaches whatever
-// the connection points at, which is not.
+// reads are read-only, writes say whether they can destroy content, and
+// every tool says whether it reaches outside the organization's own
+// documents.
 func annotations(e tools.Entry) *mcp.ToolAnnotations {
 	out := &mcp.ToolAnnotations{
 		ReadOnlyHint:  !e.Write,
-		OpenWorldHint: new(e.DataSource),
+		OpenWorldHint: new(e.OpenWorld()),
 	}
 
 	if e.Write {
-		out.DestructiveHint = new(e.Destructive || e.Overwrites)
+		out.DestructiveHint = new(e.DestroysContent())
 	}
 
 	return out
@@ -63,7 +50,7 @@ func (h *Handler) toolHandler(e tools.Entry) mcp.ToolHandler {
 		// can follow the edit straight to its target.
 		for _, t := range res.Documents {
 			content = append(content, &mcp.ResourceLink{
-				URI:      _resourceURIPrefix + t.DocumentID.String() + _resourceBranchSegment + t.BranchID.String(),
+				URI:      resourceURI(t.DocumentID, t.BranchID),
 				Name:     t.DocumentID.String(),
 				MIMEType: _documentMIMEType,
 			})

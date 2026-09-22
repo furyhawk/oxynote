@@ -8,6 +8,10 @@ import (
 	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 )
 
+// ErrInvalidChartType is returned when a chart type is not one the
+// processors draw.
+var ErrInvalidChartType = errutil.New(http.StatusBadRequest, "chart_type.invalid", "Invalid chart type. Must be one of: line, bar, gauge.")
+
 // ChartType represents the type of chart visualization.
 type ChartType string
 
@@ -30,6 +34,16 @@ func (ct ChartType) IsValid() bool {
 	default:
 		return false
 	}
+}
+
+// Validate reports whether the chart type is one the processors draw;
+// the empty one is not.
+func (ct ChartType) Validate() error {
+	if !ct.IsValid() {
+		return ErrInvalidChartType
+	}
+
+	return nil
 }
 
 // UnmarshalText parses a chart type, refusing anything but the known

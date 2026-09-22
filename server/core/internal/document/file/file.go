@@ -7,6 +7,7 @@ import (
 	"path"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/guregu/null/v5"
 	"github.com/oxynote/oxynote/server/core/pkg/timeutil"
@@ -15,6 +16,13 @@ import (
 
 // _folderFormat is the storage folder format for a document's files.
 const _folderFormat = "organizations/%s/documents/%s/files"
+
+// _maxNameLength caps the name recorded for an upload, in runes.
+const _maxNameLength = 255
+
+// _fallbackName names an upload whose multipart part carried no usable
+// name.
+const _fallbackName = "file"
 
 // Folder returns the storage folder holding the given document's files.
 func Folder(organizationID string, documentID xid.ID) string {
@@ -154,4 +162,26 @@ func (f File) Disposition() string {
 // the file itself.
 func (f File) Orphaned() bool {
 	return !f.DocumentID.Valid || !f.OrganizationID.Valid
+}
+
+// CleanName reduces the name a multipart part carried to a bare file
+// name: a browser may send a path, Windows ones with backslashes, and
+// the part may carry no name at all.
+func CleanName(raw string) string {
+	name := path.Base(strings.ReplaceAll(raw, "\\", "/"))
+	name = strings.TrimSpace(name)
+
+	if name == "." || name == "/" {
+		name = ""
+	}
+
+	if utf8.RuneCountInString(name) > _maxNameLength {
+		name = string([]rune(name)[:_maxNameLength])
+	}
+
+	if name == "" {
+		return _fallbackName
+	}
+
+	return name
 }

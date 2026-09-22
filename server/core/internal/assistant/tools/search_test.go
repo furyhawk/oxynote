@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/oxynote/oxynote/server/core/internal/document"
@@ -96,6 +97,12 @@ func Test_searchDocuments_Execute(t *testing.T) {
 			Searcher: hitSearcher(nil),
 			DB:       &DBMock{},
 			Args:     `{}`,
+			Err:      assert.AnError,
+		},
+		"Query over the cap": {
+			Searcher: hitSearcher(nil),
+			DB:       &DBMock{},
+			Args:     `{"query":"` + strings.Repeat("a", search.MaxQueryLength+1) + `"}`,
 			Err:      assert.AnError,
 		},
 		"Error returned by search.SearchDocumentBlocks": {

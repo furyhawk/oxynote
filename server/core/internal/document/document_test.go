@@ -408,6 +408,42 @@ func Test_NewDocumentContent(t *testing.T) {
 	assert.Len(t, uid, 21)
 }
 
+func Test_UpdateInput_AddsMaintainers(t *testing.T) {
+	cc := map[string]struct {
+		Maintainers []string
+		Stored      []string
+		Result      bool
+	}{
+		"New maintainer":         {Maintainers: []string{"u1", "u2"}, Stored: []string{"u1"}, Result: true},
+		"Known maintainers only": {Maintainers: []string{"u1"}, Stored: []string{"u1", "u2"}},
+		"No maintainers":         {Stored: []string{"u1"}},
+		"Nobody stored yet":      {Maintainers: []string{"u1"}, Result: true},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, c.Result, UpdateInput{Maintainers: c.Maintainers}.AddsMaintainers(c.Stored))
+		})
+	}
+}
+
+func Test_NewWelcomeDocument(t *testing.T) {
+	t.Parallel()
+
+	doc, err := NewWelcomeDocument("org1", "u1", null.Value[xid.ID]{})
+	require.NoError(t, err)
+
+	assert.Equal(t, "Welcome to Oxynote!", doc.DocumentName)
+	assert.Equal(t, "mingcute:flag-4-fill", doc.Icon)
+	assert.Equal(t, "org1", doc.OrganizationID)
+	assert.Equal(t, null.StringFrom("u1"), doc.CreatedBy)
+	assert.True(t, doc.Default)
+	assert.Equal(t, BlockNodeDoc, doc.Content.Type)
+	assert.NotEmpty(t, doc.Content.Content)
+}
+
 func Test_InitialDocumentContent(t *testing.T) {
 	t.Parallel()
 

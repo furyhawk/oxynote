@@ -6,9 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
-	"regexp"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/oxynote/oxynote/server/core/internal/document"
 	"github.com/oxynote/oxynote/server/core/internal/document/file"
@@ -16,20 +13,9 @@ import (
 	"github.com/oxynote/oxynote/server/core/internal/storage"
 	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/httpserver"
+	"github.com/oxynote/oxynote/server/core/pkg/strutil"
 	"github.com/rs/xid"
 )
-
-// _fileIDPattern matches a file id. The charset shuts out the path
-// separators and dot segments that would otherwise let an id escape its
-// storage folder once joined into an object key.
-var _fileIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{21}$`)
-
-// _maxFileNameLength caps the name recorded for an upload, in runes.
-const _maxFileNameLength = 255
-
-// _fallbackFileName names an upload whose multipart part carried no
-// usable name.
-const _fallbackFileName = "file"
 
 // Handler holds dependencies required for document file operations.
 type Handler struct {
@@ -76,7 +62,7 @@ func (h *Handler) UploadDocumentFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fileID := r.URL.Query().Get("id")
-	if !_fileIDPattern.MatchString(fileID) {
+	if !strutil.IsNanoID(fileID) {
 		httpserver.RespondError(h.log, w, httpserver.ErrInvalidForm)
 		return
 	}
@@ -87,7 +73,7 @@ func (h *Handler) UploadDocumentFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	policy, ok := uploadPolicy(r.URL.Query().Get("kind"))
+	policy, ok := storage.PolicyForKind(r.URL.Query().Get("kind"))
 	if !ok {
 		httpserver.RespondError(h.log, w, httpserver.ErrInvalidForm)
 		return
@@ -108,7 +94,7 @@ func (h *Handler) UploadDocumentFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := fileName(r.MultipartForm.File["file"][0].Filename)
+	name := file.CleanName(r.MultipartForm.File["file"][0].Filename)
 
 	f := file.NewFile(
 		fileID,
@@ -164,57 +150,6 @@ func (h *Handler) UploadDocumentFile(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-// fileID cuts the id off a "<id>-<file name>" route segment, reporting
-// whether the segment has that shape.
-func fileID(ref string) (string, bool) {
-	if len(ref) <= document.FileIDLength || ref[document.FileIDLength] != '-' {
-		return "", false
-	}
-
-	id := ref[:document.FileIDLength]
-	if !_fileIDPattern.MatchString(id) {
-		return "", false
-	}
-
-	return id, true
-}
-
-// uploadPolicy maps the kind of block an upload belongs to onto the
-// storage policy it is admitted under, reporting whether the kind is one
-// at all.
-func uploadPolicy(kind string) (storage.Policy, bool) {
-	switch kind {
-	case "image":
-		return storage.ImagePolicy, true
-	case "file":
-		return storage.FilePolicy, true
-	default:
-		return storage.Policy{}, false
-	}
-}
-
-// fileName reduces the name a multipart part carried to a bare file name:
-// a browser may send a path, Windows ones with backslashes, and the part
-// may carry no name at all.
-func fileName(raw string) string {
-	name := path.Base(strings.ReplaceAll(raw, "\\", "/"))
-	name = strings.TrimSpace(name)
-
-	if name == "." || name == "/" {
-		name = ""
-	}
-
-	if utf8.RuneCountInString(name) > _maxFileNameLength {
-		name = string([]rune(name)[:_maxFileNameLength])
-	}
-
-	if name == "" {
-		return _fallbackFileName
-	}
-
-	return name
-}
-
 // RetrieveDocumentFile handles the retrieval of a file from a document.
 // The route's last segment is "<id>-<file name>": only the id identifies
 // the file, the name makes the address read as the file it is.
@@ -236,7 +171,7 @@ func (h *Handler) RetrieveDocumentFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, ok := fileID(ref)
+	id, _, ok := document.ParseFileRef(ref)
 	if !ok {
 		httpserver.RespondError(h.log, w, errutil.ErrNotFound)
 		return

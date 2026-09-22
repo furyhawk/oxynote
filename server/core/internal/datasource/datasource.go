@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/guregu/null/v5"
+	"github.com/oxynote/oxynote/server/core/internal/datasource/demo"
 	"github.com/oxynote/oxynote/server/core/internal/datasource/processor"
 	"github.com/oxynote/oxynote/server/core/pkg/timeutil"
 	"github.com/rs/xid"
@@ -70,6 +71,17 @@ func NewDataSource(ci CreateInput, organizationID string) *DataSource {
 		Status:         processor.ConnectionStatusSuccess,
 		CreatedAt:      timeutil.Now(),
 	}
+}
+
+// NewDemoDataSource creates the demo Prometheus data source a fresh
+// organization starts with.
+func NewDemoDataSource(organizationID string) *DataSource {
+	return NewDataSource(CreateInput{
+		Type:        TypePrometheus,
+		Name:        "Demo",
+		URL:         demo.URL,
+		Credentials: processor.NewCredentials([]byte(`{}`)),
+	}, organizationID)
 }
 
 // Info returns a subset of data source fields for external use.

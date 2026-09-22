@@ -293,6 +293,36 @@ func Test_FilePath(t *testing.T) {
 	}
 }
 
+func Test_ParseFileRef(t *testing.T) {
+	cc := map[string]struct {
+		Ref  string
+		ID   string
+		Name string
+		OK   bool
+	}{
+		"Id and name":               {Ref: "f1xxxxxxxxxxxxxxxxxxx-notes.zip", ID: "f1xxxxxxxxxxxxxxxxxxx", Name: "notes.zip", OK: true},
+		"Name with dashes":          {Ref: "f1xxxxxxxxxxxxxxxxxxx-a-b-c.zip", ID: "f1xxxxxxxxxxxxxxxxxxx", Name: "a-b-c.zip", OK: true},
+		"Id with dashes":            {Ref: "f1-x_-xxxxxxxxxxxxxxx-notes.zip", ID: "f1-x_-xxxxxxxxxxxxxxx", Name: "notes.zip", OK: true},
+		"Empty name":                {Ref: "f1xxxxxxxxxxxxxxxxxxx-", ID: "f1xxxxxxxxxxxxxxxxxxx", OK: true},
+		"No dash after the id":      {Ref: "f1xxxxxxxxxxxxxxxxxxxxnotes.zip"},
+		"Id alone":                  {Ref: "f1xxxxxxxxxxxxxxxxxxx"},
+		"Short":                     {Ref: "f1-notes.zip"},
+		"Id with the wrong charset": {Ref: "f1.................xx-notes.zip"},
+		"Empty":                     {Ref: ""},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			id, name, ok := ParseFileRef(c.Ref)
+			assert.Equal(t, c.OK, ok)
+			assert.Equal(t, c.ID, id)
+			assert.Equal(t, c.Name, name)
+		})
+	}
+}
+
 func Test_RootBlock_Duplicate(t *testing.T) {
 	t.Parallel()
 

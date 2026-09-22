@@ -8,9 +8,8 @@ Cross-service storage rules (Hocuspocus, Yjs) live in
 ## Branches
 
 - **The main branch is identified by its `default` flag, not its name**: the
-  tree join and `FetchMainBranchContent` key on it, and
-  `UpdateDocumentBranch` refuses to rename it. `NewDocument` and `Duplicate`
-  set `Default: true`; forks must not.
+  tree join keys on it, and `Document.AllowsBranchRename` refuses to rename
+  it. `NewDocument` and `Duplicate` set `Default: true`; forks must not.
 - **Maintainers accumulate.** The `maintainers` field on a branch update is
   who edited in that persist; `UpsertDocumentMaintainers` only adds. There
   is no removal path.

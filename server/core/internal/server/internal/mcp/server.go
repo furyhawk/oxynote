@@ -6,8 +6,17 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/oxynote/oxynote/server/core/internal/assistant"
+	"github.com/oxynote/oxynote/server/core/internal/assistant/tools"
 	"github.com/oxynote/oxynote/server/core/internal/buildinfo"
 )
+
+// _scopes is the OAuth scope each kind of tool access answers to. An
+// access with no scope here is offered to no client.
+var _scopes = map[tools.Access]string{
+	tools.AccessRead:       ScopeDocumentRead,
+	tools.AccessWrite:      ScopeDocumentWrite,
+	tools.AccessDataSource: ScopeDataSourceRead,
+}
 
 // server builds the MCP server for one request's identity: the tools
 // the token's scopes allow, plus the organization's documents as
@@ -44,25 +53,12 @@ func (h *Handler) server(r *http.Request) *mcp.Server {
 
 	set := h.man.ToolSet(session.OrganizationID, session.UserID)
 
-	read := slices.Contains(session.Scopes, ScopeDocumentRead)
-	write := slices.Contains(session.Scopes, ScopeDocumentWrite)
-	dataSources := slices.Contains(session.Scopes, ScopeDataSourceRead)
-
 	for _, e := range set.Entries() {
-		// an internal tool addresses conversation state this surface has
-		// none of, so offering it would only invite a call that cannot
-		// succeed.
-		if e.Internal {
-			continue
-		}
-
-		// a data-source tool reaches outside Oxynote entirely, so it
-		// answers to its own scope rather than to the document ones.
-		if e.DataSource {
-			if !dataSources {
-				continue
-			}
-		} else if e.Write && !write || !e.Write && !read {
+		// a tool no scope grants is not offered: an internal one addresses
+		// conversation state this surface has none of, and the rest answer
+		// to the scope their access maps onto.
+		scope, ok := _scopes[e.Access()]
+		if !ok || !slices.Contains(session.Scopes, scope) {
 			continue
 		}
 
@@ -76,7 +72,7 @@ func (h *Handler) server(r *http.Request) *mcp.Server {
 		}, h.toolHandler(e))
 	}
 
-	if read {
+	if slices.Contains(session.Scopes, ScopeDocumentRead) {
 		h.addResources(r.Context(), srv, session, set)
 	}
 

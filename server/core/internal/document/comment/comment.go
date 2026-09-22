@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/guregu/null/v5"
@@ -201,6 +202,41 @@ func (c Comment) Replace() (Comment, bool) {
 	nc.Replies = c.Replies[1:]
 
 	return nc, true
+}
+
+// Participants returns the users who wrote the comment or a reply to it,
+// in that order, each once.
+func (c Comment) Participants() []string {
+	var ids []string
+
+	if c.UserID.Valid {
+		ids = append(ids, c.UserID.String)
+	}
+
+	for _, r := range c.Replies {
+		if r.UserID.Valid && !slices.Contains(ids, r.UserID.String) {
+			ids = append(ids, r.UserID.String)
+		}
+	}
+
+	return ids
+}
+
+// Recipients reduces the candidate user ids to the ones a notification
+// about the actor's change goes to: the actor is dropped, and so is
+// every repeat.
+func Recipients(userIDs []string, actor string) []string {
+	var out []string
+
+	for _, id := range userIDs {
+		if id == actor || slices.Contains(out, id) {
+			continue
+		}
+
+		out = append(out, id)
+	}
+
+	return out
 }
 
 // NewReply creates a new reply instance with the provided input.

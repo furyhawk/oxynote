@@ -2,17 +2,13 @@ package hook
 
 import (
 	"context"
-	"time"
 
 	"github.com/guregu/null/v5"
 	"github.com/oxynote/oxynote/server/core/internal/server/internal/auth"
+	"github.com/oxynote/oxynote/server/core/pkg/httpserver"
 	"github.com/oxynote/wetsocks/wsserver"
 	"github.com/rs/xid"
 )
-
-// _publishTimeout bounds each WebSocket publish triggered by a domain
-// callback.
-const _publishTimeout = 5 * time.Second
 
 // HooksChangeMessage represents a change in the hooks one branch of a
 // document carries. It names the branch so a subscriber showing another
@@ -26,7 +22,7 @@ type HooksChangeMessage struct {
 // is scoped to one document.
 func (h *Handler) BindHooksChange(tpc wsserver.Topic) {
 	h.hooks.changeCallback = func(organizationID string, documentID, branchID xid.ID) {
-		ctx, cancel := context.WithTimeout(context.Background(), _publishTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), httpserver.WSPublishTimeout)
 		defer cancel()
 
 		tpc.PublishMany(

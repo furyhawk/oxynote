@@ -2,16 +2,12 @@ package comment
 
 import (
 	"context"
-	"time"
 
 	"github.com/oxynote/oxynote/server/core/internal/server/internal/auth"
+	"github.com/oxynote/oxynote/server/core/pkg/httpserver"
 	"github.com/oxynote/wetsocks/wsserver"
 	"github.com/rs/xid"
 )
-
-// _publishTimeout bounds each WebSocket publish triggered by a domain
-// callback.
-const _publishTimeout = 5 * time.Second
 
 // ChangeType represents the type of comment change.
 type ChangeType string
@@ -39,7 +35,7 @@ type ChangeMessage struct {
 // BindCommentsChange binds a comment change event to the given topic.
 func (h *Handler) BindCommentsChange(tpc wsserver.Topic) {
 	h.comments.changeCallback = func(organizationID string, documentId xid.ID, msg ChangeMessage) {
-		ctx, cancel := context.WithTimeout(context.Background(), _publishTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), httpserver.WSPublishTimeout)
 		defer cancel()
 
 		tpc.PublishMany(ctx, msg, auth.FilterOrganizationDocument(organizationID, documentId))

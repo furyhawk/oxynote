@@ -4,8 +4,11 @@ import (
 	"embed"
 	"fmt"
 	"html"
+	"net/http"
 	"strings"
 	texttemplate "text/template"
+
+	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 )
 
 // All available email template constants.
@@ -38,9 +41,48 @@ const (
 	TemplateSignupVerification Template = "signup_verification"
 )
 
-// Template identifies an email template. Its value matches the base
-// name of the embedded HTML file the template is rendered from.
-type Template string
+// ErrInvalidTemplate is returned when the requested email template is
+// not recognized.
+var ErrInvalidTemplate = errutil.New(http.StatusBadRequest, "email.invalid_template", "Invalid email template.")
+
+// _specs maps every template to the subject line it is sent under and
+// the arguments its HTML file reads. A template absent from the map
+// cannot be sent.
+var _specs = map[Template]spec{
+	TemplateEmailVerification: {
+		subject: "Verify your new email address",
+		args:    linkArgs,
+	},
+	TemplateEmailChangeConfirmation: {
+		subject: "Approve your email address change",
+		args:    linkArgs,
+	},
+	TemplateOrganizationInvitation: {
+		subjectFrom: func(d Data) string { return fmt.Sprintf("Join %s on Oxynote", d.Organization) },
+		args: func(d Data) map[string]string {
+			return map[string]string{
+				_linkKey:       d.Link,
+				"organization": d.Organization,
+			}
+		},
+	},
+	TemplateUserDeletion: {
+		subject: "Confirm your account deletion",
+		args:    linkArgs,
+	},
+	TemplatePasswordReset: {
+		subject: "Reset your password",
+		args:    linkArgs,
+	},
+	TemplateSignupVerification: {
+		subject: "Confirm your email address",
+		args:    linkArgs,
+	},
+	TemplateAccountExists: {
+		subject: "You already have an Oxynote account",
+		args:    linkArgs,
+	},
+}
 
 //go:embed templates/*.html
 var _templateFS embed.FS
@@ -63,6 +105,53 @@ var _logoPNG []byte
 var _templates = texttemplate.Must(
 	texttemplate.ParseFS(_templateFS, "templates/*.html"),
 )
+
+// Template identifies an email template. Its value matches the base
+// name of the embedded HTML file the template is rendered from.
+type Template string
+
+// Validate reports whether the template is one that can be sent.
+func (t Template) Validate() error {
+	if _, ok := _specs[t]; !ok {
+		return ErrInvalidTemplate
+	}
+
+	return nil
+}
+
+// Data carries what a template is rendered with: the recipient and the
+// values the templates read. A template ignores the fields it has no
+// use for.
+type Data struct {
+	// Email is the recipient address.
+	Email string `json:"email"`
+
+	// Organization is the name of the organization an invitation is to.
+	Organization string `json:"organization"`
+
+	// Link is the action URL the email carries.
+	Link string `json:"link"`
+}
+
+// spec describes how a template is sent: its subject line and the
+// arguments its HTML file reads.
+type spec struct {
+	// subject is the subject line, when it is the same for every send.
+	subject string
+
+	// subjectFrom builds the subject line from the data, for a template
+	// whose subject names something in it. It takes precedence over
+	// subject.
+	subjectFrom func(Data) string
+
+	// args builds the template arguments.
+	args func(Data) map[string]string
+}
+
+// linkArgs builds the arguments of a template that reads only the link.
+func linkArgs(d Data) map[string]string {
+	return map[string]string{_linkKey: d.Link}
+}
 
 // render executes the specified template with the provided arguments,
 // HTML-escaping each argument value, and returns the resulting HTML

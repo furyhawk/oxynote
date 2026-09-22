@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	emailCore "github.com/oxynote/oxynote/server/core/internal/email"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -45,189 +46,55 @@ func Test_Handler_SendEmail(t *testing.T) {
 		}
 	}
 
-	wasNoSendCalled := func() check {
+	wasSendCalled := func(count int, tmpl emailCore.Template, d emailCore.Data) check {
 		return func(t *testing.T, sender *SenderMock, _ *httptest.ResponseRecorder) {
-			assert.Empty(t, sender.SendEmailVerificationCalls())
-			assert.Empty(t, sender.SendEmailChangeConfirmationCalls())
-			assert.Empty(t, sender.SendPasswordResetCalls())
-			assert.Empty(t, sender.SendAccountExistsCalls())
-			assert.Empty(t, sender.SendSignupVerificationCalls())
-			assert.Empty(t, sender.SendOrganizationInvitationCalls())
-			assert.Empty(t, sender.SendUserDeletionConfirmationCalls())
-		}
-	}
-
-	wasSendEmailVerificationCalled := func(count int, eml, link string) check {
-		return func(t *testing.T, sender *SenderMock, _ *httptest.ResponseRecorder) {
-			ff := sender.SendEmailVerificationCalls()
+			ff := sender.SendCalls()
 			require.Len(t, ff, count)
 
 			if count == 0 {
 				return
 			}
 
-			assert.Equal(t, eml, ff[0].Eml)
-			assert.Equal(t, link, ff[0].Link)
-		}
-	}
-
-	wasSendEmailChangeConfirmationCalled := func(count int, eml, link string) check {
-		return func(t *testing.T, sender *SenderMock, _ *httptest.ResponseRecorder) {
-			ff := sender.SendEmailChangeConfirmationCalls()
-			require.Len(t, ff, count)
-
-			if count == 0 {
-				return
-			}
-
-			assert.Equal(t, eml, ff[0].Eml)
-			assert.Equal(t, link, ff[0].Link)
-		}
-	}
-
-	wasSendPasswordResetCalled := func(count int, eml, link string) check {
-		return func(t *testing.T, sender *SenderMock, _ *httptest.ResponseRecorder) {
-			ff := sender.SendPasswordResetCalls()
-			require.Len(t, ff, count)
-
-			if count == 0 {
-				return
-			}
-
-			assert.Equal(t, eml, ff[0].Eml)
-			assert.Equal(t, link, ff[0].Link)
-		}
-	}
-
-	wasSendAccountExistsCalled := func(count int, eml, link string) check {
-		return func(t *testing.T, sender *SenderMock, _ *httptest.ResponseRecorder) {
-			ff := sender.SendAccountExistsCalls()
-			require.Len(t, ff, count)
-
-			if count == 0 {
-				return
-			}
-
-			assert.Equal(t, eml, ff[0].Eml)
-			assert.Equal(t, link, ff[0].Link)
-		}
-	}
-
-	wasSendSignupVerificationCalled := func(count int, eml, link string) check {
-		return func(t *testing.T, sender *SenderMock, _ *httptest.ResponseRecorder) {
-			ff := sender.SendSignupVerificationCalls()
-			require.Len(t, ff, count)
-
-			if count == 0 {
-				return
-			}
-
-			assert.Equal(t, eml, ff[0].Eml)
-			assert.Equal(t, link, ff[0].Link)
-		}
-	}
-
-	wasSendOrganizationInvitationCalled := func(count int, eml, org, link string) check {
-		return func(t *testing.T, sender *SenderMock, _ *httptest.ResponseRecorder) {
-			ff := sender.SendOrganizationInvitationCalls()
-			require.Len(t, ff, count)
-
-			if count == 0 {
-				return
-			}
-
-			assert.Equal(t, eml, ff[0].Eml)
-			assert.Equal(t, org, ff[0].Org)
-			assert.Equal(t, link, ff[0].Link)
-		}
-	}
-
-	wasSendUserDeletionConfirmationCalled := func(count int, eml, link string) check {
-		return func(t *testing.T, sender *SenderMock, _ *httptest.ResponseRecorder) {
-			ff := sender.SendUserDeletionConfirmationCalls()
-			require.Len(t, ff, count)
-
-			if count == 0 {
-				return
-			}
-
-			assert.Equal(t, eml, ff[0].Eml)
-			assert.Equal(t, link, ff[0].Link)
+			assert.Equal(t, tmpl, ff[0].Tmpl)
+			assert.Equal(t, d, ff[0].D)
 		}
 	}
 
 	cc := map[string]struct {
+		Sender *SenderMock
 		Body   string
 		Checks []check
 	}{
 		"Invalid JSON body": {
-			Body: "{",
+			Sender: &SenderMock{},
+			Body:   "{",
 			Checks: checks(
 				hasResp(http.StatusBadRequest, `{"code":"request.invalid_json","message":"invalid JSON body"}`),
-				wasNoSendCalled(),
+				wasSendCalled(0, "", emailCore.Data{}),
 			),
 		},
-		"Unknown template": {
+		"Error returned by Sender.Send": {
+			Sender: &SenderMock{
+				SendFunc: func(emailCore.Template, emailCore.Data) error {
+					return emailCore.ErrInvalidTemplate
+				},
+			},
 			Body: `{"template":"nonexistent","data":{"email":"user@example.com"}}`,
 			Checks: checks(
 				hasResp(http.StatusBadRequest, `{"code":"email.invalid_template","message":"Invalid email template."}`),
-				wasNoSendCalled(),
+				wasSendCalled(1, "nonexistent", emailCore.Data{Email: "user@example.com"}),
 			),
 		},
-		"Email verification sent": {
-			Body: `{"template":"email_verification","data":{"email":"user@example.com","link":"https://example.com/verify"}}`,
+		"Email sent": {
+			Sender: &SenderMock{},
+			Body:   `{"template":"organization_invitation","data":{"email":"user@example.com","organization":"Acme","link":"https://example.com/join"}}`,
 			Checks: checks(
 				hasResp(http.StatusNoContent, ""),
-				wasSendEmailVerificationCalled(1, "user@example.com", "https://example.com/verify"),
-			),
-		},
-		"Email change confirmation sent": {
-			Body: `{"template":"email_change_confirmation","data":{"email":"user@example.com","link":"https://example.com/approve"}}`,
-			Checks: checks(
-				hasResp(http.StatusNoContent, ""),
-				wasSendEmailChangeConfirmationCalled(1, "user@example.com", "https://example.com/approve"),
-			),
-		},
-		"Password reset sent": {
-			Body: `{"template":"password_reset","data":{"email":"user@example.com","link":"https://example.com/reset"}}`,
-			Checks: checks(
-				hasResp(http.StatusNoContent, ""),
-				wasSendPasswordResetCalled(1, "user@example.com", "https://example.com/reset"),
-			),
-		},
-		"Account exists sent": {
-			Body: `{"template":"account_exists","data":{"email":"user@example.com","link":"https://example.com/login"}}`,
-			Checks: checks(
-				hasResp(http.StatusNoContent, ""),
-				wasSendAccountExistsCalled(1, "user@example.com", "https://example.com/login"),
-			),
-		},
-		"Signup verification sent": {
-			Body: `{"template":"signup_verification","data":{"email":"user@example.com","link":"https://example.com/activate"}}`,
-			Checks: checks(
-				hasResp(http.StatusNoContent, ""),
-				wasSendSignupVerificationCalled(1, "user@example.com", "https://example.com/activate"),
-			),
-		},
-		"Organization invitation sent": {
-			Body: `{"template":"organization_invitation","data":{"email":"user@example.com","organization":"Acme","link":"https://example.com/join"}}`,
-			Checks: checks(
-				hasResp(http.StatusNoContent, ""),
-				wasSendOrganizationInvitationCalled(1, "user@example.com", "Acme", "https://example.com/join"),
-			),
-		},
-		"User deletion confirmation sent": {
-			Body: `{"template":"user_deletion","data":{"email":"user@example.com","link":"https://example.com/delete"}}`,
-			Checks: checks(
-				hasResp(http.StatusNoContent, ""),
-				wasSendUserDeletionConfirmationCalled(1, "user@example.com", "https://example.com/delete"),
-			),
-		},
-		"User creation rejected": {
-			Body: `{"template":"user_creation","data":{"email":"user@example.com"}}`,
-			Checks: checks(
-				hasResp(http.StatusBadRequest, `{"code":"email.invalid_template","message":"Invalid email template."}`),
-				wasNoSendCalled(),
+				wasSendCalled(1, emailCore.TemplateOrganizationInvitation, emailCore.Data{
+					Email:        "user@example.com",
+					Organization: "Acme",
+					Link:         "https://example.com/join",
+				}),
 			),
 		},
 	}
@@ -236,11 +103,9 @@ func Test_Handler_SendEmail(t *testing.T) {
 		t.Run(cn, func(t *testing.T) {
 			t.Parallel()
 
-			sender := &SenderMock{}
-
 			hdl := Handler{
 				log:    slog.New(slog.DiscardHandler),
-				sender: sender,
+				sender: c.Sender,
 			}
 
 			req := httptest.NewRequest("POST", "http://test.com/", strings.NewReader(c.Body))
@@ -249,7 +114,7 @@ func Test_Handler_SendEmail(t *testing.T) {
 			hdl.SendEmail(rec, req)
 
 			for _, ch := range c.Checks {
-				ch(t, sender, rec)
+				ch(t, c.Sender, rec)
 			}
 		})
 	}

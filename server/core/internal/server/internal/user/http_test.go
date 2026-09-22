@@ -60,12 +60,12 @@ func Test_NewHandler(t *testing.T) {
 	db := &DBMock{}
 	storer := &StorerMock{}
 
-	hdl := NewHandler(slog.New(slog.DiscardHandler), db, storer, "loc/%s")
+	hdl := NewHandler(slog.New(slog.DiscardHandler), db, storer, "loc")
 	require.NotNil(t, hdl)
 	assert.NotNil(t, hdl.log)
 	assert.Same(t, db, hdl.db)
 	assert.Same(t, storer, hdl.storer)
-	assert.Equal(t, "loc/%s", hdl.imageLocationFormat)
+	assert.Equal(t, "loc", hdl.publicURL)
 }
 
 func Test_Handler_RetrieveUserImage(t *testing.T) {
@@ -264,7 +264,7 @@ func Test_Handler_UploadUserImage(t *testing.T) {
 			}
 
 			assert.Equal(t, "u1", ff[0].UserID)
-			assert.Regexp(t, `^loc/u1\?v=\d{14}$`, ff[0].Image)
+			assert.Regexp(t, `^loc/api/users/u1/image\?v=\d{14}$`, ff[0].Image)
 		}
 	}
 
@@ -374,7 +374,7 @@ func Test_Handler_UploadUserImage(t *testing.T) {
 				func(t *testing.T, _ *DBMock, _ *StorerMock, rec *httptest.ResponseRecorder) {
 					assert.Equal(t, http.StatusCreated, rec.Code)
 					assert.Zero(t, rec.Body.Len(), rec.Body.String())
-					assert.Regexp(t, `^loc/u1\?v=\d{14}$`, rec.Header().Get("Location"))
+					assert.Regexp(t, `^loc/api/users/u1/image\?v=\d{14}$`, rec.Header().Get("Location"))
 				},
 				wasUploadCalled(1),
 				wasUpdateUserImageCalled(1),
@@ -388,10 +388,10 @@ func Test_Handler_UploadUserImage(t *testing.T) {
 			t.Parallel()
 
 			hdl := Handler{
-				log:                 slog.New(slog.DiscardHandler),
-				db:                  c.DB,
-				storer:              c.Storer,
-				imageLocationFormat: "loc/%s",
+				log:       slog.New(slog.DiscardHandler),
+				db:        c.DB,
+				storer:    c.Storer,
+				publicURL: "loc",
 			}
 
 			var (

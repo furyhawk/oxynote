@@ -6,13 +6,8 @@ import (
 	"net/http"
 
 	emailCore "github.com/oxynote/oxynote/server/core/internal/email"
-	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/httpserver"
 )
-
-// ErrInvalidTemplate is returned when the requested email template is
-// not recognized.
-var ErrInvalidTemplate = errutil.New(http.StatusBadRequest, "email.invalid_template", "Invalid email template.")
 
 // Handler holds dependencies required for email operations.
 type Handler struct {
@@ -35,11 +30,7 @@ func NewHandler(
 func (h *Handler) SendEmail(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Template emailCore.Template `json:"template"`
-		Data     struct {
-			Email        string `json:"email"`
-			Organization string `json:"organization"`
-			Link         string `json:"link"`
-		} `json:"data"`
+		Data     emailCore.Data     `json:"data"`
 	}
 
 	if err := httpserver.DecodeJSON(r, &req); err != nil {
@@ -47,23 +38,8 @@ func (h *Handler) SendEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch req.Template {
-	case emailCore.TemplateEmailVerification:
-		h.sender.SendEmailVerification(req.Data.Email, req.Data.Link)
-	case emailCore.TemplateEmailChangeConfirmation:
-		h.sender.SendEmailChangeConfirmation(req.Data.Email, req.Data.Link)
-	case emailCore.TemplatePasswordReset:
-		h.sender.SendPasswordReset(req.Data.Email, req.Data.Link)
-	case emailCore.TemplateAccountExists:
-		h.sender.SendAccountExists(req.Data.Email, req.Data.Link)
-	case emailCore.TemplateSignupVerification:
-		h.sender.SendSignupVerification(req.Data.Email, req.Data.Link)
-	case emailCore.TemplateOrganizationInvitation:
-		h.sender.SendOrganizationInvitation(req.Data.Email, req.Data.Organization, req.Data.Link)
-	case emailCore.TemplateUserDeletion:
-		h.sender.SendUserDeletionConfirmation(req.Data.Email, req.Data.Link)
-	default:
-		httpserver.RespondError(h.log, w, ErrInvalidTemplate)
+	if err := h.sender.Send(req.Template, req.Data); err != nil {
+		httpserver.RespondError(h.log, w, err)
 		return
 	}
 
@@ -74,30 +50,8 @@ func (h *Handler) SendEmail(w http.ResponseWriter, r *http.Request) {
 //
 //go:generate ../../../../scripts/codegen/mock -t internal Sender
 type Sender interface {
-	// SendEmailVerification should send a new-email-address
-	// verification email.
-	SendEmailVerification(eml, link string)
-
-	// SendEmailChangeConfirmation should send the email asking the
-	// current address to approve a change of address.
-	SendEmailChangeConfirmation(eml, link string)
-
-	// SendPasswordReset should send a password reset email.
-	SendPasswordReset(eml, link string)
-
-	// SendAccountExists should send an account-exists notification
-	// email.
-	SendAccountExists(eml, link string)
-
-	// SendSignupVerification should send the account-activation email
-	// for a fresh signup.
-	SendSignupVerification(eml, link string)
-
-	// SendOrganizationInvitation should send an organization invitation
-	// email.
-	SendOrganizationInvitation(eml, org, link string)
-
-	// SendUserDeletionConfirmation should send a user deletion
-	// confirmation email.
-	SendUserDeletionConfirmation(eml, link string)
+	// Send should send the template to the recipient in the data,
+	// rendered with the values it carries, reporting only a template
+	// that cannot be sent.
+	Send(tmpl emailCore.Template, d emailCore.Data) error
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/oxynote/oxynote/server/core/internal/document"
+	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/rs/xid"
 )
 
@@ -33,6 +34,10 @@ type searchDocumentsArgs struct {
 func (a searchDocumentsArgs) Validate() error {
 	if a.Query == "" {
 		return errRequired("query")
+	}
+
+	if err := search.ValidateQuery(a.Query); err != nil {
+		return fmt.Errorf("query must be at most %d characters; search for the key terms instead", search.MaxQueryLength)
 	}
 
 	return nil

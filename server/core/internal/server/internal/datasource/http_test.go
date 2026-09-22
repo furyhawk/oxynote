@@ -247,6 +247,9 @@ func newRunnerMock(clients *clientMocks) *runnerMock {
 	m := &runnerMock{clientMocks: clients}
 
 	m.runner = &datasourceMock.Runner{
+		TypeFunc: func() datasourceCore.Type {
+			return m.dataSources[len(m.dataSources)-1].Type
+		},
 		TestConnectionFunc: func(context.Context) (processor.ConnectionStatus, error) {
 			return clients.status, clients.statusErr
 		},

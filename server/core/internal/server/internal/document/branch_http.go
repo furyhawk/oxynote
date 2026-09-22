@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"slices"
 
 	"github.com/guregu/null/v5"
 	"github.com/oxynote/oxynote/server/core/internal/apps/webchange"
@@ -14,7 +13,6 @@ import (
 	"github.com/oxynote/oxynote/server/core/internal/document/hook"
 	"github.com/oxynote/oxynote/server/core/internal/search"
 	"github.com/oxynote/oxynote/server/core/internal/server/internal/auth"
-	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/httpserver"
 	"github.com/oxynote/oxynote/server/core/pkg/logutil"
 	"github.com/oxynote/oxynote/server/core/pkg/timeutil"
@@ -61,10 +59,8 @@ func (h *Handler) UpdateDocumentBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// the main branch is found by name in the tree and content queries, and
-	// a rename would make the document look nameless and contentless.
-	if doc.Default && ui.Name.Valid && ui.Name.String != doc.BranchName {
-		httpserver.RespondError(h.log, w, ErrDefaultBranchRename)
+	if err := doc.AllowsBranchRename(ui.Name); err != nil {
+		httpserver.RespondError(h.log, w, err)
 		return
 	}
 
@@ -233,17 +229,7 @@ func (h *Handler) UpdateDocumentBranchByIDUnsafe(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// the update carries the editors of one persist, so the set is only
-	// ever added to. Diffing it against the stored maintainers would drop
-	// everyone who happens not to be editing right now.
-	var maintainersAdded bool
-
-	for _, maintainer := range ui.Maintainers {
-		if !slices.Contains(maintainers, maintainer) {
-			maintainersAdded = true
-			break
-		}
-	}
+	maintainersAdded := ui.AddsMaintainers(maintainers)
 
 	if maintainersAdded {
 		if err = tx.UpsertDocumentMaintainers(
@@ -312,11 +298,8 @@ func (h *Handler) MergeBranches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// a self-merge would soft-delete the branch's hooks and comments and
-	// then copy the hooks back from the same, now hook-less, branch —
-	// permanently destroying both.
-	if inp.FromBranchID == inp.ToBranchID {
-		httpserver.RespondError(h.log, w, errutil.New(http.StatusBadRequest, "document.branch_self_merge", "cannot merge a branch into itself"))
+	if err = documentCore.AllowsMerge(inp.FromBranchID, inp.ToBranchID); err != nil {
+		httpserver.RespondError(h.log, w, err)
 		return
 	}
 
@@ -568,8 +551,8 @@ func (h *Handler) DeleteDocumentBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if branchDoc.Default {
-		httpserver.RespondError(h.log, w, errutil.New(http.StatusConflict, "document.default_branch", "cannot delete the default branch"))
+	if err = branchDoc.AllowsBranchDelete(); err != nil {
+		httpserver.RespondError(h.log, w, err)
 		return
 	}
 
@@ -580,7 +563,7 @@ func (h *Handler) DeleteDocumentBranch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if count <= 1 {
-		httpserver.RespondError(h.log, w, errutil.New(http.StatusConflict, "document.last_branch", "cannot delete the last branch"))
+		httpserver.RespondError(h.log, w, documentCore.ErrLastBranchDelete)
 		return
 	}
 

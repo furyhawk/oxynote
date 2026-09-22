@@ -4,15 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
+	"unicode/utf8"
 
 	"github.com/blevesearch/bleve/v2"
 	bleveSearch "github.com/blevesearch/bleve/v2/search"
 	"github.com/blevesearch/bleve/v2/search/query"
+	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/rs/xid"
 )
 
 const (
+	// MaxQueryLength caps a search query in characters. Every term
+	// expands to a dictionary walk inside the process, so the query size
+	// bounds the work one request can ask for.
+	MaxQueryLength = 200
+
 	// _searchResultLimit caps the number of hits the search endpoint
 	// returns.
 	_searchResultLimit = 30
@@ -45,6 +53,19 @@ const (
 	_maxTermSearchers = 1024
 )
 
+// ErrInvalidQuery is returned when a search query is empty or over
+// MaxQueryLength.
+var ErrInvalidQuery = errutil.New(http.StatusBadRequest, "document.invalid_search_query", "invalid search query")
+
+// ValidateQuery reports whether the query is one the index will run.
+func ValidateQuery(q string) error {
+	if q == "" || utf8.RuneCountInString(q) > MaxQueryLength {
+		return ErrInvalidQuery
+	}
+
+	return nil
+}
+
 // SearchDocuments searches the organization's entries and returns them as
 // the search endpoint's JSON: the matched terms wrapped in mark tags and
 // the text cropped to a fragment around the best match.
@@ -72,6 +93,10 @@ func (i *Index) SearchDocumentBlocks(ctx context.Context, organizationID, q stri
 
 // search runs the query and decodes the hits.
 func (i *Index) search(ctx context.Context, organizationID, q string, limit int, highlight bool) ([]Block, error) {
+	if err := ValidateQuery(q); err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, _searchTimeout)
 	defer cancel()
 

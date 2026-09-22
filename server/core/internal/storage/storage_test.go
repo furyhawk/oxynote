@@ -32,6 +32,29 @@ func Test_Policy_MaxUploadBytes(t *testing.T) {
 	assert.EqualValues(t, 25*1024*1024+64*1024, FilePolicy.MaxUploadBytes())
 }
 
+func Test_PolicyForKind(t *testing.T) {
+	cc := map[string]struct {
+		Kind   string
+		Result Policy
+		OK     bool
+	}{
+		"Image kind":   {Kind: "image", Result: ImagePolicy, OK: true},
+		"File kind":    {Kind: "file", Result: FilePolicy, OK: true},
+		"Unknown kind": {Kind: "video"},
+		"Empty kind":   {},
+	}
+
+	for cn, c := range cc {
+		t.Run(cn, func(t *testing.T) {
+			t.Parallel()
+
+			res, ok := PolicyForKind(c.Kind)
+			assert.Equal(t, c.OK, ok)
+			assert.Equal(t, c.Result, res)
+		})
+	}
+}
+
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }

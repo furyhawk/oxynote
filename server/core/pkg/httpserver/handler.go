@@ -17,12 +17,17 @@ import (
 	"github.com/gorilla/schema"
 	"github.com/oxynote/oxynote/server/core/pkg/errutil"
 	"github.com/oxynote/oxynote/server/core/pkg/logutil"
+	"github.com/oxynote/oxynote/server/core/pkg/timeutil"
 	"github.com/rs/xid"
 )
 
 // _criticalSkipFrames specifies the number of stacktrace frames to skip so
 // that critical reports point at the handler instead of this helper.
 const _criticalSkipFrames = 2
+
+// WSPublishTimeout bounds each WebSocket publish triggered by a domain
+// callback.
+const WSPublishTimeout = 5 * time.Second
 
 var (
 	// ErrNotAuthenticated is returned when authorization process fails.
@@ -310,6 +315,13 @@ func ExtractQueryID(r *http.Request, name string) (xid.ID, error) {
 	}
 
 	return id, nil
+}
+
+// CacheBust appends a version query carrying the current time to a
+// location that has no query of its own, so a browser refetches an
+// object that was replaced under an unchanged URL.
+func CacheBust(location string) string {
+	return location + "?v=" + timeutil.Now().Format("20060102150405")
 }
 
 // Timeout is a middleware that cancels request's context after a given
