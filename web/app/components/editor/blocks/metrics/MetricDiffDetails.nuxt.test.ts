@@ -1,0 +1,200 @@
+import { mountSuspended } from "@nuxt/test-utils/runtime"
+import { afterEach, beforeEach, describe, it } from "vitest"
+import MetricDiffDetails from "./MetricDiffDetails.vue"
+import { makeNode } from "../../test-helpers/node-view"
+import { METRIC_BLOCK_NAME } from "../node-names"
+import {
+	RefreshInterval,
+	TimeRangePreset,
+	VisualizationTimeUnit,
+} from "./utils"
+import { DiffStatus } from "~/components/editor/diff/position-map"
+import { settleMutations, t } from "~/components/test-helpers"
+import {
+	clearQueryCache,
+	disposeMockEndpoints,
+	mockEndpoint,
+} from "~/composables/api/test-helpers"
+
+// the data source list lives in the app-wide query cache
+describe("<MetricDiffDetails>", { concurrent: false }, () => {
+	beforeEach(() => {
+		clearQueryCache()
+	})
+
+	afterEach(() => {
+		disposeMockEndpoints()
+	})
+
+	it("labels each field of an added query by the query's number", async ({
+		expect,
+	}) => {
+		const wrapper = await mountDetails(
+			{ queries: [query("up", "")] },
+			{ queries: [query("up", ""), query("rate(x[5m])", "{{job}}")] },
+		)
+
+		expect(rows(wrapper)).toEqual([
+			[
+				t("editor.metrics.config.query-name-default-format", { index: 2 }),
+				null,
+				"rate(x[5m])",
+			],
+			[t("editor.metrics.diff.legend", { index: 2 }), null, "{{job}}"],
+		])
+		expect(wrapper.findAll("dd").every((dd) => dd.classes("font-mono"))).toBe(
+			true,
+		)
+	})
+
+	it("shows an empty legend as auto", async ({ expect }) => {
+		const wrapper = await mountDetails(
+			{ queries: [query("up", "{{job}}")] },
+			{ queries: [query("up", "")] },
+		)
+
+		expect(rows(wrapper)).toEqual([
+			[
+				t("editor.metrics.diff.legend", { index: 1 }),
+				"{{job}}",
+				t("editor.diff-change-marker.auto"),
+			],
+		])
+	})
+
+	it.for([
+		{ name: "decimal places", input: "decimals", label: "decimals-label" },
+		{ name: "min value", input: "axisBoundsMin", label: "bounds-min-label" },
+		{ name: "max value", input: "axisBoundsMax", label: "bounds-max-label" },
+	])(
+		"shows auto as the old $name when it was not set",
+		async ({ input, label }, { expect }) => {
+			const wrapper = await mountDetails({}, { [input]: 1 })
+
+			expect(rows(wrapper)).toEqual([
+				[
+					t(`editor.metrics.config.${label}`),
+					t("editor.diff-change-marker.auto"),
+					"1",
+				],
+			])
+		},
+	)
+
+	it("shows a setting that was not set before as empty", async ({ expect }) => {
+		const wrapper = await mountDetails(
+			{},
+			{ unitType: VisualizationTimeUnit.Seconds },
+		)
+
+		expect(rows(wrapper)).toEqual([
+			[
+				t("editor.metrics.config.unit-label"),
+				t("editor.diff-change-marker.empty"),
+				t("editor.metrics.config.unit-options.time.options.seconds"),
+			],
+		])
+	})
+
+	it("shows the settings by the names the config modal uses", async ({
+		expect,
+	}) => {
+		const wrapper = await mountDetails(
+			{
+				timeRange: TimeRangePreset.Last15Minutes,
+				refreshInterval: RefreshInterval.M1,
+				thresholds: [{ value: 1 }],
+			},
+			{
+				timeRange: TimeRangePreset.Last5Minutes,
+				refreshInterval: RefreshInterval.M5,
+				thresholds: [{ value: 1 }, { value: 2 }],
+			},
+		)
+
+		expect(rows(wrapper)).toEqual([
+			[
+				t("editor.metrics.config.time-range-label"),
+				t("editor.metrics.config.time-range-options.last_15_minutes"),
+				t("editor.metrics.config.time-range-options.last_5_minutes"),
+			],
+			[
+				t("editor.metrics.config.refresh-interval-label"),
+				t("editor.metrics.config.refresh-interval-options.1m"),
+				t("editor.metrics.config.refresh-interval-options.5m"),
+			],
+			[t("editor.metrics.config.thresholds-label"), "1", "2"],
+		])
+	})
+
+	it("names a data source instead of showing its id", async ({ expect }) => {
+		mockEndpoint("GET", "/api/data-sources", () => [
+			{ id: "ds-1", name: "Demo", type: "prometheus", url: "demo://x" },
+		])
+
+		const wrapper = await mountDetails(
+			{ dataSourceId: "ds-gone" },
+			{ dataSourceId: "ds-1" },
+		)
+		await settleMutations()
+
+		expect(rows(wrapper)).toEqual([
+			[
+				t("editor.metrics.config.data-source-label"),
+				t("editor.metrics.config.data-source-label-deleted"),
+				"Demo",
+			],
+		])
+	})
+
+	it("shows an attribute it has no label for by its name", async ({
+		expect,
+	}) => {
+		const wrapper = await mountDetails(
+			{ config: { title: "CPU" } },
+			{ config: { title: "RAM" } },
+		)
+
+		expect(rows(wrapper)).toEqual([
+			["config", '{"title":"CPU"}', '{"title":"RAM"}'],
+		])
+	})
+})
+
+function query(expr: string, legendFormat: string) {
+	return { name: "Query", query: expr, legendFormat: legendFormat }
+}
+
+// each row as its label, its old value and its new value, null for a side
+// the row does not show
+function rows(wrapper: Awaited<ReturnType<typeof mountDetails>>) {
+	const labels = wrapper.findAll("dt")
+
+	return wrapper
+		.findAll("dd")
+		.map((dd, index) => [
+			labels[index]?.text(),
+			dd.find(".line-through").exists() ? dd.get(".line-through").text() : null,
+			dd.find(".bg-diff-text-added").exists()
+				? dd.get(".bg-diff-text-added").text()
+				: null,
+		])
+}
+
+function mountDetails(
+	oldAttrs: Record<string, unknown>,
+	newAttrs: Record<string, unknown>,
+) {
+	return mountSuspended(MetricDiffDetails, {
+		props: {
+			node: makeNode(
+				{
+					...newAttrs,
+					diffStatus: DiffStatus.Modified,
+					oldNode: { attrs: oldAttrs },
+				},
+				{ typeName: METRIC_BLOCK_NAME },
+			),
+		},
+	})
+}

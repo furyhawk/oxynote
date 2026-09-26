@@ -381,10 +381,14 @@ describe("<FileBlock>", { concurrent: false }, () => {
 			}),
 		)
 
+		const label = t("editor.diff-change-marker.label", {
+			removed: 1,
+			added: 1,
+		})
 		expect(wrapper.find(".diff-overlay").exists()).toBe(false)
-		expect(wrapper.text()).toContain(
-			t("editor.diff-change-marker.label", { removed: 1, added: 1 }),
-		)
+		expect(wrapper.text()).toContain(label)
+		// hovering a marker inside the card would set off the card's hover
+		expect(wrapper.get("a").text()).not.toContain(label)
 	})
 
 	it("shows no diff overlay on an unchanged file", async ({ expect }) => {

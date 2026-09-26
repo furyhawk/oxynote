@@ -5,6 +5,7 @@ import { showToastMessage } from "~/components/toast"
 import { cn } from "~/lib/utils"
 import { DiffStatus } from "~/components/editor/diff/position-map"
 import DiffChangeMarker from "~/components/editor/diff/DiffChangeMarker.vue"
+import ImageDiffDetails from "./ImageDiffDetails.vue"
 
 const MIN_WIDTH = 128
 
@@ -248,7 +249,9 @@ onBeforeUnmount(() => {
 				]"
 				draggable="false"
 			/>
-			<DiffChangeMarker :node="props.node" class="absolute top-1.5 right-1.5" />
+			<DiffChangeMarker :node="props.node" class="absolute top-1.5 right-1.5">
+				<ImageDiffDetails :node="props.node" />
+			</DiffChangeMarker>
 			<div
 				v-if="showResizeHandle"
 				aria-hidden="true"
@@ -275,7 +278,9 @@ onBeforeUnmount(() => {
 			<DiffChangeMarker
 				:node="props.node"
 				class="absolute top-1/2 right-2 -translate-y-1/2"
-			/>
+			>
+				<ImageDiffDetails :node="props.node" />
+			</DiffChangeMarker>
 			<div class="mt-0.25 text-2sm text-muted-foreground">
 				{{
 					uploading

@@ -4,6 +4,7 @@ import { computePosition, flip, offset, shift } from "@floating-ui/dom"
 import { cn } from "~/lib/utils"
 import { DiffStatus } from "~/components/editor/diff/position-map"
 import DiffChangeMarker from "~/components/editor/diff/DiffChangeMarker.vue"
+import FigmaDiffDetails from "./FigmaDiffDetails.vue"
 import { isFigmaUrl, convertToEmbedUrl } from "./index"
 
 const props = defineProps(nodeViewProps)
@@ -262,7 +263,9 @@ onBeforeUnmount(() => {
 				:style="{ height: `${displayHeight}px` }"
 				allowfullscreen
 			/>
-			<DiffChangeMarker :node="props.node" class="absolute top-1.5 right-1.5" />
+			<DiffChangeMarker :node="props.node" class="absolute top-1.5 right-1.5">
+				<FigmaDiffDetails :node="props.node" />
+			</DiffChangeMarker>
 			<div
 				v-if="!isEditingDisabled"
 				aria-hidden="true"
@@ -295,7 +298,9 @@ onBeforeUnmount(() => {
 			<DiffChangeMarker
 				:node="props.node"
 				class="absolute top-1/2 right-2 -translate-y-1/2"
-			/>
+			>
+				<FigmaDiffDetails :node="props.node" />
+			</DiffChangeMarker>
 			<span class="mt-0.25 text-2sm text-muted-foreground">
 				{{
 					isEditingDisabled

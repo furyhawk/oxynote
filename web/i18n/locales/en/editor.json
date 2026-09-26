@@ -136,13 +136,21 @@
 			"more-indicator": "+{count}"
 		},
 		"figma": {
+			"diff": {
+				"width": "Width",
+				"height": "Height"
+			},
 			"description": "Embed Figma",
 			"placeholder": "https://www.figma.com/... + Enter",
 			"edit": "Edit URL",
-			"empty": "No Figma embed",
+			"empty": "No Figma file",
 			"iframe-title": "Figma embed"
 		},
 		"image": {
+			"diff": {
+				"image": "Image",
+				"width": "Width"
+			},
 			"description": "Upload an image",
 			"empty": "Image not uploaded",
 			"uploading": "Uploading...",
@@ -164,6 +172,9 @@
 			}
 		},
 		"mermaid": {
+			"diff": {
+				"more-lines": "+{count} more"
+			},
 			"preview": {
 				"loading": "The diagram is loading...",
 				"empty": "Add Mermaid code to see a diagram",
@@ -776,6 +787,13 @@
 					"1d": "1d"
 				}
 			},
+			"diff": {
+				"visualization": "Visualization",
+				"legend": "Legend {index}",
+				"base-threshold-color": "Base threshold colour",
+				"custom-unit": "Custom unit",
+				"size": "Size"
+			},
 			"simulation": {
 				"tooltip": "Showing simulated data until real data is available",
 				"section-title": "Simulated data",
@@ -842,7 +860,10 @@
 		"diff-change-marker": {
 			"label": "{removed} removed, {added} added",
 			"removed": "−{count}",
-			"added": "+{count}"
+			"added": "+{count}",
+			"empty": "empty",
+			"auto": "auto",
+			"pixels": "{value} px"
 		},
 		"tags": {
 			"label": "Tags",

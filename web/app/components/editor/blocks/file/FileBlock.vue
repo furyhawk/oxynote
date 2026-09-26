@@ -6,6 +6,7 @@ import type { ProgressToast } from "~/components/toast"
 import { cn } from "~/lib/utils"
 import { DiffStatus } from "~/components/editor/diff/position-map"
 import DiffChangeMarker from "~/components/editor/diff/DiffChangeMarker.vue"
+import FileDiffDetails from "./FileDiffDetails.vue"
 import {
 	fileKind,
 	fileKindStyle,
@@ -175,7 +176,7 @@ async function downloadOnDesktop() {
 	<NodeViewWrapper
 		:id="props.node.attrs.uid"
 		as="figure"
-		class="not-prose flex caret-transparent"
+		class="not-prose relative flex caret-transparent"
 		data-type="fileBlock"
 		:data-uid="props.node.attrs.uid"
 		:data-node-comment-id="props.node.attrs.nodeCommentId"
@@ -233,10 +234,6 @@ async function downloadOnDesktop() {
 					{{ size }}
 				</span>
 			</span>
-			<DiffChangeMarker
-				:node="props.node"
-				class="absolute top-1/2 right-2 -translate-y-1/2"
-			/>
 		</component>
 		<button
 			v-else
@@ -252,10 +249,6 @@ async function downloadOnDesktop() {
 			@click="openFilePicker"
 		>
 			<Icon name="mingcute:attachment-line" class="size-4 text-foreground" />
-			<DiffChangeMarker
-				:node="props.node"
-				class="absolute top-1/2 right-2 -translate-y-1/2"
-			/>
 			<div class="mt-0.25 text-2sm text-muted-foreground">
 				{{
 					uploading
@@ -275,5 +268,13 @@ async function downloadOnDesktop() {
 				@change="handleFileChange"
 			/>
 		</button>
+		<!-- a sibling of the card rather than its child, so hovering the
+		marker does not trigger the card's hover style -->
+		<DiffChangeMarker
+			:node="props.node"
+			class="absolute top-1/2 right-2 -translate-y-1/2"
+		>
+			<FileDiffDetails :node="props.node" />
+		</DiffChangeMarker>
 	</NodeViewWrapper>
 </template>

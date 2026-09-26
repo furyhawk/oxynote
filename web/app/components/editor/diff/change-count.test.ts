@@ -1,6 +1,13 @@
 import { Schema, type Node as PMNode } from "@tiptap/pm/model"
 import { describe, it } from "vitest"
-import { countNodeChanges } from "./change-count"
+import {
+	collectAttributeChanges,
+	countNodeChanges,
+	displayValue,
+	formatChange,
+	TextSegmentKind,
+	textSegments,
+} from "./change-count"
 import { DiffStatus } from "./position-map"
 import {
 	COMMENT_MARK_NAME,
@@ -11,6 +18,7 @@ import { NODE_COMMENT_ID_ATTR } from "~/components/editor/attribute-names"
 import { SIMULATION_ACTIVE_ATTR } from "~/components/editor/blocks/metrics/simulation"
 import {
 	FILE_BLOCK_NAME,
+	IMAGE_BLOCK_NAME,
 	METRIC_BLOCK_NAME,
 } from "~/components/editor/blocks/node-names"
 
@@ -36,6 +44,19 @@ const schema = new Schema({
 				diffStatus: { default: null },
 				modifiedIndex: { default: null },
 				originalIndex: { default: null },
+				oldNode: { default: null },
+			},
+		},
+		[IMAGE_BLOCK_NAME]: {
+			group: "block",
+			atom: true,
+			attrs: {
+				uid: { default: null },
+				src: { default: null },
+				alt: { default: null },
+				title: { default: null },
+				width: { default: null },
+				diffStatus: { default: null },
 				oldNode: { default: null },
 			},
 		},
@@ -143,6 +164,24 @@ describe("countNodeChanges", () => {
 		expect(countNodeChanges(node)).toEqual(expected)
 	})
 
+	it("ignores the image attributes no one can change from the editor", ({
+		expect,
+	}) => {
+		const node = schema.nodes[IMAGE_BLOCK_NAME].create({
+			uid: "image-1",
+			src: "a.png",
+			alt: "a dog",
+			title: "Dog",
+			diffStatus: DiffStatus.Modified,
+			oldNode: {
+				type: IMAGE_BLOCK_NAME,
+				attrs: { uid: "image-1", src: "a.png", alt: "a cat" },
+			},
+		})
+
+		expect(countNodeChanges(node)).toEqual({ removed: 0, added: 0 })
+	})
+
 	it("counts no attribute changes on a node without its original", ({
 		expect,
 	}) => {
@@ -172,12 +211,12 @@ describe("countNodeChanges", () => {
 			expected: { removed: 1, added: 0 },
 		},
 		{
-			name: "counts the attributes outside the file group on their own",
+			name: "ignores the flag of an upload in flight",
 			input: {
 				old: storedFile("a.zip"),
 				new: { ...storedFile("a.zip"), uploading: true },
 			},
-			expected: { removed: 1, added: 1 },
+			expected: { removed: 0, added: 0 },
 		},
 	])("$name", ({ input, expected }, { expect }) => {
 		const node = schema.nodes[FILE_BLOCK_NAME].create({
@@ -291,6 +330,134 @@ describe("countNodeChanges", () => {
 		)
 
 		expect(countNodeChanges(node)).toEqual(expected)
+	})
+})
+
+describe("collectAttributeChanges", () => {
+	it("lists each changed unit with both of its sides", ({ expect }) => {
+		const node = schema.nodes.atom.create({
+			uid: "block-1",
+			src: "b.png",
+			alt: "a cat",
+			diffStatus: DiffStatus.Modified,
+			oldNode: {
+				type: "atom",
+				attrs: { uid: "block-1", src: "a.png", width: 300 },
+			},
+		})
+
+		expect(collectAttributeChanges(node)).toEqual([
+			{ name: "src", oldValue: "a.png", newValue: "b.png" },
+			{ name: "width", oldValue: 300, newValue: undefined },
+			{ name: "alt", oldValue: undefined, newValue: "a cat" },
+		])
+	})
+
+	it("gives a group's side as the record of its set attributes", ({
+		expect,
+	}) => {
+		const node = schema.nodes[FILE_BLOCK_NAME].create({
+			uid: "file-1",
+			...storedFile("b.zip"),
+			diffStatus: DiffStatus.Modified,
+			oldNode: {
+				type: FILE_BLOCK_NAME,
+				attrs: { uid: "file-1", uploading: false },
+			},
+		})
+
+		expect(collectAttributeChanges(node)).toEqual([
+			{ name: "file", oldValue: undefined, newValue: storedFile("b.zip") },
+		])
+	})
+
+	it("names a list item's field by its list, index and field", ({ expect }) => {
+		const node = schema.nodes[METRIC_BLOCK_NAME].create({
+			uid: "metric-1",
+			queries: [query("up", ""), query("rate", "")],
+			diffStatus: DiffStatus.Modified,
+			oldNode: {
+				type: METRIC_BLOCK_NAME,
+				attrs: { uid: "metric-1", queries: [query("up", "")] },
+			},
+		})
+
+		expect(collectAttributeChanges(node)).toEqual([
+			{ name: "queries.1.query", oldValue: undefined, newValue: "rate" },
+			{ name: "queries.1.legendFormat", oldValue: undefined, newValue: "" },
+		])
+	})
+
+	it("lists nothing for a node without its original", ({ expect }) => {
+		const node = schema.nodes.atom.create({
+			src: "a.png",
+			diffStatus: DiffStatus.Modified,
+		})
+
+		expect(collectAttributeChanges(node)).toEqual([])
+	})
+})
+
+describe("displayValue", () => {
+	it.for([
+		{ name: "keeps a string as it is", input: "a cat", expected: "a cat" },
+		{ name: "prints a number", input: 480, expected: "480" },
+		{ name: "prints a boolean", input: true, expected: "true" },
+		{
+			name: "prints an object as stable JSON",
+			input: { b: 1, a: 2 },
+			expected: '{"a":2,"b":1}',
+		},
+	])("$name", ({ input, expected }, { expect }) => {
+		expect(displayValue(input)).toBe(expected)
+	})
+})
+
+describe("formatChange", () => {
+	it("formats both sides with the given format", ({ expect }) => {
+		expect(
+			formatChange(
+				{ name: "width", oldValue: 300, newValue: 480 },
+				(value) => `${displayValue(value)}!`,
+			),
+		).toEqual({ oldValue: "300!", newValue: "480!" })
+	})
+
+	it("shows the unset text for a side that is not set", ({ expect }) => {
+		expect(
+			formatChange(
+				{ name: "width", oldValue: undefined, newValue: 480 },
+				displayValue,
+				"auto",
+			),
+		).toEqual({ oldValue: "auto", newValue: "480" })
+	})
+
+	it("gives null for a side that is not set", ({ expect }) => {
+		expect(
+			formatChange({ name: "alt", oldValue: undefined, newValue: "a cat" }),
+		).toEqual({ oldValue: null, newValue: "a cat" })
+	})
+})
+
+describe("textSegments", () => {
+	it("joins neighbouring text of the same kind into one segment", ({
+		expect,
+	}) => {
+		const node = schema.nodes.code.create({ uid: "code-1" }, [
+			textNode("A-->", []),
+			textNode("B", [REMOVED]),
+			textNode("C", [ADDED]),
+			textNode("D", [ADDED, COMMENT_MARK_NAME]),
+			textNode(" end", []),
+		])
+
+		expect(textSegments(node)).toEqual([
+			{ kind: TextSegmentKind.Equal, text: "A-->" },
+			{ kind: TextSegmentKind.Removed, text: "B" },
+			{ kind: TextSegmentKind.Added, text: "CD" },
+			{ kind: TextSegmentKind.Equal, text: " end" },
+		])
 	})
 })
 

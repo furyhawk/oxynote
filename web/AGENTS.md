@@ -93,6 +93,13 @@ there when none exists.
   (custom nodes; `upload-handler.ts` routes dropped files), `comments/`,
   `diff/`, `drag-handle/`, `slash/`, `link/`, `ai/`, `hooks/`. Editor-wide
   state is [app/stores/editor.ts](app/stores/editor.ts).
+- **Diff view**: adding or changing a block or node includes its branch
+  diff. Expose `diffStatus` on its node view and style it as added, removed
+  and modified. A block changed through its attributes renders
+  `DiffChangeMarker` with a `<Block>DiffDetails.vue` card in its own
+  directory. Attributes that count as one change, count per list item or
+  are never set by a user are declared in
+  [diff/change-count.ts](app/components/editor/diff/change-count.ts).
 - **Routing**: one dynamic page,
   `app/pages/[[organizationSlug]]/[[documentSlug]].vue`;
   [app/middleware/01.redirect.global.ts](app/middleware/01.redirect.global.ts)

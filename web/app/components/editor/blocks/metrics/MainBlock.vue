@@ -12,6 +12,7 @@ import {
 } from "./utils"
 import { DiffStatus } from "~/components/editor/diff/position-map"
 import DiffChangeMarker from "~/components/editor/diff/DiffChangeMarker.vue"
+import MetricDiffDetails from "./MetricDiffDetails.vue"
 
 // legacy blobs may miss fields entirely and may still use the old "type"
 // field name, so Partial reflects the actual runtime shape.
@@ -371,7 +372,9 @@ function disableVisualizationRefreshTemporarily() {
 				<div
 					class="absolute top-1 right-1.5 z-1 flex items-center rounded-md bg-background pl-0.5"
 				>
-					<DiffChangeMarker :node="props.node" class="mr-1" />
+					<DiffChangeMarker :node="props.node" class="mr-1">
+						<MetricDiffDetails :node="props.node" />
+					</DiffChangeMarker>
 					<ShadcnUiTooltip v-if="simulationVisible">
 						<ShadcnUiTooltipTrigger as-child>
 							<Icon

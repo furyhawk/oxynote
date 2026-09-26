@@ -4,6 +4,7 @@ import { cn } from "~/lib/utils"
 import { explicitContentPlaceholder } from "../../placeholder"
 import { DiffStatus } from "../../diff/position-map"
 import DiffChangeMarker from "../../diff/DiffChangeMarker.vue"
+import MermaidDiffDetails from "./MermaidDiffDetails.vue"
 import MermaidPreview from "./MermaidPreview.vue"
 
 const props = defineProps(nodeViewProps)
@@ -119,7 +120,9 @@ watch(showCode, () => {
 			{{ lastOtherEditingUser?.name }}
 		</div>
 		<div class="absolute top-1 right-1.5 z-1 flex items-center gap-1">
-			<DiffChangeMarker :node="props.node" />
+			<DiffChangeMarker :node="props.node">
+				<MermaidDiffDetails :node="props.node" />
+			</DiffChangeMarker>
 			<ShadcnUiButton
 				variant="ghost-plain"
 				size="icon-sm"
