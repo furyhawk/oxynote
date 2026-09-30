@@ -627,6 +627,11 @@ describe("<NameEditor>", { concurrent: false }, () => {
 			`/api/documents/${DOCUMENT_ID}/branches/${BRANCH_ID}/tags`,
 			() => [],
 		)
+		mockEndpoint(
+			"GET",
+			`/api/documents/${DOCUMENT_ID}/branches/${TARGET_BRANCH_ID}/tags`,
+			() => [],
+		)
 		const wrapper = await mountEditor()
 		await openActionMenu(wrapper)
 		menuItem(t("editor.name-editor.review-workflow.merge.title")).click()

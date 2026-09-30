@@ -2,9 +2,11 @@
 import TagPill from "./TagPill.vue"
 import { availableRowWidth, stepTagFit } from "./tag-fit"
 import ColorSelect from "./ColorSelect.vue"
+import { cn } from "@/lib/utils"
 import { chartStyles, colorToHex } from "~/assets/css"
 import { showToastMessage } from "../toast"
 import { TAG_QUERY_KEYS } from "~/composables/api/useTagAPI"
+import { DiffStatus } from "./diff/position-map"
 
 // the ceiling on the pills, whatever the row's width. Measuring only ever
 // takes it down from here
@@ -24,9 +26,15 @@ const {
 } = useTagAPI()
 const editorStore = useEditorStore()
 const { isEditable } = useEditorMeta()
-const fetchBranchTags = useFetchBranchTags(
+const fetchActiveBranchTags = useFetchBranchTags(
 	() => editorStore.activeDocumentId,
 	() => editorStore.activeBranchId,
+)
+// the target's list loads alongside the active one, like its provider,
+// so turning the diff on shows the counts without waiting on a request
+const fetchTargetBranchTags = useFetchBranchTags(
+	() => editorStore.activeDocumentId,
+	() => editorStore.targetBranchId,
 )
 const queryCache = useQueryCache()
 const wsState = useWebSocketStateStore()
@@ -64,9 +72,11 @@ onUnmounted(() => {
 })
 
 const open = ref(false)
-// a read only document still shows its pills, but the picker behind them
-// stays shut
-const pickerOpen = computed(() => isEditable.value && open.value)
+// the picker opens on a read only document too, but only to look through.
+// The diff shows two branches at once, so it is read only as well
+const canEdit = computed(
+	() => isEditable.value && !editorStore.reviewableDiffActive,
+)
 const query = ref("")
 // the picker paints its swatches from the theme, so a colour only resolves
 // once the popover is on screen
@@ -74,13 +84,36 @@ const newColor = ref<string | undefined>(undefined)
 
 const allTags = computed(() => fetchTagTree.data.value ?? [])
 
-// the pills are the open branch's own tags, which the tree cannot answer:
+// the pills are the active branch's own tags, which the tree cannot answer:
 // it lists a document under a tag by its default branch alone
-const documentTags = computed(() => {
-	const ids = fetchBranchTags.data.value ?? []
+const activeTags = computed(() => {
+	const ids = fetchActiveBranchTags.data.value ?? []
 
 	return allTags.value.filter((tag) => ids.includes(tag.id))
 })
+
+// null while no diff is shown, or while the target's list is loading
+const targetTags = computed(() => {
+	const ids = fetchTargetBranchTags.data.value
+	if (!editorStore.reviewableDiffActive || !ids) {
+		return null
+	}
+
+	return allTags.value.filter((tag) => ids.includes(tag.id))
+})
+const addedTags = computed(() => {
+	const target = targetTags.value
+	if (!target) {
+		return []
+	}
+
+	return activeTags.value.filter(
+		(tag) => !target.some((targetTag) => targetTag.id === tag.id),
+	)
+})
+const removedTags = computed(
+	() => targetTags.value?.filter((tag) => !carriesTag(tag.id)) ?? [],
+)
 
 const rowElem = useTemplateRef<HTMLElement>("tag-row")
 const triggerElem = useTemplateRef<HTMLElement>("tag-trigger")
@@ -94,18 +127,32 @@ const tooMany = ref(Number.POSITIVE_INFINITY)
 const tooManyAt = ref(0)
 
 const visibleTags = computed(() =>
-	documentTags.value.slice(0, visibleCount.value),
+	activeTags.value.slice(0, visibleCount.value),
 )
 const overflowCount = computed(
-	() => documentTags.value.length - visibleTags.value.length,
+	() => activeTags.value.length - visibleTags.value.length,
 )
 
 const trimmedQuery = computed(() => query.value.trim())
 
+// a read only picker lists the active tags alone, and the diff adds the
+// ones the active branch removed
+const listedTags = computed(() => {
+	if (canEdit.value) {
+		return allTags.value
+	}
+
+	return allTags.value.filter(
+		(tag) =>
+			carriesTag(tag.id) ||
+			removedTags.value.some((removed) => removed.id === tag.id),
+	)
+})
+
 const matchingTags = computed(() => {
 	const q = trimmedQuery.value.toLowerCase()
 
-	return allTags.value.filter(
+	return listedTags.value.filter(
 		(tag) => !q || tag.tagName.toLowerCase().includes(q),
 	)
 })
@@ -114,7 +161,9 @@ const showCreate = computed(() => {
 	const q = trimmedQuery.value.toLowerCase()
 
 	return (
-		!!q && !matchingTags.value.some((tag) => tag.tagName.toLowerCase() === q)
+		canEdit.value &&
+		!!q &&
+		!matchingTags.value.some((tag) => tag.tagName.toLowerCase() === q)
 	)
 })
 
@@ -126,9 +175,9 @@ onMounted(measure)
 
 // a different set of pills is a fresh question, so the ceiling comes back
 // and the row settles again from there
-watch(documentTags, () => {
+watch(activeTags, () => {
 	tooMany.value = Number.POSITIVE_INFINITY
-	visibleCount.value = Math.min(MAX_VISIBLE_TAGS, documentTags.value.length)
+	visibleCount.value = Math.min(MAX_VISIBLE_TAGS, activeTags.value.length)
 })
 
 // flush post because measure reads the row's geometry: it has to run once
@@ -154,7 +203,7 @@ useResizeObserver([rowElem, rowParentElem], () => {
 // the search is emptied on the way in rather than on the way out: the
 // list is still on screen while the menu fades, and clearing it then
 // shows the rows springing back to their full length mid-close
-watch(pickerOpen, (isOpen) => {
+watch(open, (isOpen) => {
 	if (!isOpen) {
 		return
 	}
@@ -196,7 +245,7 @@ function measure() {
 
 	const next = stepTagFit({
 		count: visibleCount.value,
-		ceiling: Math.min(MAX_VISIBLE_TAGS, documentTags.value.length),
+		ceiling: Math.min(MAX_VISIBLE_TAGS, activeTags.value.length),
 		needed: trigger.scrollWidth,
 		available: available,
 		tooMany: tooMany.value,
@@ -209,13 +258,25 @@ function measure() {
 }
 
 function carriesTag(tagId: string): boolean {
-	return documentTags.value.some((tag) => tag.id === tagId)
+	return activeTags.value.some((tag) => tag.id === tagId)
+}
+
+function tagDiffStatus(tagId: string): DiffStatus {
+	if (addedTags.value.some((tag) => tag.id === tagId)) {
+		return DiffStatus.Added
+	}
+
+	if (removedTags.value.some((tag) => tag.id === tagId)) {
+		return DiffStatus.Removed
+	}
+
+	return DiffStatus.Unchanged
 }
 
 async function toggleTag(tag: TagTreeElement) {
 	const documentId = editorStore.activeDocumentId
 	const branchId = editorStore.activeBranchId
-	if (!documentId || !branchId) {
+	if (!canEdit.value || !documentId || !branchId) {
 		return
 	}
 
@@ -308,10 +369,7 @@ function handleSearchEnter() {
 		<span class="shrink-0 text-sm font-medium text-muted-foreground">
 			{{ $t("editor.tags.label") }}
 		</span>
-		<ShadcnUiDropdownMenu
-			:open="pickerOpen"
-			@update:open="(v: boolean) => (open = v)"
-		>
+		<ShadcnUiDropdownMenu v-model:open="open">
 			<ShadcnUiDropdownMenuTrigger as-child>
 				<!--
 					one element across both states: replacing the trigger leaves
@@ -323,11 +381,46 @@ function handleSearchEnter() {
 				-->
 				<div
 					ref="tag-trigger"
-					:data-disabled="!isEditable ? '' : undefined"
 					:title="$t('editor.tags.trigger-title')"
-					class="flex h-6 min-w-0 cursor-pointer items-center gap-1.25 overflow-hidden data-disabled:cursor-default"
+					class="flex h-6 min-w-0 cursor-pointer items-center gap-1.25 overflow-hidden"
 				>
-					<template v-if="documentTags.length">
+					<!-- the same height as the pills beside it -->
+					<span
+						v-if="removedTags.length || addedTags.length"
+						class="flex h-5 shrink-0 overflow-hidden rounded-full border border-border bg-background text-xs leading-4 font-semibold select-none"
+					>
+						<span class="sr-only">
+							{{
+								$t("editor.diff-change-marker.label", {
+									removed: removedTags.length,
+									added: addedTags.length,
+								})
+							}}
+						</span>
+						<span
+							v-if="removedTags.length"
+							aria-hidden="true"
+							class="flex items-center bg-diff-removed px-2 text-diff-removed-foreground"
+						>
+							{{
+								$t("editor.diff-change-marker.removed", {
+									count: removedTags.length,
+								})
+							}}
+						</span>
+						<span
+							v-if="addedTags.length"
+							aria-hidden="true"
+							class="flex items-center bg-diff-added px-2 text-diff-added-foreground"
+						>
+							{{
+								$t("editor.diff-change-marker.added", {
+									count: addedTags.length,
+								})
+							}}
+						</span>
+					</span>
+					<template v-if="activeTags.length">
 						<!--
 							pills hold their natural width so the row's overflow is
 							what the count is measured against. The last one left
@@ -357,34 +450,97 @@ function handleSearchEnter() {
 			<ShadcnUiDropdownMenuContent side="bottom" align="start" class="w-63">
 				<ShadcnUiInput
 					v-model="query"
-					:placeholder="$t('editor.tags.search-placeholder')"
+					:placeholder="
+						canEdit
+							? $t('editor.tags.search-placeholder')
+							: $t('editor.tags.search-only-placeholder')
+					"
 					class="h-[1.775rem] border-none bg-muted px-2 text-2sm md:text-2sm"
 					disable-focus-effect
 					@keydown.enter="handleSearchEnter"
 				/>
 				<ShadcnUiDropdownMenuSeparator />
 				<template v-if="matchingTags.length">
-					<div ref="tag-list" class="max-h-47.5 overflow-y-auto">
+					<!--
+						the diff tints run edge to edge, so the list takes back the
+						menu's padding and each row adds it to its own
+					-->
+					<div
+						ref="tag-list"
+						class="max-h-47.5 overflow-y-auto"
+						:class="{ '-mx-1': targetTags }"
+					>
 						<ShadcnUiDropdownMenuItem
 							v-for="tag in matchingTags"
 							:key="tag.id"
 							:value="tag.id"
 							:active="carriesTag(tag.id)"
+							:class="
+								cn(
+									// a row that toggles nothing does not react to the pointer
+									!canEdit &&
+										'cursor-default focus:bg-transparent focus:text-inherit active:bg-transparent active:text-inherit',
+									targetTags && 'rounded-none px-3',
+									tagDiffStatus(tag.id) === DiffStatus.Added &&
+										'bg-diff-added/30 focus:bg-diff-added/30 active:bg-diff-added/30',
+									tagDiffStatus(tag.id) === DiffStatus.Removed &&
+										'bg-diff-removed/30 focus:bg-diff-removed/30 active:bg-diff-removed/30',
+								)
+							"
 							@select="(event: Event) => event.preventDefault()"
 							@click="toggleTag(tag)"
 						>
 							<div class="flex min-w-0 flex-1 items-center gap-2">
+								<!-- every row keeps the sign's column so the dots line up -->
+								<span
+									v-if="targetTags"
+									aria-hidden="true"
+									class="w-2 shrink-0 text-center font-semibold"
+									:class="{
+										'text-diff-added-foreground':
+											tagDiffStatus(tag.id) === DiffStatus.Added,
+										'text-diff-removed-foreground':
+											tagDiffStatus(tag.id) === DiffStatus.Removed,
+									}"
+								>
+									<template v-if="tagDiffStatus(tag.id) === DiffStatus.Added">
+										{{ $t("editor.tags.diff.added-sign") }}
+									</template>
+									<template
+										v-else-if="tagDiffStatus(tag.id) === DiffStatus.Removed"
+									>
+										{{ $t("editor.tags.diff.removed-sign") }}
+									</template>
+								</span>
 								<span
 									class="size-2.5 shrink-0 rounded-full"
 									:style="{ backgroundColor: tag.color }"
 								/>
-								<span class="min-w-0 truncate whitespace-nowrap">
+								<span
+									class="min-w-0 truncate whitespace-nowrap"
+									:class="{
+										'line-through':
+											tagDiffStatus(tag.id) === DiffStatus.Removed,
+									}"
+								>
 									{{ tag.tagName }}
+								</span>
+								<span
+									v-if="tagDiffStatus(tag.id) === DiffStatus.Added"
+									class="sr-only"
+								>
+									{{ $t("editor.tags.diff.added") }}
+								</span>
+								<span
+									v-else-if="tagDiffStatus(tag.id) === DiffStatus.Removed"
+									class="sr-only"
+								>
+									{{ $t("editor.tags.diff.removed") }}
 								</span>
 							</div>
 						</ShadcnUiDropdownMenuItem>
 					</div>
-					<ShadcnUiDropdownMenuSeparator />
+					<ShadcnUiDropdownMenuSeparator v-if="canEdit" />
 				</template>
 				<div v-if="showCreate" class="flex items-stretch gap-1">
 					<ShadcnUiDropdownMenuItem
@@ -425,8 +581,17 @@ function handleSearchEnter() {
 						</ShadcnUiPopoverContent>
 					</ShadcnUiPopover>
 				</div>
-				<div v-else class="px-2 py-1.25 text-xs text-muted-foreground">
+				<div
+					v-else-if="canEdit"
+					class="px-2 py-1.25 text-xs text-muted-foreground"
+				>
 					{{ $t("editor.tags.create-hint") }}
+				</div>
+				<div
+					v-else-if="!matchingTags.length"
+					class="px-2 py-1.25 text-xs text-muted-foreground"
+				>
+					{{ $t("editor.tags.no-results") }}
 				</div>
 			</ShadcnUiDropdownMenuContent>
 		</ShadcnUiDropdownMenu>

@@ -33,7 +33,11 @@ const DOC_ID = makeXid("doc")
 const BRANCH_ID = makeXid("br")
 const TAG_A = makeXid("taga")
 const TAG_B = makeXid("tagb")
+const TAG_C = makeXid("tagc")
+const TAG_D = makeXid("tagd")
 const BRANCH_TAGS_URL = `/api/documents/${DOC_ID}/branches/${BRANCH_ID}/tags`
+const TARGET_ID = makeXid("target")
+const TARGET_TAGS_URL = `/api/documents/${DOC_ID}/branches/${TARGET_ID}/tags`
 
 type TestDocument = ReturnType<typeof makeDoc>
 
@@ -63,7 +67,7 @@ function makeTag(
 }
 
 // the tree says which tags exist and the branch endpoint which of them the
-// open branch carries, so each test states both
+// active branch carries, so each test states both
 function stubTags(tags: unknown[], carried: string[] = []) {
 	mockEndpoint("GET", "/api/tags/tree", () => tags)
 	mockEndpoint("GET", BRANCH_TAGS_URL, () => carried)
@@ -147,6 +151,9 @@ describe("<DocumentTagList>", { concurrent: false }, () => {
 		palette = stubSelectableColors()
 		useEditorStore().activeDocumentId = DOC_ID
 		useEditorStore().activeBranchId = BRANCH_ID
+		useEditorStore().setActiveBranchProtected(false)
+		useEditorStore().updateTargetBranchId(null)
+		useEditorStore().setReviewableDiffActive(false)
 	})
 
 	afterEach(disposeMockEndpoints)
@@ -228,6 +235,40 @@ describe("<DocumentTagList>", { concurrent: false }, () => {
 		await settleMutations()
 
 		expect(calls.length).toBe(before)
+	})
+
+	it("loads the target's tags before the diff is turned on", async ({
+		expect,
+	}) => {
+		stubTags([makeTag(TAG_A, "Production", "#1a9e4a")], [TAG_A])
+		const targetCalls = mockEndpoint("GET", TARGET_TAGS_URL, () => [])
+		useEditorStore().updateTargetBranchId(TARGET_ID)
+
+		await mountTags()
+
+		expect(targetCalls).toHaveLength(1)
+	})
+
+	it("refetches the target's tags when the server says they changed", async ({
+		expect,
+	}) => {
+		stubTags([makeTag(TAG_A, "Production", "#1a9e4a")], [TAG_A])
+		const targetCalls = mockEndpoint("GET", TARGET_TAGS_URL, () => [])
+		useEditorStore().updateTargetBranchId(TARGET_ID)
+		const { handlers } = stubSocket()
+
+		await mountTags()
+
+		await vi.waitFor(() => {
+			expect(targetCalls.length).toBeGreaterThan(0)
+		}, WAIT_FOR_OPTIONS)
+		const before = targetCalls.length
+		handlers.forEach((handler) => {
+			handler({ branchId: TARGET_ID })
+		})
+		await vi.waitFor(() => {
+			expect(targetCalls.length).toBeGreaterThan(before)
+		}, WAIT_FOR_OPTIONS)
 	})
 
 	it("subscribes to nothing while no document is open", async ({ expect }) => {
@@ -314,11 +355,11 @@ describe("<DocumentTagList>", { concurrent: false }, () => {
 		])
 	})
 
-	it("draws the open branch's tags rather than the default branch's", async ({
+	it("draws the active branch's tags rather than the default branch's", async ({
 		expect,
 	}) => {
 		// the tree lists the document under Production through its default
-		// branch; the open branch carries Staging alone
+		// branch; the active branch carries Staging alone
 		stubTags(
 			[
 				makeTag(TAG_A, "Production", "#1a9e4a", [makeDoc(DOC_ID)]),
@@ -698,5 +739,212 @@ describe("<DocumentTagList>", { concurrent: false }, () => {
 		expect(
 			pickerRows().filter((row) => row.includes(t("editor.tags.create"))),
 		).toEqual([])
+	})
+
+	it("lists only the active tags on a protected branch", async ({ expect }) => {
+		useEditorStore().setActiveBranchProtected(true)
+		stubTags(
+			[
+				makeTag(TAG_A, "Production", "#1a9e4a"),
+				makeTag(TAG_B, "Staging", "#e8760c"),
+			],
+			[TAG_A],
+		)
+		const wrapper = await mountTags()
+
+		await openPicker(wrapper)
+
+		expect(pickerRows()).toEqual(["Production"])
+		// a row that toggles nothing does not react to the pointer
+		expect(pickerItems()[0]?.classList).toContain("focus:bg-transparent")
+		expect(pickerItems()[0]?.classList).toContain("active:bg-transparent")
+		expect(pickerInput().placeholder).toBe(
+			t("editor.tags.search-only-placeholder"),
+		)
+		expect(
+			document.body.querySelector("[data-slot='dropdown-menu-content']")
+				?.textContent,
+		).not.toContain(t("editor.tags.create-hint"))
+	})
+
+	it.for([
+		{
+			name: "says so when a search on a protected branch finds nothing",
+			carried: [TAG_B],
+			query: "prod",
+		},
+		{
+			name: "says so when a protected branch carries no tags",
+			carried: [],
+			query: "",
+		},
+	])("$name", async ({ carried, query }, { expect }) => {
+		useEditorStore().setActiveBranchProtected(true)
+		stubTags([makeTag(TAG_B, "Staging", "#e8760c")], carried)
+		const wrapper = await mountTags()
+		await openPicker(wrapper)
+
+		await search(query)
+
+		expect(pickerRows()).toEqual([])
+		expect(
+			document.body.querySelector("[data-slot='dropdown-menu-content']")
+				?.textContent,
+		).toContain(t("editor.tags.no-results"))
+	})
+
+	it("toggles nothing from the picker on a protected branch", async ({
+		expect,
+	}) => {
+		useEditorStore().setActiveBranchProtected(true)
+		stubTags(
+			[
+				makeTag(TAG_A, "Production", "#1a9e4a"),
+				makeTag(TAG_B, "Staging", "#e8760c"),
+			],
+			[TAG_A],
+		)
+		const assigned = mockEndpoint("POST", BRANCH_TAGS_URL, () => ({}))
+		const unassigned = mockEndpoint(
+			"DELETE",
+			`${BRANCH_TAGS_URL}/${TAG_A}`,
+			() => ({}),
+		)
+		const wrapper = await mountTags()
+		await openPicker(wrapper)
+
+		pickerItems().forEach((el) => {
+			el.click()
+		})
+		await settleMutations()
+
+		expect(assigned).toHaveLength(0)
+		expect(unassigned).toHaveLength(0)
+	})
+
+	it("creates nothing on a protected branch", async ({ expect }) => {
+		useEditorStore().setActiveBranchProtected(true)
+		stubTags([makeTag(TAG_A, "Production", "#1a9e4a")])
+		const created = mockEndpoint("POST", "/api/tags", () => ({ id: TAG_B }))
+		const wrapper = await mountTags()
+		await openPicker(wrapper)
+		await search("Rollout")
+
+		pressEnter()
+		await settleMutations()
+
+		expect(created).toHaveLength(0)
+		expect(
+			pickerRows().filter((row) => row.includes(t("editor.tags.create"))),
+		).toEqual([])
+	})
+
+	describe("when the diff is shown", { concurrent: false }, () => {
+		// the active branch carries Production and Staging, the target
+		// Production and Incidents. Neither carries Runbook
+		beforeEach(() => {
+			stubTags(
+				[
+					makeTag(TAG_A, "Production", "#1a9e4a"),
+					makeTag(TAG_B, "Staging", "#e8760c"),
+					makeTag(TAG_C, "Incidents", "#2563eb"),
+					makeTag(TAG_D, "Runbook", "#d23c3c"),
+				],
+				[TAG_A, TAG_B],
+			)
+			mockEndpoint("GET", TARGET_TAGS_URL, () => [TAG_A, TAG_C])
+			useEditorStore().updateTargetBranchId(TARGET_ID)
+			useEditorStore().setReviewableDiffActive(true)
+		})
+
+		it("counts the tags added and removed against the target", async ({
+			expect,
+		}) => {
+			const wrapper = await mountTags()
+
+			expect(wrapper.get(".bg-diff-removed").text()).toBe(
+				t("editor.diff-change-marker.removed", { count: 1 }),
+			)
+			expect(wrapper.get(".bg-diff-added").text()).toBe(
+				t("editor.diff-change-marker.added", { count: 1 }),
+			)
+			expect(wrapper.findAllComponents(TagPill).map((p) => p.text())).toEqual([
+				"Production",
+				"Staging",
+			])
+		})
+
+		it("lists and marks the active and removed tags in the picker", async ({
+			expect,
+		}) => {
+			const wrapper = await mountTags()
+
+			await openPicker(wrapper)
+
+			const items = pickerItems()
+			const marks = items.map((el) => {
+				if (el.classList.contains("bg-diff-added/30")) {
+					return "added"
+				}
+
+				if (el.classList.contains("bg-diff-removed/30")) {
+					return "removed"
+				}
+
+				return "unchanged"
+			})
+			expect(marks).toEqual(["unchanged", "added", "removed"])
+			expect(pickerRows().map((row) => row.replace(/\s+/g, ""))).toEqual([
+				"Production",
+				`${t("editor.tags.diff.added-sign")}Staging${t("editor.tags.diff.added")}`,
+				`${t("editor.tags.diff.removed-sign")}Incidents${t("editor.tags.diff.removed")}`,
+			])
+			// the tints run edge to edge rather than as rounded insets
+			expect(items[0]?.parentElement?.classList).toContain("-mx-1")
+			expect(items.map((el) => el.classList.contains("rounded-none"))).toEqual([
+				true,
+				true,
+				true,
+			])
+			// a row keeps its tint under the pointer, since it toggles nothing
+			expect(
+				items.map((el) =>
+					Array.from(el.classList).filter((c) => /^(focus|active):bg-/.test(c)),
+				),
+			).toEqual([
+				["focus:bg-transparent", "active:bg-transparent"],
+				["focus:bg-diff-added/30", "active:bg-diff-added/30"],
+				["focus:bg-diff-removed/30", "active:bg-diff-removed/30"],
+			])
+		})
+
+		it("toggles nothing from the picker", async ({ expect }) => {
+			const assigned = mockEndpoint("POST", BRANCH_TAGS_URL, () => ({}))
+			const unassigned = mockEndpoint(
+				"DELETE",
+				`${BRANCH_TAGS_URL}/${TAG_A}`,
+				() => ({}),
+			)
+			const wrapper = await mountTags()
+			await openPicker(wrapper)
+
+			pickerItems().forEach((el) => {
+				el.click()
+			})
+			await settleMutations()
+
+			expect(assigned).toHaveLength(0)
+			expect(unassigned).toHaveLength(0)
+		})
+
+		it("shows no counter once the diff is turned off", async ({ expect }) => {
+			const wrapper = await mountTags()
+
+			useEditorStore().setReviewableDiffActive(false)
+			await nextTick()
+
+			expect(wrapper.find(".bg-diff-removed").exists()).toBe(false)
+			expect(wrapper.find(".bg-diff-added").exists()).toBe(false)
+		})
 	})
 })
